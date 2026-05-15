@@ -1,0 +1,106 @@
+{
+  "name": "digital-ic-frontend-agent",
+  "version": "1.0.0",
+  "description": "数字IC前端设计Agent：整合设计、实现、验证全流程，智能匹配需求，自动选择合适的技能进行数字IC前端设计",
+  "author": "Digital IC Designer Team",
+  "createdDate": "2026-05-15",
+  "skills": [
+    {
+      "name": "digital-ic-designer",
+      "path": "./skills/digital-ic-designer/SKILL.md",
+      "description": "数字IC设计架构师：生成设计文档",
+      "triggerKeywords": ["设计文档", "架构设计", "需求分析", "方案文档", "IEEE标准"],
+      "priority": 1
+    },
+    {
+      "name": "digital-ic-rtl-designer",
+      "path": "./skills/digital-ic-rtl-designer/SKILL.md",
+      "description": "数字IC设计师：RTL代码实现与常规验证",
+      "triggerKeywords": ["RTL", "Verilog", "代码实现", "仿真", "波形", "Testbench"],
+      "priority": 2
+    },
+    {
+      "name": "digital-ic-verifier",
+      "path": "./skills/digital-ic-verifier/SKILL.md",
+      "description": "数字IC验证师：UVM验证与前仿",
+      "triggerKeywords": ["UVM", "SystemVerilog", "前仿", "功能验证", "覆盖率"],
+      "priority": 3
+    }
+  ],
+  "mcpServers": {
+    "synthpilot": {
+      "command": "C:\\Users\\Dell\\.local\\bin\\uvx.exe",
+      "args": ["synthpilot"],
+      "description": "SynthPilot MCP：FPGA/ASIC设计工具集成",
+      "required": true,
+      "installGuide": "https://synthpilot.dev/install"
+    }
+  },
+  "cliTools": [
+    {
+      "name": "vivado",
+      "description": "Xilinx Vivado：FPGA设计与仿真工具",
+      "required": true,
+      "checkCommand": "vivado -version",
+      "installGuide": "https://www.xilinx.com/support/download.html"
+    },
+    {
+      "name": "uv",
+      "description": "Python包管理器",
+      "required": true,
+      "checkCommand": "uv --version",
+      "installGuide": "https://astral.sh/uv"
+    }
+  ],
+  "workflow": {
+    "steps": [
+      "需求分析",
+      "工具检查",
+      "技能匹配",
+      "执行任务",
+      "结果验证",
+      "报告生成"
+    ],
+    "decisionRules": {
+      "design": {
+        "condition": "用户需要生成设计文档或进行架构设计",
+        "skill": "digital-ic-designer"
+      },
+      "rtl": {
+        "condition": "用户需要实现RTL代码或进行常规仿真验证",
+        "skill": "digital-ic-rtl-designer"
+      },
+      "uvm": {
+        "condition": "用户明确要求UVM验证或前仿",
+        "skill": "digital-ic-verifier"
+      }
+    }
+  },
+  "requirementAnalysis": {
+    "questions": [
+      {
+        "question": "您需要进行数字IC设计的哪个阶段？",
+        "options": [
+          {"label": "需求分析与架构设计", "skill": "digital-ic-designer"},
+          {"label": "RTL代码实现", "skill": "digital-ic-rtl-designer"},
+          {"label": "功能验证（UVM）", "skill": "digital-ic-verifier"},
+          {"label": "完整设计流程", "skill": "all"}
+        ]
+      },
+      {
+        "question": "是否需要使用UVM进行验证？",
+        "options": [
+          {"label": "是，需要UVM", "skill": "digital-ic-verifier"},
+          {"label": "否，常规验证即可", "skill": "digital-ic-rtl-designer"}
+        ]
+      },
+      {
+        "question": "是否需要前仿真？",
+        "options": [
+          {"label": "是", "skill": "digital-ic-verifier"},
+          {"label": "否", "skill": "digital-ic-rtl-designer"}
+        ]
+      }
+    ]
+  }
+}
