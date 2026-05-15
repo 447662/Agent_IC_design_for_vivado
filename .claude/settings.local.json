@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(command -v opencli)",
+      "Bash(node \"G:/My_code/Agent_design_for_vivado/OpenCLI/dist/src/main.js\" --version)",
+      "Bash(node \"G:/My_code/Agent_design_for_vivado/OpenCLI/dist/src/main.js\" --help)",
+      "Bash(opencli.cmd --version)",
+      "Bash(opencli --version)"
+    ]
+  },
+  "mcpServers": {
+    "synthpilot": {
+      "command": "C:\\Users\\Dell\\.local\\bin\\uvx.exe",
+      "args": ["synthpilot"]
+    }
+  }
+}
