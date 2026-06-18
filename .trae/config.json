@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "synthpilot": {
-      "command": "C:\\Users\\Dell\\.local\\bin\\uvx.exe",
+      "command": "uvx",
       "args": ["synthpilot"]
     }
   }

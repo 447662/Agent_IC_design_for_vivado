@@ -29,7 +29,7 @@
   ],
   "mcpServers": {
     "synthpilot": {
-      "command": "C:\\Users\\Dell\\.local\\bin\\uvx.exe",
+      "command": "uvx",
       "args": ["synthpilot"],
       "description": "SynthPilot MCP：FPGA/ASIC设计工具集成",
       "required": true,
@@ -41,14 +41,14 @@
       "name": "vivado",
       "description": "Xilinx Vivado：FPGA设计与仿真工具",
       "required": true,
-      "checkCommand": "vivado -version",
+      "checkCommand": ["vivado", "-version"],
       "installGuide": "https://www.xilinx.com/support/download.html"
     },
     {
       "name": "uv",
       "description": "Python包管理器",
       "required": true,
-      "checkCommand": "uv --version",
+      "checkCommand": ["uv", "--version"],
       "installGuide": "https://astral.sh/uv"
     }
   ],

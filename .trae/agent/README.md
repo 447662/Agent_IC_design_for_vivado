@@ -1,213 +1,136 @@
-# 数字IC前端设计Agent
+# 数字 IC 前端设计 Agent
 
 ## 简介
 
-数字IC前端设计Agent是一个智能设计助手，整合了数字IC设计的全流程技能，能够：
-- 智能分析用户需求
-- 自动匹配合适的设计技能
-- 检查工具环境并引导安装
-- 执行完整的设计流程
+数字 IC 前端设计 Agent 是一个智能设计助手原型，当前实现以下能力：
+
+- 分析用户自然语言需求。
+- 根据关键词匹配设计文档、RTL 或 UVM 验证技能。
+- 检查 Vivado、uv 和 SynthPilot MCP 环境。
+- 生成 Markdown 设计说明模板，作为后续设计讨论起点。
+
+当前版本不会自动生成完整 RTL、UVM 验证环境或 Vivado 仿真结果。
 
 ## 架构
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │              Digital IC Frontend Agent                  │
 ├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ┌─────────────┐     ┌─────────────┐     ┌───────────┐  │
-│  │ 需求分析    │────▶│ 技能匹配    │────▶│ 工具检查  │  │
-│  └─────────────┘     └─────────────┘     └─────┬─────┘  │
-│                                               │        │
-│                                               ▼        │
-│                    ┌──────────────────────────────┐     │
-│                    │      技能执行引擎            │     │
-│                    └─────────────┬──────────────┘     │
-│                                  │                    │
-│         ┌────────────────────────┼────────────────┐    │
-│         ▼                        ▼                ▼    │
-│  ┌─────────────┐        ┌─────────────┐   ┌─────────┐ │
-│  │ Designer    │        │ RTL Designer│   │ Verifier│ │
-│  │ (设计文档)   │        │ (代码实现)   │   │ (UVM)   │ │
-│  └─────────────┘        └─────────────┘   └─────────┘ │
-│                                                         │
+│  CLI 参数解析                                           │
+│        │                                                │
+│        ▼                                                │
+│  需求分析 ──▶ 技能匹配 ──▶ 工具检查（可跳过）           │
+│        │                                                │
+│        ▼                                                │
+│  Markdown 设计说明模板生成                              │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## 技能列表
 
 | 技能名称 | 功能 | 触发关键词 |
-|----------|------|------------|
-| digital-ic-designer | 生成设计文档 | 设计文档、架构设计、需求分析 |
-| digital-ic-rtl-designer | RTL代码实现与常规验证 | RTL、Verilog、仿真、波形 |
-| digital-ic-verifier | UVM验证与前仿 | UVM、SystemVerilog、前仿 |
+| --- | --- | --- |
+| `digital-ic-designer` | 生成设计文档 | 设计文档、架构设计、需求分析 |
+| `digital-ic-rtl-designer` | RTL 代码实现与常规验证 | RTL、Verilog、仿真、波形 |
+| `digital-ic-verifier` | UVM 验证与前仿 | UVM、SystemVerilog、前仿 |
 
 ## 依赖工具
 
-### 必须安装
-- **Xilinx Vivado** - FPGA设计与仿真工具
-- **SynthPilot MCP** - FPGA/ASIC设计集成工具
-- **Python** - 脚本运行环境
-- **uv** - Python包管理器
+### 必需
 
-### 可选安装
-- Mentor Questa - 高级验证工具
-- Synopsys VCS - 高性能仿真工具
+- Python 3
 
-## 使用方法
+### 环境诊断检查项
 
-### 方法1: 命令行启动
+- Xilinx Vivado
+- uv
+- SynthPilot MCP
 
-```bash
-# Windows
-.\.trae\agent\start_agent.bat "我需要设计一个I2C控制器"
+如果本机没有完整 EDA 环境，可以使用 `--no-tool-check` 仅生成设计说明模板。
 
-# 或直接运行Python
-python .trae/agent/agent.py "设计一个UART接口"
-```
+## CLI 使用
 
-### 方法2: 交互式模式
+### 列出技能
 
 ```bash
-.\.trae\agent\start_agent.bat
+python .trae/agent/agent.py --list-skills
 ```
 
-然后按照提示输入设计需求。
-
-### 方法3: 诊断模式
+### 运行诊断
 
 ```bash
 python .trae/agent/agent.py --diagnostic
 ```
 
-## 智能匹配规则
+### 生成设计说明模板
 
-### 技能匹配优先级
-
-1. **设计文档生成** - 检测到"设计文档"、"架构设计"等关键词
-2. **UVM验证** - 检测到"UVM"、"前仿"、"功能验证"等关键词
-3. **RTL实现** - 默认匹配，检测到"RTL"、"Verilog"、"仿真"等关键词
-
-### 示例
-
-| 用户需求 | 匹配技能 |
-|----------|----------|
-| "设计一个I2C控制器" | digital-ic-designer |
-| "实现UART的Verilog代码" | digital-ic-rtl-designer |
-| "用UVM验证SPI模块" | digital-ic-verifier |
-| "进行前仿真" | digital-ic-verifier |
-
-## 工作流
-
-```
-用户输入需求
-    │
-    ▼
-┌─────────────┐
-│ 需求分析    │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ 工具检查    │
-│ (MCP/CLI)   │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ 技能匹配    │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ 执行任务    │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ 结果验证    │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ 生成报告    │
-└─────────────┘
+```bash
+python .trae/agent/agent.py --no-tool-check --output-dir outputs "设计一个UART控制器"
 ```
 
-## 配置文件
+### 交互式输入
 
-### agent.json
-
-```json
-{
-  "name": "digital-ic-frontend-agent",
-  "version": "1.0.0",
-  "skills": [...],
-  "mcpServers": {...},
-  "cliTools": [...],
-  "workflow": {...}
-}
+```bash
+python .trae/agent/agent.py --no-tool-check
 ```
 
-### 字段说明
+## 参数说明
 
-| 字段 | 说明 |
-|------|------|
-| name | Agent名称 |
-| version | 版本号 |
-| skills | 技能列表 |
-| mcpServers | MCP服务器配置 |
-| cliTools | CLI工具配置 |
-| workflow | 工作流配置 |
+| 参数 | 说明 |
+| --- | --- |
+| `--diagnostic` | 只运行环境诊断 |
+| `--list-skills` | 列出技能配置 |
+| `--output-dir <path>` | 指定产物根目录，默认 `outputs` |
+| `--no-tool-check` | 跳过 Vivado、SynthPilot 等外部工具检查 |
+| `requirement` | 用户自然语言设计需求 |
 
-## 安装指南
+`--diagnostic`、`--list-skills` 和普通工作流互斥。`--no-tool-check` 只适用于普通工作流。
 
-### 1. 安装依赖工具
+## 输出文档
 
-1. **安装Xilinx Vivado**
-   - 下载地址: https://www.xilinx.com/support/download.html
-   - 安装完成后添加到系统PATH
+普通工作流会生成：
 
-2. **安装SynthPilot**
-   ```bash
-   uv tool install synthpilot
-   ```
+```text
+outputs/<project-slug>/design_spec.md
+```
 
-3. **安装Python依赖**
-   ```bash
-   pip install -r requirements.txt
-   ```
+文档包含：
 
-### 2. 配置Agent
+1. 需求摘要。
+2. Agent 匹配结果。
+3. 初步设计目标。
+4. 建议模块划分。
+5. 初步接口定义。
+6. 验证计划占位。
+7. 后续人工确认项。
 
-无需额外配置，Agent会自动检测环境。
+## 开发测试
+
+安装测试依赖：
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+运行测试：
+
+```bash
+python -m pytest tests/test_agent.py -v
+```
 
 ## 故障排除
 
-### 常见问题
-
 | 问题 | 解决方案 |
-|------|----------|
-| Vivado未找到 | 安装Vivado并添加到PATH |
-| SynthPilot不可用 | 运行 `uv tool install synthpilot` |
+| --- | --- |
+| Vivado 未找到 | 安装 Vivado 并添加到 PATH，或使用 `--no-tool-check` 仅生成模板 |
+| uv 未找到 | 安装 uv，参考 [uv 安装文档](https://astral.sh/uv) |
+| SynthPilot 不可用 | 确认 `uvx synthpilot --version` 可运行 |
 | 技能文件缺失 | 检查 `.trae/skills` 目录 |
-
-### 诊断命令
-
-```bash
-python .trae/agent/agent.py --diagnostic
-```
 
 ## 版本历史
 
 | 版本 | 日期 | 更新内容 |
-|------|------|----------|
+| --- | --- | --- |
+| v1.1 | 2026-06-18 | 增加 CLI 参数、诊断模式、技能列表和设计说明模板生成 |
 | v1.0 | 2026-05-15 | 初始版本 |
-
-## 许可证
-
-MIT License
-
----
-
-*数字IC前端设计Agent - 让IC设计更智能*
