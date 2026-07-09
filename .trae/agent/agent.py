@@ -1888,13 +1888,33 @@ exit 0
 
         coverage_gate_passed = True
         gate_result = "SKIP"
+        coverage_gap = None
+        gate_diagnostic = "未设置覆盖率阈值，coverage gate 跳过。"
         if coverage_threshold is not None:
             if coverage_percent is None:
                 coverage_gate_passed = False
                 gate_result = "FAIL"
+                gate_diagnostic = "已设置覆盖率阈值 {:.1f}%，但未提供可比较的覆盖率百分比。".format(
+                    float(coverage_threshold)
+                )
             else:
-                coverage_gate_passed = float(coverage_percent) >= float(coverage_threshold)
+                current_percent = float(coverage_percent)
+                threshold_percent = float(coverage_threshold)
+                coverage_gap = round(threshold_percent - current_percent, 1)
+                coverage_gate_passed = current_percent >= threshold_percent
                 gate_result = "PASS" if coverage_gate_passed else "FAIL"
+                if coverage_gate_passed:
+                    gate_diagnostic = "当前覆盖率 {:.1f}% 达到阈值 {:.1f}%，余量 {:.1f}%。".format(
+                        current_percent,
+                        threshold_percent,
+                        abs(coverage_gap),
+                    )
+                else:
+                    gate_diagnostic = "当前覆盖率 {:.1f}% 低于阈值 {:.1f}%，差距 {:.1f}%。".format(
+                        current_percent,
+                        threshold_percent,
+                        coverage_gap,
+                    )
 
         passed = smoke_passed and coverage_ready and coverage_gate_passed
         status = "PASS" if passed else "FAIL"
@@ -1913,9 +1933,15 @@ exit 0
             "- 当前覆盖率：{}".format(current_coverage_text),
             "- 覆盖率阈值：{}".format(threshold_text),
             "- Gate 结果：{}".format(gate_result),
+            "- Gate 诊断：{}".format(gate_diagnostic),
             "- UVM 日志：`{}`".format(log_path),
             "- 波形数据库：`{}`".format(wdb_path),
             "- Code coverage info：`{}`".format(code_cov_info),
+            "",
+            "## P3.10 Gate 诊断",
+            "",
+            "- 诊断结论：{}".format(gate_diagnostic),
+            "- 建议动作：优先查看 `uvm_coverage_report.html`、`uvm_functional_coverage.html` 和 `xsim.CCInfo`，确认低覆盖项或缺失百分比来源。",
             "",
             "## 验收标记",
             "",
@@ -1974,6 +2000,7 @@ exit 0
             ".metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}",
             ".metric{padding:14px;border-radius:8px;background:#f7f9fc;border:1px solid #e2e8f0}",
             ".metric span{display:block;color:#637083;font-size:13px}.metric strong{display:block;margin-top:6px;font-size:24px}",
+            ".diagnostic{padding:14px 16px;margin:14px 0;border-radius:8px;background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12}",
             ".badge{display:inline-block;margin:3px 6px 3px 0;padding:5px 9px;border-radius:999px;background:#e7f0f8;color:#17324d;font-weight:600}",
             ".muted{background:#eef1f5;color:#637083}",
             ".grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}",
@@ -1993,6 +2020,7 @@ exit 0
             '<div class="metric"><span>覆盖率阈值</span><strong>{}</strong></div>'.format(html.escape(threshold_text)),
             '<div class="metric"><span>Gate 结果</span><strong>{}</strong></div>'.format(gate_result),
             "</div>",
+            '<div class="diagnostic"><strong>P3.10 Gate 诊断：</strong>{}</div>'.format(html.escape(gate_diagnostic)),
             "<p><strong>覆盖率类型</strong></p><p>{}</p>".format(type_badges),
             '<section class="grid">',
             '<article class="panel"><h2>源文件</h2><ul>{}</ul></article>'.format(source_items),
@@ -2013,6 +2041,8 @@ exit 0
             "coverage_gate_passed": coverage_gate_passed,
             "coverage_percent": coverage_percent,
             "coverage_threshold": coverage_threshold,
+            "coverage_gap": coverage_gap,
+            "gate_diagnostic": gate_diagnostic,
             "coverage_summary": coverage_summary,
             "markdown_path": md_path,
             "html_path": html_path,

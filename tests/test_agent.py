@@ -1141,6 +1141,9 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_threshold(tmp_path):
     assert report["coverage_gate_passed"] is False
     assert report["coverage_percent"] == 75.5
     assert report["coverage_threshold"] == 80.0
+    assert report["coverage_gap"] == 4.5
+    assert "低于阈值 80.0%" in report["gate_diagnostic"]
+    assert "差距 4.5%" in report["gate_diagnostic"]
     assert report["markdown_path"].name == "uvm_coverage_summary.md"
     assert report["html_path"].name == "uvm_coverage_summary.html"
     text = report["markdown_path"].read_text(encoding="utf-8")
@@ -1150,11 +1153,41 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_threshold(tmp_path):
     assert "覆盖率阈值：80.0%" in text
     assert "当前覆盖率：75.5%" in text
     assert "Gate 结果：FAIL" in text
+    assert "Gate 诊断：当前覆盖率 75.5% 低于阈值 80.0%，差距 4.5%" in text
+    assert "优先查看 `uvm_coverage_report.html`" in text
     assert "statement / branch / condition / toggle" in text
     assert "../rtl/async_fifo.v" in text
     assert "tb_async_fifo_uvm.dut" in text
     assert "覆盖率摘要" in html_text
     assert "coverage-dashboard fail" in html_text
+    assert "差距 4.5%" in html_text
+
+
+def test_write_async_fifo_uvm_coverage_summary_report_requires_percent_when_threshold_set(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = tmp_path / "async-fifo"
+    sim_dir = project_dir / "sim"
+    cov_dir = sim_dir / "coverage" / "xsim.codeCov" / "async_fifo_uvm_cov"
+    cov_dir.mkdir(parents=True)
+    (sim_dir / "async_fifo_uvm_coverage.log").write_text(
+        "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\nASYNC_FIFO_UVM_TEST_DONE\n",
+        encoding="utf-8",
+    )
+    (cov_dir / "xsim.CCInfo").write_bytes(b"xsim.codeCov\x00async_fifo_uvm_cov\x00sbct\x00")
+
+    report = agent.write_async_fifo_uvm_coverage_summary_report(
+        project_dir,
+        coverage_threshold=90.0,
+        coverage_percent=None,
+    )
+
+    assert report["passed"] is False
+    assert report["coverage_gate_passed"] is False
+    assert report["coverage_gap"] is None
+    assert "未提供可比较的覆盖率百分比" in report["gate_diagnostic"]
+    text = report["markdown_path"].read_text(encoding="utf-8")
+    assert "Gate 诊断：已设置覆盖率阈值 90.0%，但未提供可比较的覆盖率百分比。" in text
 
 
 def test_run_async_fifo_uvm_coverage_fails_when_threshold_not_met(monkeypatch, tmp_path):
