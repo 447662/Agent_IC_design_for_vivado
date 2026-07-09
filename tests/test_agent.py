@@ -1049,7 +1049,9 @@ def test_generate_async_fifo_uvm_coverage_script_enables_xsim_code_coverage(tmp_
     assert "async_fifo_uvm_coverage.log" in script
     assert "async_fifo_uvm_coverage.wdb" in script
     assert "uvm_coverage_percent.txt" in script
-    assert "report_coverage -file $coverage_percent_report" in script
+    assert "xcrg" in script
+    assert "-report_dir $xcrg_report_dir" in script
+    assert "xcrg_coverage.log" in script
     assert "Vivado coverage export status" in script
 
 
@@ -1340,6 +1342,30 @@ def test_extract_async_fifo_coverage_percent_parses_text_report(tmp_path):
     assert summary["metrics"]["branch"] == 84.0
     assert summary["metrics"]["condition"] == 79.5
     assert summary["metrics"]["toggle"] == 66.0
+
+
+def test_extract_async_fifo_coverage_percent_parses_xcrg_scores(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    report = tmp_path / "uvm_coverage_percent.txt"
+    report.write_text(
+        "Code Coverage Report\n"
+        "Line Coverage Score 60.2041\n"
+        "Branch Coverage Score 23.5294\n"
+        "Condition Coverage Score 22\n"
+        "Toggle Coverage Score 4.84\n"
+        "Vivado coverage export status : PASS\n",
+        encoding="utf-8",
+    )
+
+    summary = agent.extract_async_fifo_coverage_percent(report)
+
+    assert summary["available"] is True
+    assert summary["total_percent"] == 27.64
+    assert summary["metrics"]["statement"] == 60.2041
+    assert summary["metrics"]["branch"] == 23.5294
+    assert summary["metrics"]["condition"] == 22.0
+    assert summary["metrics"]["toggle"] == 4.84
 
 
 def test_generate_async_fifo_uvm_environment_includes_functional_coverage_and_sva(tmp_path):

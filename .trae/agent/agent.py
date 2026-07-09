@@ -1442,6 +1442,8 @@ set wave_db async_fifo_uvm_coverage.wdb
 set reports_dir [file normalize [file join $script_dir .. reports]]
 file mkdir $reports_dir
 set coverage_percent_report [file join $reports_dir uvm_coverage_percent.txt]
+set xcrg_report_dir [file join $reports_dir uvm_coverage_xcrg]
+set xcrg_log [file join $reports_dir xcrg_coverage.log]
 exec xvlog -sv -L uvm ../rtl/async_fifo.v ../uvm/async_fifo_if.sv ../uvm/async_fifo_sva.sv ../uvm/async_fifo_uvm_pkg.sv ../uvm/tb_async_fifo_uvm.sv
 exec xelab tb_async_fifo_uvm -debug typical -L uvm -timescale 1ns/1ps -cc_type sbct -cov_db_dir coverage -cov_db_name async_fifo_uvm_cov -s $snapshot
 set run_fh [open run_async_fifo_uvm_coverage_wave.tcl w]
@@ -1474,19 +1476,24 @@ puts $percent_fh "Coverage DB : [file normalize [file join coverage xsim.codeCov
 puts $percent_fh "Coverage info : [file normalize $code_cov_path]"
 close $percent_fh
 set export_ok 0
-foreach export_cmd [list \
-    [list report_coverage -file $coverage_percent_report -append] \
-    [list report_coverage -details -file $coverage_percent_report -append] \
-] {
-    if {[catch {eval $export_cmd} export_err]} {
-        set percent_fh [open $coverage_percent_report a]
-        puts $percent_fh "Vivado coverage export command failed: $export_err"
-        close $percent_fh
-    } else {
-        set export_ok 1
-    }
+set xcrg_cmd [auto_execok xcrg]
+if {$xcrg_cmd eq ""} {
+    set xcrg_cmd [auto_execok xcrg.bat]
 }
 set percent_fh [open $coverage_percent_report a]
+if {$xcrg_cmd eq ""} {
+    puts $percent_fh "Vivado coverage export command failed: xcrg not found"
+} else {
+    puts $percent_fh "Vivado coverage export command : $xcrg_cmd -cov_db_dir coverage -cov_db_name async_fifo_uvm_cov -report_dir $xcrg_report_dir -report_format html -log $xcrg_log"
+    close $percent_fh
+    if {[catch {exec {*}$xcrg_cmd -cov_db_dir coverage -cov_db_name async_fifo_uvm_cov -report_dir $xcrg_report_dir -report_format html -log $xcrg_log >> $coverage_percent_report 2>@1} export_err]} {
+        set percent_fh [open $coverage_percent_report a]
+        puts $percent_fh "Vivado coverage export command failed: $export_err"
+    } else {
+        set export_ok 1
+        set percent_fh [open $coverage_percent_report a]
+    }
+}
 puts $percent_fh "Vivado coverage export status : [expr {$export_ok ? {PASS} : {FALLBACK_METADATA_ONLY}}]"
 close $percent_fh
 exit 0
@@ -1784,10 +1791,10 @@ exit 0
 
         text = report_path.read_text(encoding="utf-8", errors="replace")
         patterns = {
-            "statement": r"Statement\s+Coverage\s*:\s*([0-9]+(?:\.[0-9]+)?)%",
-            "branch": r"Branch\s+Coverage\s*:\s*([0-9]+(?:\.[0-9]+)?)%",
-            "condition": r"Condition\s+Coverage\s*:\s*([0-9]+(?:\.[0-9]+)?)%",
-            "toggle": r"Toggle\s+Coverage\s*:\s*([0-9]+(?:\.[0-9]+)?)%",
+            "statement": r"(?:Statement|Line)\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
+            "branch": r"Branch\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
+            "condition": r"Condition\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
+            "toggle": r"Toggle\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
         }
         metrics = {}
         for name, pattern in patterns.items():
@@ -1797,6 +1804,8 @@ exit 0
 
         total_match = re.search(r"Total\s+Coverage\s*:\s*([0-9]+(?:\.[0-9]+)?)%", text, flags=re.IGNORECASE)
         total_percent = float(total_match.group(1)) if total_match else None
+        if total_percent is None and metrics:
+            total_percent = round(sum(metrics.values()) / len(metrics), 2)
         return {
             "available": bool(metrics or total_percent is not None),
             "total_percent": total_percent,
