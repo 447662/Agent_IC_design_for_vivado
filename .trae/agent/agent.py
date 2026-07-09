@@ -42,6 +42,7 @@ class DigitalICAgent:
         self.skill_mapping = {skill["name"]: skill for skill in self.agent_config["skills"]}
         self.mcp_servers = self.agent_config["mcpServers"]
         self.cli_tools = self.agent_config["cliTools"]
+        self.targets = self.build_target_registry()
         self.OK = "[OK]"
         self.NO = "[NO]"
         self.WARN = "[WARN]"
@@ -116,6 +117,52 @@ class DigitalICAgent:
                     return tool.get("installGuide", "未知")
             return "未知"
         return "未知"
+
+    def build_target_registry(self):
+        return {
+            "async-fifo": {
+                "name": "async-fifo",
+                "display_name": "Asynchronous FIFO",
+                "design_family": "fifo",
+                "aliases": ["async_fifo", "asyncfifo"],
+                "flows": [
+                    "generate-rtl",
+                    "sim-rtl",
+                    "regress-rtl",
+                    "uvm-smoke",
+                    "uvm-coverage",
+                    "uvm-random-regress",
+                    "analyze-rtl-vcd",
+                    "check-rtl",
+                    "open-wave",
+                    "open-uvm-wave",
+                ],
+                "description": "Dual-clock FIFO with Gray pointers, Vivado/xsim simulation, UVM smoke, coverage, and WDB GUI flows.",
+            },
+        }
+
+    def list_targets(self):
+        return [self.targets[name] for name in sorted(self.targets)]
+
+    def get_target(self, target):
+        target_name = str(target).strip().lower().replace("_", "-")
+        for registered in self.list_targets():
+            candidate_names = [registered["name"], *registered.get("aliases", [])]
+            normalized_names = {str(name).strip().lower().replace("_", "-") for name in candidate_names}
+            if target_name in normalized_names:
+                return registered
+        raise ValueError("Unsupported RTL target: {}".format(target))
+
+    def print_targets(self):
+        print("Digital IC Agent registered targets")
+        print("=" * 60)
+        for target in self.list_targets():
+            print("{} ({})".format(target["name"], target["display_name"]))
+            print("  family: {}".format(target["design_family"]))
+            print("  aliases: {}".format(", ".join(target.get("aliases", [])) or "-"))
+            print("  flows: {}".format(", ".join(target.get("flows", []))))
+            print("  note: {}".format(target.get("description", "")))
+        return True
 
     def resolve_skill_path(self, skill):
         """解析技能文件路径。"""
@@ -2924,10 +2971,7 @@ add_wave -r /*
         return False
 
     def normalize_rtl_target(self, target):
-        target_name = str(target).strip().lower().replace("_", "-")
-        if target_name in ("async-fifo", "asyncfifo"):
-            return "async-fifo"
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.get_target(target)["name"]
 
     def render_async_fifo_rtl(self, data_width=8, addr_width=4):
         return """`timescale 1ns/1ps
@@ -4063,6 +4107,7 @@ def parse_args(argv=None):
     parser.add_argument("--vcd-limit", type=int, default=20, help="Maximum VCD rows to display")
     mode_group.add_argument("--diagnostic", action="store_true", help="只运行环境诊断")
     mode_group.add_argument("--list-skills", action="store_true", help="列出技能配置")
+    mode_group.add_argument("--list-targets", action="store_true", help="List registered RTL design targets")
     parser.add_argument("--output-dir", default="outputs", help="设计文档模板输出目录，默认 outputs")
     parser.add_argument("--no-tool-check", action="store_true", help="跳过 Vivado、SynthPilot 等外部工具检查")
     parser.add_argument("requirement", nargs="*", help="用户自然语言设计需求")
@@ -4071,6 +4116,7 @@ def parse_args(argv=None):
     if args.no_tool_check and (
         args.diagnostic
         or args.list_skills
+        or args.list_targets
         or args.analyze_vcd
         or args.smoke_loop
         or args.sim_smoke
@@ -4133,6 +4179,10 @@ def main(argv=None):
 
     if args.list_skills:
         agent.list_skills()
+        return 0
+
+    if args.list_targets:
+        agent.print_targets()
         return 0
 
     if args.diagnostic:

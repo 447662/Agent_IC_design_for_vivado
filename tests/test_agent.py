@@ -400,6 +400,37 @@ def test_readmes_document_current_vivado_and_async_fifo_flow():
     assert not any(token in combined for token in mojibake_tokens)
 
 
+def test_p5_target_registry_lists_async_fifo_metadata():
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    targets = agent.list_targets()
+    target_names = [target["name"] for target in targets]
+    async_fifo = agent.get_target("async_fifo")
+
+    assert target_names == ["async-fifo"]
+    assert async_fifo["name"] == "async-fifo"
+    assert async_fifo["display_name"] == "Asynchronous FIFO"
+    assert async_fifo["design_family"] == "fifo"
+    assert "async_fifo" in async_fifo["aliases"]
+    assert "generate-rtl" in async_fifo["flows"]
+    assert "sim-rtl" in async_fifo["flows"]
+    assert "uvm-coverage" in async_fifo["flows"]
+    assert agent.normalize_rtl_target("async_fifo") == "async-fifo"
+
+
+def test_cli_list_targets_outputs_registered_targets(capsys):
+    module = load_agent_module()
+
+    assert module.main(["--list-targets"]) == 0
+
+    output = capsys.readouterr().out
+    assert "async-fifo" in output
+    assert "fifo" in output
+    assert "generate-rtl" in output
+    assert "uvm-coverage" in output
+
+
 def test_generate_async_fifo_project_creates_rtl_tb_sim_reports(tmp_path):
     module = load_agent_module()
     agent = module.DigitalICAgent()

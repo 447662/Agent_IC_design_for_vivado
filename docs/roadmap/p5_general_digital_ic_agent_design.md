@@ -142,6 +142,8 @@ reports/lessons_learned.md
 - `--list-targets` 显示 async FIFO。
 - 原有 `--generate-rtl async-fifo`、`--sim-rtl async-fifo`、`--uvm-coverage async-fifo` 测试全绿。
 
+当前状态：已完成最小实现。`DigitalICAgent` 已提供 `build_target_registry()`、`list_targets()`、`get_target()` 和 `print_targets()`，CLI 已新增 `--list-targets`。当前注册目标为 `async-fifo`，别名包括 `async_fifo` 和 `asyncfifo`，现有 async FIFO flow 保持兼容。
+
 ### P5.1：目标配置文件
 
 目标：允许目标通过配置描述，而不是散落在 Python 函数里。

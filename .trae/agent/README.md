@@ -7,6 +7,7 @@
 ```powershell
 python .trae/agent/agent.py --diagnostic
 python .trae/agent/agent.py --list-skills
+python .trae/agent/agent.py --list-targets
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd
 python .trae/agent/agent.py --smoke-loop --output-dir .tmp-agent-output
 python .trae/agent/agent.py --sim-smoke --output-dir .tmp-agent-output
@@ -28,6 +29,7 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 | --- | --- |
 | `--diagnostic` | 检查 Vivado、`uv`、SynthPilot MCP 和技能文件 |
 | `--list-skills` | 列出当前 Agent 技能配置 |
+| `--list-targets` | 列出当前可用 RTL 设计目标、别名和支持 flow |
 | `--analyze-vcd <file>` | 分析 VCD，可配合 `--vcd-condition`、`--vcd-show`、`--vcd-limit` |
 | `--smoke-loop` | 生成内置握手 VCD 并运行 VCD 分析 |
 | `--sim-smoke` | 使用可用仿真器运行握手 RTL smoke，优先 Vivado |
@@ -129,6 +131,7 @@ outputs/async-fifo/
 
 - P4 暂不作为当前必须实现项，coverage closure、低覆盖项定位、分项 gate、趋势记录和 GUI 自动验收已整理到 `docs/roadmap/p4_future_upgrade_roadmap.md`。
 - P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
+- P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理 `async-fifo` 元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。
 
 ## 问题复盘
 
