@@ -1048,6 +1048,9 @@ def test_generate_async_fifo_uvm_coverage_script_enables_xsim_code_coverage(tmp_
     assert "xsim.codeCov" in script
     assert "async_fifo_uvm_coverage.log" in script
     assert "async_fifo_uvm_coverage.wdb" in script
+    assert "uvm_coverage_percent.txt" in script
+    assert "report_coverage -file $coverage_percent_report" in script
+    assert "Vivado coverage export status" in script
 
 
 def test_run_async_fifo_uvm_coverage_writes_report(monkeypatch, tmp_path):
@@ -1220,6 +1223,58 @@ def test_run_async_fifo_uvm_coverage_fails_when_threshold_not_met(monkeypatch, t
     summary = tmp_path / "async-fifo" / "reports" / "uvm_coverage_summary.md"
     assert summary.exists()
     assert "Gate 结果：FAIL" in summary.read_text(encoding="utf-8")
+
+
+def test_run_async_fifo_uvm_coverage_uses_auto_percent_report(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vivado_path = r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
+
+    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
+
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+        sim_dir = Path(cwd)
+        project_dir = sim_dir.parent
+        reports_dir = project_dir / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        (sim_dir / "async_fifo_uvm_coverage.log").write_text(
+            "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\n"
+            "ASYNC_FIFO_UVM_TEST_DONE\n"
+            "ASYNC_FIFO_UVM_FCOV_PASS full=1 empty=1 reset=1 mixed=1\n"
+            "ASYNC_FIFO_UVM_ASSERT_PASS\n",
+            encoding="utf-8",
+        )
+        (sim_dir / "async_fifo_uvm_coverage.wdb").write_text("wdb placeholder", encoding="utf-8")
+        cov_dir = sim_dir / "coverage" / "xsim.codeCov" / "async_fifo_uvm_cov"
+        cov_dir.mkdir(parents=True, exist_ok=True)
+        (cov_dir / "xsim.CCInfo").write_bytes(
+            b"xsim.codeCov\x00async_fifo_uvm_cov\x00sbct\x00"
+            b"../rtl/async_fifo.v\x00tb_async_fifo_uvm.dut\x00"
+        )
+        (reports_dir / "uvm_coverage_percent.txt").write_text(
+            "Code Coverage Summary\n"
+            "Statement Coverage : 91.5%\n"
+            "Branch Coverage    : 84.0%\n"
+            "Condition Coverage : 79.5%\n"
+            "Toggle Coverage    : 66.0%\n"
+            "Total Coverage     : 80.25%\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    assert agent.run_async_fifo_uvm_coverage(
+        output_dir=tmp_path,
+        coverage_threshold=80.0,
+        coverage_percent=None,
+    ) is True
+
+    summary = tmp_path / "async-fifo" / "reports" / "uvm_coverage_summary.md"
+    text = summary.read_text(encoding="utf-8")
+    assert "80.2%" in text
+    assert "Gate" in text
+    assert "PASS" in text
 
 
 def test_cli_uvm_coverage_async_fifo_invokes_runner(monkeypatch, tmp_path):

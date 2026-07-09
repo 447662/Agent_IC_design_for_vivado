@@ -1439,6 +1439,9 @@ exit 0
 cd $script_dir
 set snapshot async_fifo_uvm_coverage
 set wave_db async_fifo_uvm_coverage.wdb
+set reports_dir [file normalize [file join $script_dir .. reports]]
+file mkdir $reports_dir
+set coverage_percent_report [file join $reports_dir uvm_coverage_percent.txt]
 exec xvlog -sv -L uvm ../rtl/async_fifo.v ../uvm/async_fifo_if.sv ../uvm/async_fifo_sva.sv ../uvm/async_fifo_uvm_pkg.sv ../uvm/tb_async_fifo_uvm.sv
 exec xelab tb_async_fifo_uvm -debug typical -L uvm -timescale 1ns/1ps -cc_type sbct -cov_db_dir coverage -cov_db_name async_fifo_uvm_cov -s $snapshot
 set run_fh [open run_async_fifo_uvm_coverage_wave.tcl w]
@@ -1465,6 +1468,27 @@ if {![file exists $code_cov_path]} {
     puts stderr "Code coverage database not found: $code_cov_path"
     exit 1
 }
+set percent_fh [open $coverage_percent_report w]
+puts $percent_fh "async-fifo UVM Vivado coverage percent export"
+puts $percent_fh "Coverage DB : [file normalize [file join coverage xsim.codeCov async_fifo_uvm_cov]]"
+puts $percent_fh "Coverage info : [file normalize $code_cov_path]"
+close $percent_fh
+set export_ok 0
+foreach export_cmd [list \
+    [list report_coverage -file $coverage_percent_report -append] \
+    [list report_coverage -details -file $coverage_percent_report -append] \
+] {
+    if {[catch {eval $export_cmd} export_err]} {
+        set percent_fh [open $coverage_percent_report a]
+        puts $percent_fh "Vivado coverage export command failed: $export_err"
+        close $percent_fh
+    } else {
+        set export_ok 1
+    }
+}
+set percent_fh [open $coverage_percent_report a]
+puts $percent_fh "Vivado coverage export status : [expr {$export_ok ? {PASS} : {FALLBACK_METADATA_ONLY}}]"
+close $percent_fh
 exit 0
 """
 

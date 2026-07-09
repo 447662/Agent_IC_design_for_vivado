@@ -109,7 +109,7 @@ outputs/async-fifo/
 - 覆盖率报告输出到 `reports/uvm_coverage_report.md` 和 `reports/uvm_coverage_report.html`，中文记录 UVM 标记、WDB、覆盖率目录和 code coverage DB。
 - 本阶段覆盖率先做产物级验收：确认 scoreboard/test done 通过，且 `xsim.codeCov` 数据库存在；覆盖率百分比解析和阈值 gate 可作为 P3.2。
 
-## P3.2-P3.10
+## P3.2-P3.11
 
 - P3.2：`write_async_fifo_uvm_coverage_summary_report()` 生成 `reports/uvm_coverage_summary.md/html`，解析 `xsim.CCInfo` 中的可读元信息，并支持 `--coverage-threshold` / `--coverage-percent` gate。
 - P3.3：`extract_async_fifo_coverage_percent()` 支持从文本报告解析 statement、branch、condition、toggle 和 total 百分比，为后续接入 Vivado 官方百分比导出预留稳定入口。
@@ -120,6 +120,7 @@ outputs/async-fifo/
 - P3.8：`run_async_fifo_uvm_random_regression()` 为每个 seed 使用独立 `uvm_regression/seed_<N>/async-fifo` 输出目录，并在 `uvm_random_regression.md/html` 中记录每个 seed 的 log、WDB 和工程路径。
 - P3.9：`write_async_fifo_uvm_wave_screenshot_report()` 生成 `reports/uvm_wave_screenshot.md`、`reports/uvm_wave_screenshot.html` 和 `reports/capture_uvm_wave_screenshot.ps1`，用于 UVM WDB GUI 人工截图验收。
 - P3.10：`write_async_fifo_uvm_coverage_summary_report()` 增强 coverage gate 诊断，返回 `coverage_gap` / `gate_diagnostic`，并在 Markdown/HTML 中说明覆盖率达标、低于阈值或缺少可比较百分比的原因。
+- P3.11：`run_vivado_async_fifo_uvm_coverage.tcl` 会尝试调用 Vivado `report_coverage` 导出 `reports/uvm_coverage_percent.txt`；`run_async_fifo_uvm_coverage()` 会自动解析该文件中的 `Total Coverage`，不再必须手动传入 `--coverage-percent` 才能触发 gate。
 
 ## 问题复盘
 

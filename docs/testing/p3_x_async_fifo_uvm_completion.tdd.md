@@ -2,7 +2,7 @@
 
 ## 来源计划
 
-用户要求“完成 P3.x 的所有任务”。本阶段承接 P3.0-P3.2，补齐 P3.3-P3.10：覆盖率百分比文本解析降级路径、functional coverage、随机 seed 回归、SVA 断言包、UVM WDB GUI 专用入口、seed 独立输出目录、UVM GUI 波形截图验收、覆盖率 gate 诊断增强。
+用户要求“完成 P3.x 的所有任务”。本阶段承接 P3.0-P3.2，补齐 P3.3-P3.11：覆盖率百分比文本解析降级路径、functional coverage、随机 seed 回归、SVA 断言包、UVM WDB GUI 专用入口、seed 独立输出目录、UVM GUI 波形截图验收、覆盖率 gate 诊断增强、Vivado 覆盖率百分比自动导出。
 
 ## 用户旅程
 
@@ -11,6 +11,7 @@
 - 作为回归使用者，我希望能用多个 seed 跑 UVM 随机回归并生成中文摘要，以便定位失败 seed 和日志。
 - 作为波形调试者，我希望能直接打开 UVM smoke/coverage WDB，而不是误打开 RTL WDB 或 VCD。
 - 作为验证负责人，我希望 coverage gate 失败时能直接看到阈值、当前覆盖率和差距，以便判断是覆盖率不足还是百分比数据缺失。
+- 作为验证负责人，我希望 Vivado coverage 流程能自动生成百分比文本报告并触发 gate，以便减少手动 `--coverage-percent` 输入。
 
 ## RED 证据
 
@@ -127,9 +128,10 @@ outputs\async-fifo\reports\uvm_random_regression.md 显示 3/3 PASS
 | 9 | UVM 随机回归为每个 seed 保留独立工程/log/WDB 路径 | `tests/test_agent.py::test_run_async_fifo_uvm_random_regression_writes_seed_report` | 回归产物隔离 | PASS |
 | 10 | UVM GUI 波形截图验收报告和捕获脚本可生成 | `tests/test_agent.py::test_async_fifo_uvm_wave_screenshot_report_embeds_png_and_capture_script` | GUI 验收报告 | PASS |
 | 11 | 覆盖率 gate 诊断输出当前覆盖率、阈值、差距和缺失百分比原因 | `tests/test_agent.py::test_write_async_fifo_uvm_coverage_summary_report_gates_threshold` / `tests/test_agent.py::test_write_async_fifo_uvm_coverage_summary_report_requires_percent_when_threshold_set` | 报告 | PASS |
+| 12 | Vivado coverage Tcl 自动尝试导出 `uvm_coverage_percent.txt`，runner 自动解析 `Total Coverage` 并驱动 gate | `tests/test_agent.py::test_generate_async_fifo_uvm_coverage_script_enables_xsim_code_coverage` / `tests/test_agent.py::test_run_async_fifo_uvm_coverage_uses_auto_percent_report` | 报告/集成边界 | PASS |
 
 ## 已知缺口
 
-- 覆盖率百分比自动导出仍依赖后续确认 Vivado 官方文本报告命令；P3.x 已提供 `extract_async_fifo_coverage_percent()`、`--coverage-percent`/`--coverage-threshold` 接口和 P3.10 gate 诊断。
+- 覆盖率百分比自动导出已接入 `uvm_coverage_percent.txt` 自动解析；若当前 Vivado 版本的 `report_coverage` 命令不可用，文本报告会记录失败原因，并继续保留 `xsim.CCInfo` 元信息摘要和手动 `--coverage-percent` 覆盖入口。
 - random regression 已改为 seed 独立输出目录，后续真实长回归可在此基础上增加“保留最近 N 次”和失败 seed 自动归档。
 - functional coverage 目前以关键日志标记和 covergroup 摘要为主，后续可把 coverpoint/bin 百分比接入更细粒度 HTML 看板。
