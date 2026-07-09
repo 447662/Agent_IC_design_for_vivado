@@ -794,6 +794,114 @@ Write-Host "Saved waveform screenshot to $output"
             "screenshot_path": screenshot_path,
         }
 
+    def write_async_fifo_uvm_wave_screenshot_report(self, project_dir, wave_kind="coverage"):
+        project_dir = Path(project_dir)
+        reports_dir = project_dir / "reports"
+        sim_dir = project_dir / "sim"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        if wave_kind not in ("smoke", "coverage"):
+            raise ValueError("Unsupported UVM wave kind: {}".format(wave_kind))
+
+        wave_db_name = "async_fifo_uvm_coverage.wdb" if wave_kind == "coverage" else "async_fifo_uvm_smoke.wdb"
+        wave_db_path = sim_dir / wave_db_name
+        screenshot_path = reports_dir / "uvm_wave_visibility.png"
+        markdown_path = reports_dir / "uvm_wave_screenshot.md"
+        html_path = reports_dir / "uvm_wave_screenshot.html"
+        capture_script_path = reports_dir / "capture_uvm_wave_screenshot.ps1"
+        captured = screenshot_path.exists() and screenshot_path.stat().st_size > 8
+        status = "PASS" if captured else "PENDING"
+
+        capture_script = r'''# capture_uvm_wave_screenshot.ps1
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$output = Join-Path $PSScriptRoot "uvm_wave_visibility.png"
+$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+$bitmap.Save($output, [System.Drawing.Imaging.ImageFormat]::Png)
+$graphics.Dispose()
+$bitmap.Dispose()
+Write-Host "Saved UVM waveform screenshot to $output"
+'''
+        capture_script_path.write_text(capture_script, encoding="utf-8")
+
+        lines = [
+            "# async-fifo UVM GUI 波形截图验收",
+            "",
+            "- 状态：{}".format(status),
+            "- UVM 波形类型：{}".format(wave_kind),
+            "- WDB：`{}`".format(wave_db_path),
+            "- 截图：`{}`".format(screenshot_path),
+            "- 捕获脚本：`{}`".format(capture_script_path),
+            "",
+            "## 使用方式",
+            "",
+            "1. 先运行 `python .trae/agent/agent.py --open-uvm-wave async-fifo --uvm-wave-kind {} --output-dir outputs` 打开 Vivado GUI UVM 波形。".format(wave_kind),
+            "2. 确认 UVM 波形窗口可见后，在 PowerShell 中运行 `outputs/async-fifo/reports/capture_uvm_wave_screenshot.ps1`。",
+            "3. 再运行 `python .trae/agent/agent.py --open-uvm-wave async-fifo --uvm-wave-kind {} --output-dir outputs` 刷新截图验收报告。".format(wave_kind),
+            "",
+            "## 截图预览",
+            "",
+        ]
+        if captured:
+            lines.extend(["![async-fifo UVM waveform](uvm_wave_visibility.png)", ""])
+        else:
+            lines.extend([
+                "尚未捕获 `uvm_wave_visibility.png`。该项不会阻断批处理自检，但用于人工确认 Vivado GUI 中确实能看到 UVM 波形。",
+                "",
+            ])
+        markdown_path.write_text("\n".join(lines), encoding="utf-8")
+
+        screenshot_block = (
+            '<img src="uvm_wave_visibility.png" alt="async-fifo UVM waveform screenshot">'
+            if captured
+            else '<p class="empty">尚未捕获截图。打开 Vivado UVM 波形后运行 capture_uvm_wave_screenshot.ps1。</p>'
+        )
+        html_lines = [
+            "<!doctype html>",
+            '<html lang="zh-CN">',
+            "<head>",
+            '<meta charset="utf-8">',
+            '<meta name="viewport" content="width=device-width, initial-scale=1">',
+            "<title>async-fifo UVM GUI 波形截图验收</title>",
+            "<style>",
+            "body{margin:0;font-family:\"Microsoft YaHei\",\"Segoe UI\",Arial,sans-serif;background:#f5f7fb;color:#172033}",
+            ".page{max-width:1120px;margin:0 auto;padding:32px 22px}",
+            ".hero{padding:26px;border-radius:8px;background:#17324d;color:#fff}",
+            ".hero h1{margin:0 0 8px;font-size:30px}",
+            ".screenshot-card{margin-top:18px;padding:18px;border-radius:8px;background:#fff;border:1px solid #dbe3ee;box-shadow:0 8px 24px rgba(31,45,61,.06)}",
+            ".screenshot-card.pass{border-left:6px solid #0f8a5f}",
+            ".screenshot-card.pending{border-left:6px solid #b7791f}",
+            ".screenshot-card img{display:block;width:100%;max-height:720px;object-fit:contain;border-radius:6px;border:1px solid #dbe3ee;background:#101828}",
+            ".empty{margin:0;color:#6b778c}",
+            "code{display:block;overflow-x:auto;padding:8px;border-radius:6px;background:#eef3f8}",
+            "</style>",
+            "</head>",
+            "<body>",
+            '<main class="page">',
+            '<section class="hero"><h1>async-fifo UVM GUI 波形截图验收</h1><p>状态：{} · 类型：{}</p></section>'.format(html.escape(status), html.escape(wave_kind)),
+            '<section class="screenshot-card {}">'.format("pass" if captured else "pending"),
+            screenshot_block,
+            '<p><strong>WDB</strong></p><code>{}</code>'.format(html.escape(str(wave_db_path))),
+            '<p><strong>截图文件</strong></p><code>{}</code>'.format(html.escape(str(screenshot_path))),
+            '<p><strong>捕获脚本</strong></p><code>{}</code>'.format(html.escape(str(capture_script_path))),
+            "</section>",
+            "</main>",
+            "</body>",
+            "</html>",
+            "",
+        ]
+        html_path.write_text("\n".join(html_lines), encoding="utf-8")
+        return {
+            "captured": captured,
+            "markdown_path": markdown_path,
+            "html_path": html_path,
+            "capture_script_path": capture_script_path,
+            "screenshot_path": screenshot_path,
+            "wave_db_path": wave_db_path,
+        }
+
     def write_async_fifo_reports_index(self, project_dir):
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
@@ -805,6 +913,7 @@ Write-Host "Saved waveform screenshot to $output"
             ("回归摘要", "regression_summary.html", "regression_summary.md", "DATA_WIDTH / ADDR_WIDTH 真实 Vivado/xsim 回归结果"),
             ("波形可见性", "wave_visibility.html", "wave_visibility.md", "工程、WDB、GUI Tcl、WCFG 对象和关键命令验收"),
             ("GUI 波形截图", "wave_screenshot.html", "wave_screenshot.md", "人工可见波形截图与截图捕获脚本"),
+            ("UVM GUI 波形截图", "uvm_wave_screenshot.html", "uvm_wave_screenshot.md", "UVM WDB 人工可见波形截图与截图捕获脚本"),
             ("问题复盘", "docs/vivado_async_fifo_lessons_learned.md", None, "历史问题、根因、修复方式和后续建议"),
         ]
         ready_count = 0
@@ -1927,22 +2036,27 @@ exit 0
             "",
             "- 总体状态：{}".format("PASS" if passed == total else "FAIL"),
             "- 通过 seed：{}/{}".format(passed, total),
+            "- 输出策略：每个 seed 使用独立目录，避免日志、WDB 和 coverage DB 相互覆盖。",
             "",
-            "| Seed | Status | Log |",
-            "|---:|---|---|",
+            "| Seed | Status | Log | WDB | Project |",
+            "|---:|---|---|---|---|",
         ]
         for item in results:
-            lines.append("| {seed} | {status} | `{log}` |".format(**item))
+            lines.append(
+                "| {seed} | {status} | `{log}` | `{wdb}` | `{project}` |".format(**item)
+            )
         md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         cards = []
         for item in results:
             cards.append(
-                '<article class="seed-card {klass}"><h2>Seed {seed}</h2><strong>{status}</strong><code>{log}</code></article>'.format(
+                '<article class="seed-card {klass}"><h2>Seed {seed}</h2><strong>{status}</strong><p>Log</p><code>{log}</code><p>WDB</p><code>{wdb}</code><p>Project</p><code>{project}</code></article>'.format(
                     klass="pass" if item["status"] == "PASS" else "fail",
                     seed=item["seed"],
                     status=item["status"],
                     log=html.escape(str(item["log"])),
+                    wdb=html.escape(str(item["wdb"])),
+                    project=html.escape(str(item["project"])),
                 )
             )
         html_lines = [
@@ -3418,7 +3532,9 @@ add_wave -r /tb_async_fifo_uvm
             [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
             cwd=sim_dir,
         )
+        screenshot_report = self.write_async_fifo_uvm_wave_screenshot_report(project_dir, wave_kind=wave_kind)
         print("Vivado UVM waveform GUI launched: {}".format(wave_db_path))
+        print("UVM waveform screenshot report: {}".format(screenshot_report["markdown_path"]))
         return True
 
     def resolve_async_fifo_wave_db(self, sim_dir):
@@ -3670,12 +3786,17 @@ add_wave -r /tb_async_fifo_uvm
         results = []
         all_passed = True
         for seed in seeds:
-            passed = self.run_async_fifo_uvm_coverage(output_dir=output_dir, seed=int(seed))
+            seed_value = int(seed)
+            seed_output_dir = project_dir / "uvm_regression" / "seed_{}".format(seed_value)
+            seed_project_dir = seed_output_dir / "async-fifo"
+            passed = self.run_async_fifo_uvm_coverage(output_dir=seed_output_dir, seed=seed_value)
             all_passed = all_passed and passed
             results.append({
-                "seed": int(seed),
+                "seed": seed_value,
                 "status": "PASS" if passed else "FAIL",
-                "log": project_dir / "sim" / "async_fifo_uvm_coverage.log",
+                "log": seed_project_dir / "sim" / "async_fifo_uvm_coverage.log",
+                "wdb": seed_project_dir / "sim" / "async_fifo_uvm_coverage.wdb",
+                "project": seed_project_dir,
             })
         self.write_async_fifo_uvm_random_regression_report(project_dir, results)
         return all_passed

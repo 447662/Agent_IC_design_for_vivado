@@ -109,7 +109,7 @@ outputs/async-fifo/
 - 覆盖率报告输出到 `reports/uvm_coverage_report.md` 和 `reports/uvm_coverage_report.html`，中文记录 UVM 标记、WDB、覆盖率目录和 code coverage DB。
 - 本阶段覆盖率先做产物级验收：确认 scoreboard/test done 通过，且 `xsim.codeCov` 数据库存在；覆盖率百分比解析和阈值 gate 可作为 P3.2。
 
-## P3.2-P3.7
+## P3.2-P3.9
 
 - P3.2：`write_async_fifo_uvm_coverage_summary_report()` 生成 `reports/uvm_coverage_summary.md/html`，解析 `xsim.CCInfo` 中的可读元信息，并支持 `--coverage-threshold` / `--coverage-percent` gate。
 - P3.3：`extract_async_fifo_coverage_percent()` 支持从文本报告解析 statement、branch、condition、toggle 和 total 百分比，为后续接入 Vivado 官方百分比导出预留稳定入口。
@@ -117,6 +117,8 @@ outputs/async-fifo/
 - P3.5：`--uvm-random-regress async-fifo --uvm-seeds 11,22,33` 运行多 seed UVM 回归，并生成 `reports/uvm_random_regression.md/html`。
 - P3.6：`write_async_fifo_uvm_smoke_project()` 额外生成 `uvm/async_fifo_sva.sv`，并在 UVM top 中绑定基础 SVA。
 - P3.7：`--open-uvm-wave async-fifo --uvm-wave-kind smoke|coverage` 直接打开 UVM WDB，避免混用 RTL WDB 或 VCD。
+- P3.8：`run_async_fifo_uvm_random_regression()` 为每个 seed 使用独立 `uvm_regression/seed_<N>/async-fifo` 输出目录，并在 `uvm_random_regression.md/html` 中记录每个 seed 的 log、WDB 和工程路径。
+- P3.9：`write_async_fifo_uvm_wave_screenshot_report()` 生成 `reports/uvm_wave_screenshot.md`、`reports/uvm_wave_screenshot.html` 和 `reports/capture_uvm_wave_screenshot.ps1`，用于 UVM WDB GUI 人工截图验收。
 
 ## 问题复盘
 

@@ -2,7 +2,7 @@
 
 ## 来源计划
 
-用户要求“完成 P3.x 的所有任务”。本阶段承接 P3.0-P3.2，补齐 P3.3-P3.7：覆盖率百分比文本解析降级路径、functional coverage、随机 seed 回归、SVA 断言包、UVM WDB GUI 专用入口。
+用户要求“完成 P3.x 的所有任务”。本阶段承接 P3.0-P3.2，补齐 P3.3-P3.9：覆盖率百分比文本解析降级路径、functional coverage、随机 seed 回归、SVA 断言包、UVM WDB GUI 专用入口、seed 独立输出目录、UVM GUI 波形截图验收。
 
 ## 用户旅程
 
@@ -123,9 +123,11 @@ outputs\async-fifo\reports\uvm_random_regression.md 显示 3/3 PASS
 | 6 | CLI 支持 `--uvm-random-regress` 和 `--open-uvm-wave` | `tests/test_agent.py::test_cli_uvm_random_regress_and_open_uvm_wave` | CLI | PASS |
 | 7 | P3.x 接入不破坏既有 P0-P3.2 功能 | `python -m pytest tests/test_agent.py -v --basetemp .tmp-pytest` | 回归 | PASS |
 | 8 | 真实 Vivado/xsim smoke、coverage、随机 seed 回归均可运行 | 真实命令见 GREEN 证据 | 工具集成 | PASS |
+| 9 | UVM 随机回归为每个 seed 保留独立工程/log/WDB 路径 | `tests/test_agent.py::test_run_async_fifo_uvm_random_regression_writes_seed_report` | 回归产物隔离 | PASS |
+| 10 | UVM GUI 波形截图验收报告和捕获脚本可生成 | `tests/test_agent.py::test_async_fifo_uvm_wave_screenshot_report_embeds_png_and_capture_script` | GUI 验收报告 | PASS |
 
 ## 已知缺口
 
 - 覆盖率百分比自动导出仍依赖后续确认 Vivado 官方文本报告命令；P3.x 已提供 `extract_async_fifo_coverage_percent()` 和 `--coverage-percent`/`--coverage-threshold` 接口。
-- 当前 random regression 复用同一输出目录和日志，报告能记录 seed 状态，但不会为每个 seed 单独保留 WDB/log 快照；如需调试失败 seed，后续建议扩展为 seed 独立输出目录。
+- random regression 已改为 seed 独立输出目录，后续真实长回归可在此基础上增加“保留最近 N 次”和失败 seed 自动归档。
 - functional coverage 目前以关键日志标记和 covergroup 摘要为主，后续可把 coverpoint/bin 百分比接入更细粒度 HTML 看板。

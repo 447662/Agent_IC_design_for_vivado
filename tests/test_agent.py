@@ -1312,7 +1312,7 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(monkeypatch, tm
     calls = []
 
     def fake_run(output_dir="outputs", data_width=8, addr_width=4, coverage_threshold=None, coverage_percent=None, seed=None):
-        calls.append(seed)
+        calls.append((seed, Path(output_dir)))
         project_dir = Path(output_dir) / "async-fifo"
         sim_dir = project_dir / "sim"
         sim_dir.mkdir(parents=True, exist_ok=True)
@@ -1322,6 +1322,7 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(monkeypatch, tm
             "ASYNC_FIFO_UVM_FCOV_PASS samples=18\n",
             encoding="utf-8",
         )
+        (sim_dir / "async_fifo_uvm_coverage.wdb").write_text("wdb", encoding="utf-8")
         return True
 
     monkeypatch.setattr(agent, "run_async_fifo_uvm_coverage", fake_run)
@@ -1330,7 +1331,11 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(monkeypatch, tm
 
     report = tmp_path / "async-fifo" / "reports" / "uvm_random_regression.md"
     html_report = tmp_path / "async-fifo" / "reports" / "uvm_random_regression.html"
-    assert calls == [11, 22, 33]
+    assert calls == [
+        (11, tmp_path / "async-fifo" / "uvm_regression" / "seed_11"),
+        (22, tmp_path / "async-fifo" / "uvm_regression" / "seed_22"),
+        (33, tmp_path / "async-fifo" / "uvm_regression" / "seed_33"),
+    ]
     assert report.exists()
     assert html_report.exists()
     text = report.read_text(encoding="utf-8")
@@ -1338,6 +1343,9 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(monkeypatch, tm
     assert "| 11 | PASS |" in text
     assert "| 22 | PASS |" in text
     assert "| 33 | PASS |" in text
+    assert "uvm_regression" in text
+    assert "seed_11" in text
+    assert (tmp_path / "async-fifo" / "uvm_regression" / "seed_11" / "async-fifo" / "sim" / "async_fifo_uvm_coverage.log").exists()
 
 
 def test_open_async_fifo_uvm_wave_gui_uses_uvm_wdb(monkeypatch, tmp_path):
@@ -1361,6 +1369,33 @@ def test_open_async_fifo_uvm_wave_gui_uses_uvm_wdb(monkeypatch, tmp_path):
     assert "open_wave_database $wave_db" in script_text
     assert "add_wave -r /tb_async_fifo_uvm" in script_text
     assert calls == [([vivado_path, "-mode", "gui", "-source", script.name], sim_dir)]
+
+
+def test_async_fifo_uvm_wave_screenshot_report_embeds_png_and_capture_script(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = tmp_path / "async-fifo"
+    reports_dir = project_dir / "reports"
+    sim_dir = project_dir / "sim"
+    reports_dir.mkdir(parents=True)
+    sim_dir.mkdir(parents=True)
+    (sim_dir / "async_fifo_uvm_coverage.wdb").write_text("wdb", encoding="utf-8")
+    (reports_dir / "uvm_wave_visibility.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+
+    report = agent.write_async_fifo_uvm_wave_screenshot_report(project_dir, wave_kind="coverage")
+
+    assert report["captured"] is True
+    assert report["markdown_path"].name == "uvm_wave_screenshot.md"
+    assert report["html_path"].name == "uvm_wave_screenshot.html"
+    assert report["capture_script_path"].name == "capture_uvm_wave_screenshot.ps1"
+    text = report["markdown_path"].read_text(encoding="utf-8")
+    html_text = report["html_path"].read_text(encoding="utf-8")
+    script_text = report["capture_script_path"].read_text(encoding="utf-8")
+    assert "async-fifo UVM GUI 波形截图验收" in text
+    assert "--open-uvm-wave async-fifo --uvm-wave-kind coverage" in text
+    assert "uvm_wave_visibility.png" in text
+    assert "uvm_wave_visibility.png" in html_text
+    assert "capture_uvm_wave_screenshot.ps1" in script_text
 
 
 def test_cli_uvm_random_regress_and_open_uvm_wave(monkeypatch, tmp_path):
