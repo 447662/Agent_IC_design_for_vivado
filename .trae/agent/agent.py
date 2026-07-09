@@ -347,6 +347,342 @@ class DigitalICAgent:
         spec_path.write_text(self.render_design_spec(user_input, matched_skills), encoding="utf-8")
         return spec_path
 
+    def target_spec_catalog(self, target):
+        target_info = self.get_target(target)
+        defaults = {
+            "async-fifo": {
+                "parameters": [
+                    ("DATA_WIDTH", "8", "FIFO 数据位宽，可按数据通路需求调整"),
+                    ("ADDR_WIDTH", "4", "FIFO 地址位宽，深度为 2**ADDR_WIDTH"),
+                ],
+                "interfaces": [
+                    ("wr_clk", "input", "1", "写时钟域"),
+                    ("wr_rst_n", "input", "1", "写时钟域低有效复位"),
+                    ("wr_en", "input", "1", "写请求，高有效"),
+                    ("wr_data", "input", "DATA_WIDTH", "写数据"),
+                    ("full", "output", "1", "FIFO 满标志"),
+                    ("rd_clk", "input", "1", "读时钟域"),
+                    ("rd_rst_n", "input", "1", "读时钟域低有效复位"),
+                    ("rd_en", "input", "1", "读请求，高有效"),
+                    ("rd_data", "output", "DATA_WIDTH", "读数据"),
+                    ("empty", "output", "1", "FIFO 空标志"),
+                ],
+                "checks": [
+                    "Gray pointer synchronization is two-flop protected",
+                    "full blocks writes without corrupting stored data",
+                    "empty blocks reads and preserves ordered output",
+                    "reset recovery clears pointers and status flags",
+                ],
+                "scenarios": [
+                    ("basic_ordered", "跨时钟有序写入与读取"),
+                    ("full_boundary", "写满边界与 full 标志"),
+                    ("empty_boundary", "读空边界与 empty 标志"),
+                    ("reset_recovery", "复位后重新收发"),
+                    ("mixed_stress", "读写混合压力"),
+                ],
+                "artifacts": [
+                    "rtl/async_fifo.v",
+                    "tb/tb_async_fifo.v",
+                    "sim/run_vivado_async_fifo.tcl",
+                    "reports/sim_report.md",
+                ],
+                "notes": ["P5 通用文档生成默认保留 Vivado/xsim 和 WDB GUI 波形闭环。"],
+            },
+            "sync-fifo": {
+                "parameters": [
+                    ("DATA_WIDTH", "8", "FIFO 数据位宽"),
+                    ("ADDR_WIDTH", "4", "FIFO 地址位宽，深度为 2**ADDR_WIDTH"),
+                ],
+                "interfaces": [
+                    ("clk", "input", "1", "单时钟域时钟"),
+                    ("rst_n", "input", "1", "低有效复位"),
+                    ("wr_en", "input", "1", "写请求"),
+                    ("wr_data", "input", "DATA_WIDTH", "写数据"),
+                    ("rd_en", "input", "1", "读请求"),
+                    ("rd_data", "output", "DATA_WIDTH", "读数据"),
+                    ("full", "output", "1", "FIFO 满标志"),
+                    ("empty", "output", "1", "FIFO 空标志"),
+                ],
+                "checks": [
+                    "write only advances when wr_en and not full",
+                    "read only advances when rd_en and not empty",
+                    "read data order matches write order",
+                    "full and empty never assert together outside reset",
+                ],
+                "scenarios": [
+                    ("basic_ordered", "基础有序写入与读取"),
+                    ("full_boundary", "写满边界"),
+                    ("empty_boundary", "读空边界"),
+                    ("mixed_stress", "读写混合压力"),
+                ],
+                "artifacts": [
+                    "rtl/sync_fifo.v",
+                    "tb/tb_sync_fifo.v",
+                    "sim/run_vivado_sync_fifo.tcl",
+                    "reports/sim_report.md",
+                ],
+                "notes": ["该目标用于验证通用 flow 不依赖异步跨时钟结构。"],
+            },
+            "round-robin-arbiter": {
+                "parameters": [
+                    ("REQ_WIDTH", "4", "请求端口数量，当前目标固定覆盖 4 requester"),
+                ],
+                "interfaces": [
+                    ("clk", "input", "1", "仲裁时钟"),
+                    ("rst_n", "input", "1", "低有效复位"),
+                    ("req[3:0]", "input", "4", "请求向量"),
+                    ("grant[3:0]", "output", "4", "授权向量，期望 one-hot grant"),
+                    ("grant_valid", "output", "1", "授权有效标志"),
+                ],
+                "checks": [
+                    "one-hot grant when grant_valid is asserted",
+                    "grant implies request",
+                    "rotating priority advances after accepted grant",
+                    "fairness window prevents starvation under sustained requests",
+                    "reset recovery restarts priority from requester 0",
+                ],
+                "scenarios": [
+                    ("single_request", "单请求授权"),
+                    ("multiple_requests", "多请求优先级轮转"),
+                    ("rotating_grant", "连续授权轮转"),
+                    ("reset_recovery", "复位恢复"),
+                    ("fairness_window", "公平性窗口"),
+                ],
+                "artifacts": [
+                    "rtl/round_robin_arbiter.v",
+                    "tb/tb_round_robin_arbiter.v",
+                    "sim/run_vivado_round_robin_arbiter.tcl",
+                    "reports/sim_report.md",
+                ],
+                "notes": ["P5.3 首个非 FIFO 控制逻辑目标，适合作为通用数字 IC Agent 扩展样例。"],
+            },
+        }
+
+        catalog = defaults.get(target_info["name"], {})
+        return {
+            "target": target_info,
+            "parameters": target_info.get("parameters", catalog.get("parameters", [])),
+            "interfaces": target_info.get("interfaces", catalog.get("interfaces", [])),
+            "checks": target_info.get("checks", catalog.get("checks", [])),
+            "scenarios": target_info.get("scenarios", catalog.get("scenarios", [])),
+            "artifacts": target_info.get("artifacts", catalog.get("artifacts", [])),
+            "notes": target_info.get("notes", catalog.get("notes", [])),
+        }
+
+    def target_scenario_catalog(self, target):
+        catalog = self.target_spec_catalog(target)
+        scenarios = []
+        for scenario in catalog["scenarios"]:
+            if isinstance(scenario, dict):
+                scenarios.append({
+                    "id": scenario.get("id", scenario.get("name", "")),
+                    "purpose": scenario.get("purpose", scenario.get("description", "")),
+                    "type": scenario.get("type", "functional"),
+                })
+            else:
+                scenarios.append({"id": scenario[0], "purpose": scenario[1], "type": "functional"})
+        return scenarios
+
+    def render_markdown_document_html(self, title, markdown_text, variant="doc"):
+        body = []
+        in_table = False
+        table_rows = 0
+
+        def close_table():
+            nonlocal in_table, table_rows
+            if in_table:
+                body.append("</tbody></table>")
+                in_table = False
+                table_rows = 0
+
+        for raw_line in markdown_text.splitlines():
+            line = raw_line.rstrip()
+            if not line:
+                close_table()
+                continue
+            if line.startswith("|") and line.endswith("|"):
+                cells = [html.escape(cell.strip()) for cell in line.strip("|").split("|")]
+                if all(set(cell.replace(" ", "")) <= set("-:") for cell in cells):
+                    continue
+                if not in_table:
+                    body.append("<table><tbody>")
+                    in_table = True
+                    table_rows = 0
+                tag = "th" if table_rows == 0 else "td"
+                body.append("<tr>{}</tr>".format("".join("<{}>{}</{}>".format(tag, cell, tag) for cell in cells)))
+                table_rows += 1
+                continue
+
+            close_table()
+            if line.startswith("# "):
+                body.append("<h1>{}</h1>".format(html.escape(line[2:].strip())))
+            elif line.startswith("## "):
+                body.append("<h2>{}</h2>".format(html.escape(line[3:].strip())))
+            elif line.startswith("### "):
+                body.append("<h3>{}</h3>".format(html.escape(line[4:].strip())))
+            elif line.startswith("- "):
+                body.append("<p class=\"bullet\">{}</p>".format(html.escape(line[2:].strip())))
+            else:
+                body.append("<p>{}</p>".format(html.escape(line)))
+        close_table()
+
+        css = """
+        :root { --bg:#f4f7fb; --panel:#ffffff; --ink:#1b2430; --muted:#5d6b7a; --line:#d9e1ec; --accent:#1f6feb; --accent2:#0f766e; }
+        * { box-sizing:border-box; }
+        body { margin:0; background:var(--bg); color:var(--ink); font-family:"Microsoft YaHei", "Segoe UI", Arial, sans-serif; line-height:1.65; }
+        .page { max-width:1100px; margin:0 auto; padding:36px 20px 56px; }
+        .hero { padding:28px 30px; border-radius:8px; background:linear-gradient(135deg,#172033,#244a72); color:white; box-shadow:0 18px 45px rgba(23,32,51,.18); }
+        .hero h1 { margin:0 0 8px; font-size:32px; letter-spacing:0; }
+        .hero p { margin:0; color:#dce9ff; }
+        .doc-card, .scenario-card { margin-top:18px; padding:26px; border:1px solid var(--line); border-radius:8px; background:var(--panel); box-shadow:0 10px 30px rgba(20,31,48,.08); }
+        h1 { margin:0 0 16px; font-size:28px; }
+        h2 { margin:28px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--line); font-size:22px; }
+        h3 { margin:20px 0 8px; font-size:17px; color:var(--accent2); }
+        p { margin:8px 0; color:var(--muted); }
+        .bullet { padding-left:18px; position:relative; }
+        .bullet:before { content:""; width:6px; height:6px; border-radius:50%; background:var(--accent); position:absolute; left:0; top:.75em; }
+        table { width:100%; border-collapse:collapse; margin:12px 0 18px; overflow:hidden; border:1px solid var(--line); border-radius:8px; }
+        th, td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+        th { background:#eef4fb; color:#1b2430; font-weight:700; }
+        code { padding:2px 5px; border-radius:5px; background:#edf2f7; color:#0f3d66; }
+        @media (max-width: 700px) { .page { padding:20px 12px 36px; } .hero, .doc-card, .scenario-card { padding:20px; } .hero h1 { font-size:25px; } table { display:block; overflow-x:auto; } }
+        """
+        card_class = "scenario-card" if variant == "scenario" else "doc-card"
+        return """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>{css}</style>
+</head>
+<body>
+<main class="page">
+<section class="hero"><h1>{title}</h1><p>由 Digital IC Agent 基于目标配置和场景目录自动生成。</p></section>
+<section class="{card_class}">
+{body}
+</section>
+</main>
+</body>
+</html>
+""".format(title=html.escape(title), css=css, card_class=card_class, body="\n".join(body))
+
+    def render_target_design_spec(self, target, requirement=None):
+        catalog = self.target_spec_catalog(target)
+        target_info = catalog["target"]
+        requirement_text = requirement.strip() if requirement else "未提供额外自然语言需求；当前规格由 target 配置与内置 catalog 生成。"
+        lines = [
+            "# 设计规格",
+            "",
+            "## 目标概览",
+            "",
+            "| 字段 | 内容 |",
+            "| --- | --- |",
+            "| Target | {} |".format(target_info["name"]),
+            "| 显示名称 | {} |".format(target_info["display_name"]),
+            "| 设计族 | {} |".format(target_info["design_family"]),
+            "| 描述 | {} |".format(target_info.get("description", "")),
+            "",
+            "## 自然语言需求",
+            "",
+            requirement_text,
+            "",
+            "## 参数",
+            "",
+            "| 参数 | 默认值 | 说明 |",
+            "| --- | --- | --- |",
+        ]
+        for name, default, desc in catalog["parameters"]:
+            lines.append("| {} | {} | {} |".format(name, default, desc))
+        lines.extend(["", "## 接口定义", "", "| 信号 | 方向 | 位宽 | 说明 |", "| --- | --- | --- | --- |"])
+        for name, direction, width, desc in catalog["interfaces"]:
+            lines.append("| {} | {} | {} | {} |".format(name, direction, width, desc))
+        lines.extend(["", "## 功能场景", "", "| 场景 ID | 说明 |", "| --- | --- |"])
+        for scenario in self.target_scenario_catalog(target_info["name"]):
+            lines.append("| {} | {} |".format(scenario["id"], scenario["purpose"]))
+        lines.extend(["", "## 关键检查点", ""])
+        for check in catalog["checks"]:
+            lines.append("- {}".format(check))
+        lines.extend(["", "## 预期产物", ""])
+        for artifact in catalog["artifacts"]:
+            lines.append("- `{}`".format(artifact))
+        if catalog["notes"]:
+            lines.extend(["", "## 备注", ""])
+            for note in catalog["notes"]:
+                lines.append("- {}".format(note))
+        return "\n".join(lines) + "\n"
+
+    def write_target_design_spec(self, target, output_dir="outputs", requirement=None):
+        target_info = self.get_target(target)
+        reports_dir = Path(output_dir) / target_info["name"] / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        markdown_text = self.render_target_design_spec(target_info["name"], requirement=requirement)
+        md_path = reports_dir / "design_spec.md"
+        html_path = reports_dir / "design_spec.html"
+        md_path.write_text(markdown_text, encoding="utf-8")
+        html_path.write_text(
+            self.render_markdown_document_html("{} 设计规格".format(target_info["display_name"]), markdown_text),
+            encoding="utf-8",
+        )
+        return {"md_path": md_path, "html_path": html_path}
+
+    def render_target_verification_plan(self, target):
+        catalog = self.target_spec_catalog(target)
+        target_info = catalog["target"]
+        scenarios = self.target_scenario_catalog(target_info["name"])
+        lines = [
+            "# 验证计划",
+            "",
+            "## 目标概览",
+            "",
+            "| 字段 | 内容 |",
+            "| --- | --- |",
+            "| Target | {} |".format(target_info["name"]),
+            "| 显示名称 | {} |".format(target_info["display_name"]),
+            "| 设计族 | {} |".format(target_info["design_family"]),
+            "",
+            "## scenario catalog",
+            "",
+            "| 场景 ID | 类型 | 验证目的 |",
+            "| --- | --- | --- |",
+        ]
+        for scenario in scenarios:
+            lines.append("| {} | {} | {} |".format(scenario["id"], scenario["type"], scenario["purpose"]))
+        lines.extend(["", "## 检查点与断言建议", "", "| 检查点 | 建议落点 |", "| --- | --- |"])
+        for check in catalog["checks"]:
+            lines.append("| {} | RTL/TB scoreboard 或后续 SVA/UVM monitor |".format(check))
+        lines.extend([
+            "",
+            "## 验证执行顺序",
+            "",
+            "- 先生成 RTL/TB/Vivado Tcl，确认目标目录结构完整。",
+            "- 运行 Vivado/xsim smoke 仿真，生成 VCD/WDB。",
+            "- 打开 Vivado GUI 查看关键波形，不只依赖终端日志。",
+            "- 使用 VCD/RWave 分析关键握手、边界和公平性事件。",
+            "- 将 Markdown/HTML 报告作为评审入口，后续再扩展 UVM 与覆盖率。",
+            "",
+            "## 出口准则",
+            "",
+            "- 所有 scenario catalog 场景均有 PASS 证据。",
+            "- 所有关键检查点均能在 TB scoreboard、日志或波形分析中定位。",
+            "- 仿真报告、波形数据库和验证计划在 target reports 目录可追溯。",
+        ])
+        return "\n".join(lines) + "\n"
+
+    def write_target_verification_plan(self, target, output_dir="outputs"):
+        target_info = self.get_target(target)
+        reports_dir = Path(output_dir) / target_info["name"] / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        markdown_text = self.render_target_verification_plan(target_info["name"])
+        md_path = reports_dir / "verification_plan.md"
+        html_path = reports_dir / "verification_plan.html"
+        md_path.write_text(markdown_text, encoding="utf-8")
+        html_path.write_text(
+            self.render_markdown_document_html("{} 验证计划".format(target_info["display_name"]), markdown_text, variant="scenario"),
+            encoding="utf-8",
+        )
+        return {"md_path": md_path, "html_path": html_path}
+
     def resolve_vcd_analyzer_path(self):
         return (
             self.project_root
@@ -5648,6 +5984,8 @@ def parse_args(argv=None):
     mode_group.add_argument("--smoke-loop", action="store_true", help="Generate a built-in VCD and analyze it")
     mode_group.add_argument("--sim-smoke", action="store_true", help="Run a Verilog simulator smoke test and analyze VCD")
     mode_group.add_argument("--generate-rtl", metavar="TARGET", help="Generate an RTL project skeleton, e.g. async-fifo")
+    mode_group.add_argument("--generate-spec", metavar="TARGET", help="Generate target design_spec.md/html, e.g. async-fifo")
+    mode_group.add_argument("--generate-verification-plan", metavar="TARGET", help="Generate target verification_plan.md/html, e.g. async-fifo")
     mode_group.add_argument("--sim-rtl", metavar="TARGET", help="Run RTL simulation and open Vivado project/wave GUI, e.g. async-fifo")
     mode_group.add_argument("--regress-rtl", metavar="TARGET", help="Run RTL parameter regression, e.g. async-fifo")
     mode_group.add_argument("--uvm-smoke", metavar="TARGET", help="Run minimal UVM smoke, e.g. async-fifo")
@@ -5687,6 +6025,8 @@ def parse_args(argv=None):
         or args.smoke_loop
         or args.sim_smoke
         or args.generate_rtl
+        or args.generate_spec
+        or args.generate_verification_plan
         or args.sim_rtl
         or args.regress_rtl
         or args.uvm_smoke
@@ -5785,6 +6125,34 @@ def main(argv=None):
             print("Testbench: {}".format(tb_files[0]))
         if vivado_scripts:
             print("Vivado script: {}".format(vivado_scripts[0]))
+        return 0
+
+    if args.generate_spec:
+        try:
+            requirement = " ".join(args.requirement).strip() or None
+            report = agent.write_target_design_spec(
+                args.generate_spec,
+                output_dir=args.output_dir,
+                requirement=requirement,
+            )
+        except (OSError, ValueError) as exc:
+            print("Design spec generation failed: {}".format(exc), file=sys.stderr)
+            return 1
+        print("Generated design spec: {}".format(report["md_path"]))
+        print("Generated design spec HTML: {}".format(report["html_path"]))
+        return 0
+
+    if args.generate_verification_plan:
+        try:
+            report = agent.write_target_verification_plan(
+                args.generate_verification_plan,
+                output_dir=args.output_dir,
+            )
+        except (OSError, ValueError) as exc:
+            print("Verification plan generation failed: {}".format(exc), file=sys.stderr)
+            return 1
+        print("Generated verification plan: {}".format(report["md_path"]))
+        print("Generated verification plan HTML: {}".format(report["html_path"]))
         return 0
 
     if args.sim_rtl:

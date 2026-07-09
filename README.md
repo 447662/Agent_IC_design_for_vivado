@@ -1,5 +1,18 @@
 # Agent IC Design for Vivado
 
+## P5.4/P5.5 通用规格与验证计划
+
+P5.4/P5.5 已完成 target 级通用文档生成：`--generate-spec` 可从自然语言需求和目标配置生成 `design_spec.md/html`，`--generate-verification-plan` 可从 scenario catalog 生成 `verification_plan.md/html`。当前已覆盖 `async-fifo`、`sync-fifo` 和 `round-robin-arbiter`，用于把新数字 IC target 的设计规格、接口、场景、检查点和验证出口准则先沉淀下来，再进入 RTL/TB/Vivado 仿真闭环。
+
+```powershell
+python .trae/agent/agent.py --generate-spec round-robin-arbiter --output-dir outputs "生成一个 4 requester round-robin arbiter"
+python .trae/agent/agent.py --generate-verification-plan round-robin-arbiter --output-dir outputs
+python .trae/agent/agent.py --generate-spec sync-fifo --output-dir outputs
+python .trae/agent/agent.py --generate-verification-plan sync-fifo --output-dir outputs
+```
+
+默认产物位于 `outputs/<target>/reports/design_spec.md`、`outputs/<target>/reports/design_spec.html`、`outputs/<target>/reports/verification_plan.md` 和 `outputs/<target>/reports/verification_plan.html`。TDD 证据见 `docs/testing/p5_4_p5_5_spec_and_verification_plan.tdd.md`，执行记录见 `docs/roadmap/p5_4_p5_5_execution_record.md`。
+
 ## P5.3 round-robin-arbiter
 
 P5.3 已完成第三个 RTL 目标 `round-robin-arbiter` 的最小闭环，用于验证非 FIFO 控制逻辑设计族。当前支持 target 配置、RTL/TB/Vivado Tcl 生成、真实 Vivado/xsim 仿真、VCD grant/fairness 分析、WDB GUI 打开和中文仿真报告。
