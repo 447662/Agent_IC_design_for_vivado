@@ -123,6 +123,7 @@ outputs/async-fifo/
 - P3.11：`run_vivado_async_fifo_uvm_coverage.tcl` 会生成 `reports/uvm_coverage_percent.txt`；`run_async_fifo_uvm_coverage()` 会自动解析该文件中的覆盖率百分比，不再必须手动传入 `--coverage-percent` 才能触发 gate。
 - P3.12：真实 Vivado 2025.2 验证确认 `report_coverage` 不是可用 Tcl 命令，覆盖率导出改用 `xcrg`，生成 `reports/uvm_coverage_xcrg/codeCoverageReport/`、`reports/uvm_coverage_xcrg/functionalCoverageReport/` 和 `reports/xcrg_coverage.log`。
 - P3.13：`write_async_fifo_reports_index()` 新增 coverage summary、官方 `xcrg` code/functional HTML、`xcrg_coverage.log` 和 `uvm_coverage_percent.txt` 入口；`write_async_fifo_uvm_coverage_summary_report()` 展示 Total、Statement/Line、Branch、Condition、Toggle 分项覆盖率。
+- P3.14：`run_async_fifo_uvm_coverage()` 在成功和失败路径都会刷新 `reports/index.md/html`，真实 coverage runner 结束后总览页不再停留在旧状态；已用真实 Vivado coverage 和 `--open-uvm-wave async-fifo --uvm-wave-kind coverage` 验收。
 
 ## 问题复盘
 

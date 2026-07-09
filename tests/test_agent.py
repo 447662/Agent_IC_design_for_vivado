@@ -1376,6 +1376,66 @@ def test_cli_uvm_coverage_async_fifo_keeps_threshold_optional(monkeypatch, tmp_p
     assert calls == [("async-fifo", str(tmp_path), None, None)]
 
 
+def test_run_async_fifo_uvm_coverage_refreshes_reports_index(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = tmp_path / "async-fifo"
+    sim_dir = project_dir / "sim"
+    reports_dir = project_dir / "reports"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "run_vivado_async_fifo_uvm_coverage.tcl").write_text("run\n", encoding="utf-8")
+    (sim_dir / "async_fifo_uvm_coverage.log").write_text(
+        "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\n"
+        "ASYNC_FIFO_UVM_TEST_DONE\n"
+        "ASYNC_FIFO_UVM_FCOV_PASS samples=18\n"
+        "ASYNC_FIFO_SVA_PASS\n",
+        encoding="utf-8",
+    )
+    (sim_dir / "async_fifo_uvm_coverage.wdb").write_text("wdb\n", encoding="utf-8")
+    coverage_db = sim_dir / "coverage" / "xsim.codeCov" / "async_fifo_uvm_cov"
+    coverage_db.mkdir(parents=True, exist_ok=True)
+    (coverage_db / "xsim.CCInfo").write_text("async_fifo\n", encoding="utf-8")
+    xcrg_code_report = reports_dir / "uvm_coverage_xcrg" / "codeCoverageReport" / "dashboard.html"
+    xcrg_func_report = reports_dir / "uvm_coverage_xcrg" / "functionalCoverageReport" / "dashboard.html"
+    xcrg_code_report.parent.mkdir(parents=True, exist_ok=True)
+    xcrg_func_report.parent.mkdir(parents=True, exist_ok=True)
+    xcrg_code_report.write_text("<html>code</html>\n", encoding="utf-8")
+    xcrg_func_report.write_text("<html>functional</html>\n", encoding="utf-8")
+    (reports_dir / "xcrg_coverage.log").write_text("xcrg ok\n", encoding="utf-8")
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "Line Coverage Score 60.2041\n"
+        "Branch Coverage Score 23.5294\n"
+        "Condition Coverage Score 22\n"
+        "Toggle Coverage Score 4.84\n",
+        encoding="utf-8",
+    )
+
+    class FakeResult:
+        returncode = 0
+        stdout = "ok\n"
+        stderr = ""
+
+    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: "vivado")
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: FakeResult())
+
+    assert agent.run_async_fifo_uvm_coverage(output_dir=tmp_path, coverage_threshold=1) is True
+
+    index = reports_dir / "index.md"
+    html_index = reports_dir / "index.html"
+    assert index.exists()
+    assert html_index.exists()
+    text = index.read_text(encoding="utf-8")
+    html_text = html_index.read_text(encoding="utf-8")
+    assert "uvm_coverage_summary.html" in text
+    assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in text
+    assert "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html" in text
+    assert "xcrg_coverage.log" in text
+    assert "uvm_coverage_percent.txt" in text
+    assert "uvm_coverage_summary.html" in html_text
+    assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in html_text
+
+
 def test_extract_async_fifo_coverage_percent_parses_text_report(tmp_path):
     module = load_agent_module()
     agent = module.DigitalICAgent()

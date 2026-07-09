@@ -3887,6 +3887,7 @@ add_wave -r /tb_async_fifo_uvm
                 coverage_threshold=coverage_threshold,
                 coverage_percent=coverage_percent,
             )
+            self.write_async_fifo_reports_index(project_dir)
             print(sim_result.stderr.strip() or sim_result.stdout.strip() or "async FIFO UVM coverage failed", file=sys.stderr)
             return False
 
@@ -3903,6 +3904,7 @@ add_wave -r /tb_async_fifo_uvm
             coverage_threshold=coverage_threshold,
             coverage_percent=auto_percent,
         )
+        self.write_async_fifo_reports_index(project_dir)
         if not report["passed"]:
             print("UVM coverage markers or xsim.codeCov database were not found.", file=sys.stderr)
             return False

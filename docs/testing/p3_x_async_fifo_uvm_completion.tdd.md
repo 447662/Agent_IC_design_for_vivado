@@ -138,3 +138,10 @@ outputs\async-fifo\reports\uvm_random_regression.md 显示 3/3 PASS
 - 覆盖率百分比自动导出已接入 `uvm_coverage_percent.txt` 自动解析；P3.12 已确认 Vivado 2025.2 应使用 `xcrg`，而不是 Tcl `report_coverage`。真实输出会生成 `uvm_coverage_xcrg/` HTML 报告、`xcrg_coverage.log` 和 coverage score 文本，仍保留 `xsim.CCInfo` 元信息摘要和手动 `--coverage-percent` 覆盖入口。
 - random regression 已改为 seed 独立输出目录，后续真实长回归可在此基础上增加“保留最近 N 次”和失败 seed 自动归档。
 - functional coverage 目前以关键日志标记和 covergroup 摘要为主，后续可把 coverpoint/bin 百分比接入更细粒度 HTML 看板。
+
+## P3.14 补充验收
+
+- 保证项：真实 coverage runner 结束后会刷新 `reports/index.md/html`，并把 coverage summary、官方 `xcrg` HTML、日志和百分比文本挂到总览页。
+- 回归测试：`tests/test_agent.py::test_run_async_fifo_uvm_coverage_refreshes_reports_index`，先复现“coverage PASS 但 index 不存在/未刷新”的 RED，再由 runner 末尾刷新 index 修复为 GREEN。
+- 真实工具验收：`python .trae/agent/agent.py --uvm-coverage async-fifo --coverage-threshold 1 --output-dir outputs` 已重新生成真实 Vivado coverage；`outputs/async-fifo/reports/index.md/html` 已确认包含 `uvm_coverage_summary.html`、`uvm_coverage_xcrg/codeCoverageReport/dashboard.html`、`uvm_coverage_xcrg/functionalCoverageReport/dashboard.html`、`xcrg_coverage.log` 和 `uvm_coverage_percent.txt`。
+- GUI 验收：`python .trae/agent/agent.py --open-uvm-wave async-fifo --uvm-wave-kind coverage --output-dir outputs` 已打开 `outputs/async-fifo/sim/async_fifo_uvm_coverage.wdb`，用于人工查看 Vivado GUI 波形。
