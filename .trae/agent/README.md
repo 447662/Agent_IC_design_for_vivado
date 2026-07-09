@@ -125,6 +125,11 @@ outputs/async-fifo/
 - P3.13：`write_async_fifo_reports_index()` 新增 coverage summary、官方 `xcrg` code/functional HTML、`xcrg_coverage.log` 和 `uvm_coverage_percent.txt` 入口；`write_async_fifo_uvm_coverage_summary_report()` 展示 Total、Statement/Line、Branch、Condition、Toggle 分项覆盖率。
 - P3.14：`run_async_fifo_uvm_coverage()` 在成功和失败路径都会刷新 `reports/index.md/html`，真实 coverage runner 结束后总览页不再停留在旧状态；已用真实 Vivado coverage 和 `--open-uvm-wave async-fifo --uvm-wave-kind coverage` 验收。
 
+## P4-P5 路线
+
+- P4 暂不作为当前必须实现项，coverage closure、低覆盖项定位、分项 gate、趋势记录和 GUI 自动验收已整理到 `docs/roadmap/p4_future_upgrade_roadmap.md`。
+- P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
+
 ## 问题复盘
 
 Vivado/async FIFO 仿真过程中遇到的问题已沉淀到：
