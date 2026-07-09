@@ -162,6 +162,106 @@ def test_cli_analyze_vcd_rejects_missing_file(tmp_path):
     assert "VCD file not found" in result.stderr
 
 
+def test_waveform_analyzer_prefers_rwave_when_available(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "wave.vcd"
+    vcd_path.write_text("$date\nwave\n$end\n", encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr(agent, "resolve_rwave_command", lambda: "rwave")
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+
+        class Result:
+            returncode = 0
+            stdout = '{"signal_count":3,"duration_h":"20 ns"}'
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    result = agent.run_waveform_analyzer_json("info", vcd_path)
+
+    assert result["signal_count"] == 3
+    assert result["_waveform_backend"] == "rwave"
+    assert calls == [["rwave", "--json", "info", str(vcd_path)]]
+
+
+def test_waveform_analyzer_falls_back_to_vcd_analyzer(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "wave.vcd"
+    vcd_path.write_text("$date\nwave\n$end\n", encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr(agent, "resolve_rwave_command", lambda: None)
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+
+        class Result:
+            returncode = 0
+            stdout = '{"signal_count":2,"duration_h":"10 ns"}'
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    result = agent.run_waveform_analyzer_json("info", vcd_path)
+
+    assert result["signal_count"] == 2
+    assert result["_waveform_backend"] == "vcd_analyzer"
+    assert calls == [[sys.executable, str(agent.resolve_vcd_analyzer_path()), "--json", "info", str(vcd_path)]]
+
+
+def test_waveform_analyzer_can_force_vcd_analyzer(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "wave.vcd"
+    vcd_path.write_text("$date\nwave\n$end\n", encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr(agent, "resolve_rwave_command", lambda: "rwave")
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+
+        class Result:
+            returncode = 0
+            stdout = '{"signal_count":4,"duration_h":"30 ns"}'
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    result = agent.run_waveform_analyzer_json("info", vcd_path, backend="vcd-analyzer")
+
+    assert result["signal_count"] == 4
+    assert result["_waveform_backend"] == "vcd_analyzer"
+    assert calls == [[sys.executable, str(agent.resolve_vcd_analyzer_path()), "--json", "info", str(vcd_path)]]
+
+
+def test_waveform_analyzer_can_require_rwave(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "wave.vcd"
+    vcd_path.write_text("$date\nwave\n$end\n", encoding="utf-8")
+
+    monkeypatch.setattr(agent, "resolve_rwave_command", lambda: None)
+
+    try:
+        agent.run_waveform_analyzer_json("info", vcd_path, backend="rwave")
+    except FileNotFoundError as exc:
+        assert "rwave" in str(exc).lower()
+    else:
+        raise AssertionError("Expected forced rwave backend to fail when rwave is missing")
+
+
 def test_cli_smoke_loop_generates_and_analyzes_vcd(tmp_path):
     result = run_agent("--smoke-loop", "--output-dir", str(tmp_path), "--vcd-limit", "5")
 
@@ -249,11 +349,12 @@ def test_run_sim_smoke_uses_icarus_and_analyzes_vcd(monkeypatch, tmp_path):
 
     analyzed = {}
 
-    def fake_analyze_vcd(vcd_path, condition=None, show=None, limit=20):
+    def fake_analyze_vcd(vcd_path, condition=None, show=None, limit=20, waveform_backend="auto"):
         analyzed["vcd_path"] = Path(vcd_path)
         analyzed["condition"] = condition
         analyzed["show"] = show
         analyzed["limit"] = limit
+        analyzed["waveform_backend"] = waveform_backend
         return True
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
@@ -266,6 +367,7 @@ def test_run_sim_smoke_uses_icarus_and_analyzes_vcd(monkeypatch, tmp_path):
     assert analyzed["condition"] == "tb.valid=1,tb.ready=1"
     assert analyzed["show"] == "tb.data"
     assert analyzed["limit"] == 7
+    assert analyzed["waveform_backend"] == "auto"
 
 
 def test_run_sim_smoke_uses_vivado_and_analyzes_vcd(monkeypatch, tmp_path):
@@ -290,11 +392,12 @@ def test_run_sim_smoke_uses_vivado_and_analyzes_vcd(monkeypatch, tmp_path):
 
     analyzed = {}
 
-    def fake_analyze_vcd(vcd_path, condition=None, show=None, limit=20):
+    def fake_analyze_vcd(vcd_path, condition=None, show=None, limit=20, waveform_backend="auto"):
         analyzed["vcd_path"] = Path(vcd_path)
         analyzed["condition"] = condition
         analyzed["show"] = show
         analyzed["limit"] = limit
+        analyzed["waveform_backend"] = waveform_backend
         return True
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
@@ -311,6 +414,7 @@ def test_run_sim_smoke_uses_vivado_and_analyzes_vcd(monkeypatch, tmp_path):
     assert analyzed["condition"] == "tb.valid=1,tb.ready=1"
     assert analyzed["show"] == "tb.data"
     assert analyzed["limit"] == 9
+    assert analyzed["waveform_backend"] == "auto"
     assert gui_calls == [(tmp_path / "sim-smoke", tmp_path / "sim-smoke" / "handshake_trace.vcd")]
 
 
@@ -921,7 +1025,7 @@ def test_analyze_async_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, t
     vcd_path.write_text("$date\nasync fifo\n$end\n", encoding="utf-8")
     calls = []
 
-    def fake_run_vcd_analyzer_json(*args):
+    def fake_run_waveform_analyzer_json(*args, backend="auto"):
         calls.append(args)
         if args[0] == "info":
             return {
@@ -939,7 +1043,7 @@ def test_analyze_async_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, t
             ],
         }
 
-    monkeypatch.setattr(agent, "run_vcd_analyzer_json", fake_run_vcd_analyzer_json)
+    monkeypatch.setattr(agent, "run_waveform_analyzer_json", fake_run_waveform_analyzer_json)
 
     assert agent.analyze_async_fifo_vcd(output_dir=tmp_path, limit=4) is True
 
@@ -960,14 +1064,23 @@ def test_cli_analyze_rtl_vcd_async_fifo_invokes_analyzer(monkeypatch, tmp_path):
 
     monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
 
-    def fake_analyze_async_fifo_vcd(self, output_dir="outputs", limit=20):
-        calls.append((output_dir, limit))
+    def fake_analyze_async_fifo_vcd(self, output_dir="outputs", limit=20, waveform_backend="auto"):
+        calls.append((output_dir, limit, waveform_backend))
         return True
 
     monkeypatch.setattr(module.DigitalICAgent, "analyze_async_fifo_vcd", fake_analyze_async_fifo_vcd)
 
-    assert module.main(["--analyze-rtl-vcd", "async-fifo", "--output-dir", str(tmp_path), "--vcd-limit", "6"]) == 0
-    assert calls == [(str(tmp_path), 6)]
+    assert module.main([
+        "--analyze-rtl-vcd",
+        "async-fifo",
+        "--output-dir",
+        str(tmp_path),
+        "--vcd-limit",
+        "6",
+        "--wave-backend",
+        "vcd-analyzer",
+    ]) == 0
+    assert calls == [(str(tmp_path), 6, "vcd-analyzer")]
 
 
 def test_check_async_fifo_rtl_reports_complete_project(monkeypatch, tmp_path, capsys):

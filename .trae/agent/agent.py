@@ -355,6 +355,63 @@ class DigitalICAgent:
             / "vcd_analyzer.py"
         )
 
+    def resolve_rwave_source_dir(self):
+        candidates = [
+            self.project_root / "RWaveAnalyzer-main" / "RWaveAnalyzer-main",
+            self.project_root / "docs" / "tools_archive" / "RWaveAnalyzer-main" / "RWaveAnalyzer-main",
+        ]
+        for candidate in candidates:
+            if (candidate / "Cargo.toml").exists() and (candidate / "crates" / "rwave").exists():
+                return candidate
+        return None
+
+    def resolve_rwave_command(self):
+        env_path = os.environ.get("RWAVE_BIN")
+        if env_path:
+            env_candidate = Path(env_path)
+            if env_candidate.exists():
+                return str(env_candidate)
+
+        path_candidate = shutil.which("rwave")
+        if path_candidate:
+            return path_candidate
+
+        source_dir = self.resolve_rwave_source_dir()
+        if source_dir:
+            built_candidates = [
+                source_dir / "target" / "release" / "rwave.exe",
+                source_dir / "target" / "release" / "rwave",
+                source_dir / "dist" / "rwave-windows-amd64.exe",
+                source_dir / "dist" / "rwave-linux-amd64",
+            ]
+            for candidate in built_candidates:
+                if candidate.exists():
+                    return str(candidate)
+        return None
+
+    def run_rwave_json(self, *args):
+        rwave_command = self.resolve_rwave_command()
+        if not rwave_command:
+            raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
+
+        result = subprocess.run(
+            [rwave_command, "--json", *[str(arg) for arg in args]],
+            cwd=self.project_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip() or "rwave failed"
+            raise RuntimeError(message)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("rwave returned invalid JSON: {}".format(exc))
+        data["_waveform_backend"] = "rwave"
+        return data
+
     def run_vcd_analyzer_json(self, *args):
         analyzer_path = self.resolve_vcd_analyzer_path()
         if not analyzer_path.exists():
@@ -372,31 +429,55 @@ class DigitalICAgent:
             message = result.stderr.strip() or result.stdout.strip() or "vcd_analyzer failed"
             raise RuntimeError(message)
         try:
-            return json.loads(result.stdout)
+            data = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
             raise RuntimeError("vcd_analyzer returned invalid JSON: {}".format(exc))
+        data["_waveform_backend"] = "vcd_analyzer"
+        return data
 
-    def analyze_vcd(self, vcd_path, condition=None, show=None, limit=20):
+    def run_waveform_analyzer_json(self, *args, backend="auto"):
+        backend = str(backend or "auto").strip().lower()
+        if backend in ("vcd", "vcd_analyzer", "vcd-analyzer"):
+            return self.run_vcd_analyzer_json(*args)
+        if backend == "rwave":
+            return self.run_rwave_json(*args)
+        if backend != "auto":
+            raise ValueError("Unsupported waveform backend: {}".format(backend))
+
+        try:
+            return self.run_rwave_json(*args)
+        except FileNotFoundError:
+            return self.run_vcd_analyzer_json(*args)
+        except RuntimeError as rwave_error:
+            try:
+                data = self.run_vcd_analyzer_json(*args)
+            except (FileNotFoundError, RuntimeError):
+                raise rwave_error
+            data["_waveform_backend_fallback_reason"] = str(rwave_error)
+            return data
+
+    def analyze_vcd(self, vcd_path, condition=None, show=None, limit=20, waveform_backend="auto"):
         vcd_file = Path(vcd_path)
         if not vcd_file.exists():
             print("VCD file not found: {}".format(vcd_file), file=sys.stderr)
             return False
 
         try:
-            info = self.run_vcd_analyzer_json("info", vcd_file)
+            info = self.run_waveform_analyzer_json("info", vcd_file, backend=waveform_backend)
             search_result = None
             if condition:
                 search_args = ["search", vcd_file, "--condition", condition, "--limit", limit]
                 if show:
                     search_args.extend(["--show", show])
-                search_result = self.run_vcd_analyzer_json(*search_args)
-        except (FileNotFoundError, RuntimeError) as exc:
+                search_result = self.run_waveform_analyzer_json(*search_args, backend=waveform_backend)
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return False
 
         print("VCD 分析报告")
         print("=" * 60)
         print("文件: {}".format(vcd_file))
+        print("Backend: {}".format(info.get("_waveform_backend", "unknown")))
         print("信号数量: {}".format(info.get("signal_count", "unknown")))
         print("时间范围: {} - {}".format(info.get("time_min_h", "unknown"), info.get("time_max_h", "unknown")))
         print("持续时间: {}".format(info.get("duration_h", "unknown")))
@@ -433,13 +514,13 @@ class DigitalICAgent:
     def resolve_async_fifo_vcd_path(self, output_dir="outputs"):
         return Path(output_dir) / "async-fifo" / "sim" / "async_fifo_trace.vcd"
 
-    def collect_async_fifo_vcd_analysis(self, output_dir="outputs", limit=20):
+    def collect_async_fifo_vcd_analysis(self, output_dir="outputs", limit=20, waveform_backend="auto"):
         vcd_path = self.resolve_async_fifo_vcd_path(output_dir)
         if not vcd_path.exists():
             raise FileNotFoundError("Async FIFO VCD file not found: {}".format(vcd_path))
 
-        info = self.run_vcd_analyzer_json("info", vcd_path)
-        write_events = self.run_vcd_analyzer_json(
+        info = self.run_waveform_analyzer_json("info", vcd_path, backend=waveform_backend)
+        write_events = self.run_waveform_analyzer_json(
             "search",
             vcd_path,
             "--condition",
@@ -450,8 +531,9 @@ class DigitalICAgent:
             "tb_async_fifo.wr_data,tb_async_fifo.write_count",
             "--limit",
             limit,
+            backend=waveform_backend,
         )
-        read_events = self.run_vcd_analyzer_json(
+        read_events = self.run_waveform_analyzer_json(
             "search",
             vcd_path,
             "--condition",
@@ -462,6 +544,7 @@ class DigitalICAgent:
             "tb_async_fifo.rd_data,tb_async_fifo.read_count",
             "--limit",
             limit,
+            backend=waveform_backend,
         )
         return {
             "vcd_path": vcd_path,
@@ -470,9 +553,13 @@ class DigitalICAgent:
             "read_events": read_events,
         }
 
-    def analyze_async_fifo_vcd(self, output_dir="outputs", limit=20):
+    def analyze_async_fifo_vcd(self, output_dir="outputs", limit=20, waveform_backend="auto"):
         try:
-            analysis = self.collect_async_fifo_vcd_analysis(output_dir=output_dir, limit=limit)
+            analysis = self.collect_async_fifo_vcd_analysis(
+                output_dir=output_dir,
+                limit=limit,
+                waveform_backend=waveform_backend,
+            )
         except FileNotFoundError as exc:
             print(str(exc), file=sys.stderr)
             print("Run --sim-rtl async-fifo first, or check --output-dir.", file=sys.stderr)
@@ -490,6 +577,7 @@ class DigitalICAgent:
         print("=" * 60)
         print("File: {}".format(vcd_path))
         print("Signals: {}".format(info.get("signal_count", "unknown")))
+        print("Backend: {}".format(info.get("_waveform_backend", "unknown")))
         print("Time range: {} - {}".format(info.get("time_min_h", "unknown"), info.get("time_max_h", "unknown")))
         print("Duration: {}".format(info.get("duration_h", "unknown")))
         print("Timescale: {}".format(info.get("timescale", "unknown")))
@@ -2698,7 +2786,7 @@ b01010101 $
         )
         return vcd_path
 
-    def run_smoke_loop(self, output_dir="outputs", limit=20):
+    def run_smoke_loop(self, output_dir="outputs", limit=20, waveform_backend="auto"):
         print("Smoke loop: generating built-in handshake VCD")
         vcd_path = self.write_smoke_loop_vcd(output_dir)
         print("Generated VCD: {}".format(vcd_path))
@@ -2707,6 +2795,7 @@ b01010101 $
             condition="tb.valid=1,tb.ready=1",
             show="tb.data",
             limit=limit,
+            waveform_backend=waveform_backend,
         )
         if ok:
             print("Smoke loop completed")
@@ -2822,7 +2911,7 @@ endmodule
 
         return sim_dir, rtl_path, tb_path, vcd_path
 
-    def run_icarus_sim_smoke(self, output_dir, limit=20):
+    def run_icarus_sim_smoke(self, output_dir, limit=20, waveform_backend="auto"):
         sim_dir, rtl_path, tb_path, vcd_path = self.write_sim_smoke_sources(output_dir)
         sim_out = sim_dir / "handshake_smoke.vvp"
 
@@ -2861,6 +2950,7 @@ endmodule
             condition="tb.valid=1,tb.ready=1",
             show="tb.data",
             limit=limit,
+            waveform_backend=waveform_backend,
         )
         if ok:
             print("Simulation smoke completed")
@@ -2919,7 +3009,7 @@ add_wave -r /*
         print("Vivado waveform GUI launched: {}".format(wave_db_path))
         return True
 
-    def run_vivado_sim_smoke(self, output_dir, limit=20, open_wave_gui=True):
+    def run_vivado_sim_smoke(self, output_dir, limit=20, open_wave_gui=True, waveform_backend="auto"):
         sim_dir, rtl_path, tb_path, vcd_path = self.write_sim_smoke_sources(output_dir)
         script_path = self.write_vivado_sim_script(sim_dir, rtl_path, tb_path, vcd_path)
         vivado_command = self.resolve_vivado_command()
@@ -2950,6 +3040,7 @@ add_wave -r /*
             condition="tb.valid=1,tb.ready=1",
             show="tb.data",
             limit=limit,
+            waveform_backend=waveform_backend,
         )
         if ok:
             print("Simulation smoke completed")
@@ -2957,7 +3048,7 @@ add_wave -r /*
                 self.open_vivado_wave_gui(sim_dir, vcd_path)
         return ok
 
-    def run_sim_smoke(self, output_dir="outputs", limit=20, open_wave_gui=True):
+    def run_sim_smoke(self, output_dir="outputs", limit=20, open_wave_gui=True, waveform_backend="auto"):
         simulator = self.detect_simulator()
         if simulator is None:
             print(
@@ -2971,9 +3062,14 @@ add_wave -r /*
                 output_dir=output_dir,
                 limit=limit,
                 open_wave_gui=open_wave_gui,
+                waveform_backend=waveform_backend,
             )
         if simulator == "icarus":
-            return self.run_icarus_sim_smoke(output_dir=output_dir, limit=limit)
+            return self.run_icarus_sim_smoke(
+                output_dir=output_dir,
+                limit=limit,
+                waveform_backend=waveform_backend,
+            )
 
         print(
             "{} detected, but sim smoke currently supports only Vivado or iverilog/vvp.".format(simulator),
@@ -4116,6 +4212,12 @@ def parse_args(argv=None):
     parser.add_argument("--vcd-condition", default=None, help="VCD condition expression, e.g. valid=1,ready=1")
     parser.add_argument("--vcd-show", default=None, help="Signals to show when the VCD condition holds")
     parser.add_argument("--vcd-limit", type=int, default=20, help="Maximum VCD rows to display")
+    parser.add_argument(
+        "--wave-backend",
+        choices=["auto", "rwave", "vcd-analyzer"],
+        default="auto",
+        help="Waveform analyzer backend: auto prefers RWaveAnalyzer rwave, then falls back to VCD_ANALYZER",
+    )
     mode_group.add_argument("--diagnostic", action="store_true", help="只运行环境诊断")
     mode_group.add_argument("--list-skills", action="store_true", help="列出技能配置")
     mode_group.add_argument("--list-targets", action="store_true", help="List registered RTL design targets")
@@ -4203,6 +4305,7 @@ def main(argv=None):
         return 0 if agent.run_smoke_loop(
             output_dir=args.output_dir,
             limit=args.vcd_limit,
+            waveform_backend=args.wave_backend,
         ) else 1
 
     if args.sim_smoke:
@@ -4210,6 +4313,7 @@ def main(argv=None):
             output_dir=args.output_dir,
             limit=args.vcd_limit,
             open_wave_gui=not args.no_wave_gui,
+            waveform_backend=args.wave_backend,
         ) else 1
 
     if args.generate_rtl:
@@ -4288,6 +4392,7 @@ def main(argv=None):
             return 0 if agent.analyze_async_fifo_vcd(
                 output_dir=args.output_dir,
                 limit=args.vcd_limit,
+                waveform_backend=args.wave_backend,
             ) else 1
         except (OSError, ValueError) as exc:
             print("RTL VCD analysis failed: {}".format(exc), file=sys.stderr)
@@ -4330,6 +4435,7 @@ def main(argv=None):
             condition=args.vcd_condition,
             show=args.vcd_show,
             limit=args.vcd_limit,
+            waveform_backend=args.wave_backend,
         ) else 1
 
     requirement = build_requirement(args)

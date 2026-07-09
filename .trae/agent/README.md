@@ -9,6 +9,8 @@ python .trae/agent/agent.py --diagnostic
 python .trae/agent/agent.py --list-skills
 python .trae/agent/agent.py --list-targets
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd
+python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend rwave
+python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend vcd-analyzer
 python .trae/agent/agent.py --smoke-loop --output-dir .tmp-agent-output
 python .trae/agent/agent.py --sim-smoke --output-dir .tmp-agent-output
 python .trae/agent/agent.py --sim-smoke --no-wave-gui --output-dir .tmp-agent-output
@@ -42,12 +44,20 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 | `--analyze-rtl-vcd async-fifo` | 分析 async FIFO VCD 中的写/读 handshake 事件 |
 | `--check-rtl async-fifo` | 检查 async FIFO 工程产物、报告、WCFG，并生成波形可见性验收报告 |
 | `--open-wave async-fifo` | 不重新仿真，打开 async FIFO 工程和最新 WDB 波形 |
+| `--wave-backend auto|rwave|vcd-analyzer` | 选择波形分析后端；默认 auto 优先 RWaveAnalyzer，失败时降级到 VCD_ANALYZER |
 | `--output-dir <path>` | 指定输出根目录 |
 | `--no-tool-check` | 普通需求文档流程中跳过外部工具检查 |
 
 ## Vivado 流程
 
-`--sim-smoke` 会写入握手 RTL 与 testbench，调用 Vivado/xsim 生成 `handshake_trace.vcd`，再用 VCD 分析器查找 `tb.valid=1,tb.ready=1` 的传输事件。GUI 波形打开使用 `handshake_smoke.wdb`，不要把 `.vcd` 传给 `open_wave_database`。
+`--sim-smoke` 会写入握手 RTL 与 testbench，调用 Vivado/xsim 生成 `handshake_trace.vcd`，再用统一波形分析后端查找 `tb.valid=1,tb.ready=1` 的传输事件。GUI 波形打开使用 `handshake_smoke.wdb`，不要把 `.vcd` 传给 `open_wave_database`。
+
+## RWaveAnalyzer / VCD_ANALYZER
+
+- 默认 `--wave-backend auto`：优先使用 RWaveAnalyzer 的 `rwave`，不可用或运行失败时降级到 `VCD_ANALYZER-main`。
+- `RWAVE_BIN` 可指定本机 `rwave.exe` 绝对路径；如果未设置，Agent 会查找 PATH 和已构建的 RWaveAnalyzer `target/release/rwave.exe`。
+- `--wave-backend rwave` 用于强制验证 RWaveAnalyzer；`--wave-backend vcd-analyzer` 用于强制旧 Python 分析器兼容路径。
+- 当前已经用最新 `RWaveAnalyzer-main.zip` 临时解压并 `cargo build --release` 验证，`rwave 0.1.4` 可以读取现有 `handshake_trace.vcd`。
 
 如果只需要批处理结果：
 

@@ -6,7 +6,7 @@
 
 - 需求分析：根据自然语言需求匹配设计文档、RTL、验证相关技能。
 - 环境诊断：检查 Vivado、`uv`、SynthPilot MCP 等外部工具。
-- VCD 分析：`--analyze-vcd` 支持条件搜索与信号观察。
+- VCD/波形分析：`--analyze-vcd` 支持条件搜索与信号观察，默认 `--wave-backend auto` 会优先使用 RWaveAnalyzer 的 `rwave`，不可用时自动降级到 `VCD_ANALYZER-main`。
 - 内置闭环：`--smoke-loop` 生成握手示例 VCD 并调用分析器。
 - Vivado smoke 仿真：`--sim-smoke` 调用 Vivado/xsim，生成 `handshake_trace.vcd` 和 `handshake_smoke.wdb`。
 - async FIFO RTL：`--generate-rtl async-fifo` 生成 RTL/TB/Vivado 脚本工程。
@@ -27,6 +27,8 @@ python .trae/agent/agent.py --diagnostic
 python .trae/agent/agent.py --list-skills
 python .trae/agent/agent.py --list-targets
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --vcd-condition "tb.valid=1,tb.ready=1" --vcd-show "tb.data"
+python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend rwave
+python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend vcd-analyzer
 python .trae/agent/agent.py --smoke-loop --output-dir .tmp-agent-output
 python .trae/agent/agent.py --sim-smoke --output-dir .tmp-agent-output
 python .trae/agent/agent.py --sim-smoke --no-wave-gui --output-dir .tmp-agent-output
@@ -142,7 +144,14 @@ python -m pip install -r requirements-dev.txt
 python -m pytest tests/test_agent.py -v --basetemp .tmp-pytest
 ```
 
-当前完整回归：`69 passed`。
+当前完整回归：`73 passed`。
+
+## RWaveAnalyzer / VCD_ANALYZER 整合
+
+- `--wave-backend auto` 是默认模式：优先调用 `RWAVE_BIN`、PATH 中的 `rwave`，或已构建的 RWaveAnalyzer `target/release/rwave.exe`；不可用时降级到 `VCD_ANALYZER-main/VCD_ANALYZER-main/vcd_analyzer.py`。
+- `--wave-backend rwave` 强制使用 RWaveAnalyzer，适合验证 VCD/FST/GHW 统一分析路径；如果找不到 `rwave` 会直接失败。
+- `--wave-backend vcd-analyzer` 强制使用旧版 Python VCD_ANALYZER，适合做兼容性对照。
+- 最新 `RWaveAnalyzer-main.zip` 是本地下载包，不提交到仓库；需要验证时可临时解压并运行 `cargo build --release`，再设置 `RWAVE_BIN=<rwave.exe 路径>`。
 
 ## 项目结构
 
