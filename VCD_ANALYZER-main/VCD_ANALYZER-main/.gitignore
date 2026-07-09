@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
+# Private dev files
+AGENT.md
+GIT_SOP.md

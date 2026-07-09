@@ -1,0 +1,40 @@
+# Copyright (c) 2026 neveltyc
+# released under the MIT License (see LICENSE)
+
+[package]
+name = "rwave"
+version = "0.1.3"
+edition = "2024"
+rust-version = "1.90.0"
+authors = ["neveltyc"]
+description = "AI-agent-friendly VCD/FST waveform analyzer for RTL debug, built on wellen."
+repository = "https://github.com/neveltyc/RWaveAnalyzer"
+license = "MIT"
+keywords = ["vcd", "fst", "waveform", "rtl", "debug"]
+readme = "../../README.md"
+
+# A single binary named `rwave`.
+[[bin]]
+name = "rwave"
+path = "src/main.rs"
+
+# Built-in vendor-format backends. Both compile only on linux-x86_64 (the
+# sole target the vendor libraries exist for); on any other target the
+# feature is a no-op, so a default build there is pure VCD/FST/GHW. Disable
+# with --no-default-features for a proprietary-free build on linux too.
+[features]
+default = ["wlf", "fsdb"]
+wlf = []
+fsdb = []
+
+[dependencies]
+# Waveform parsing front-end: vendored under vendor/wellen, pinned to 0.23.0.
+wellen = { path = "../../vendor/wellen" }
+# Fast non-cryptographic hasher for the signal-table grouping map (SipHash
+# dominated build time on large hierarchies). Same crate wellen already uses.
+rustc-hash = { workspace = true }
+# Runtime dynamic loading: external backends (RWAVE_PLUGIN_<EXT>) and the
+# built-in backends' vendor libraries (libwlf / libNPI), all dlopened.
+libloading = "0.8"
+
+[dev-dependencies]

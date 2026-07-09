@@ -1,0 +1,18 @@
+# Linker config for the musl targets (native Linux builds). The gnu and
+# windows-gnu targets use system defaults. cargo-zigbuild supplies its
+# own linker and ignores these entries. See docs/BUILD.md.
+#
+# musl-gcc install: apt install musl-tools / dnf install musl-gcc /
+# apk add musl-dev.
+
+[target.x86_64-unknown-linux-musl]
+linker = "musl-gcc"
+# Statically link everything (this is musl's default, stated explicitly).
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-musl]
+linker = "musl-gcc"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# No entry is needed for `x86_64-pc-windows-gnu`: the Rust toolchain ships the
+# MinGW import libraries, and `cargo-zigbuild` provides the linker.

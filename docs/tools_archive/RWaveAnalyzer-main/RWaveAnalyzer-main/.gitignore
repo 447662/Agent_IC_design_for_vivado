@@ -1,0 +1,37 @@
+# Rust build artifacts
+/target
+**/target
+
+# Release build artifacts (produced by scripts/build-release.sh)
+/dist
+
+# Cargo lock is kept for the binary crate (reproducible builds), so it is NOT
+# ignored. (If this were a library, we'd ignore it.)
+
+# Backtrace / debug
+*.rs.bk
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Simulation scratch (the committed stimulus lives in verify/stimulus/;
+# these are transient build products from regenerating it)
+*.vvp
+/verify/stimulus_src/*.vvp
+
+# Bench: stress.fst.xz is committed; the decompressed FST and any
+# regenerated artefacts under build/ are not.
+/bench/stress.fst
+/bench/build/
+
+# Local scratch
+/scratch/
+/tmp/
+
+# Local session/agent notes (per-developer, not committed)
+/HANDOFF.md
+/AGENTS.md

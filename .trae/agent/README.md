@@ -1,136 +1,129 @@
 # 数字 IC 前端设计 Agent
 
-## 简介
+这是 `.trae/agent/agent.py` 的本地 CLI 说明。当前版本已从文档模板扩展到 VCD 分析、Vivado/xsim smoke 仿真，以及第一个可落地 RTL 工程 `async-fifo`。
 
-数字 IC 前端设计 Agent 是一个智能设计助手原型，当前实现以下能力：
+## CLI
 
-- 分析用户自然语言需求。
-- 根据关键词匹配设计文档、RTL 或 UVM 验证技能。
-- 检查 Vivado、uv 和 SynthPilot MCP 环境。
-- 生成 Markdown 设计说明模板，作为后续设计讨论起点。
-
-当前版本不会自动生成完整 RTL、UVM 验证环境或 Vivado 仿真结果。
-
-## 架构
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│              Digital IC Frontend Agent                  │
-├─────────────────────────────────────────────────────────┤
-│  CLI 参数解析                                           │
-│        │                                                │
-│        ▼                                                │
-│  需求分析 ──▶ 技能匹配 ──▶ 工具检查（可跳过）           │
-│        │                                                │
-│        ▼                                                │
-│  Markdown 设计说明模板生成                              │
-└─────────────────────────────────────────────────────────┘
-```
-
-## 技能列表
-
-| 技能名称 | 功能 | 触发关键词 |
-| --- | --- | --- |
-| `digital-ic-designer` | 生成设计文档 | 设计文档、架构设计、需求分析 |
-| `digital-ic-rtl-designer` | RTL 代码实现与常规验证 | RTL、Verilog、仿真、波形 |
-| `digital-ic-verifier` | UVM 验证与前仿 | UVM、SystemVerilog、前仿 |
-
-## 依赖工具
-
-### 必需
-
-- Python 3
-
-### 环境诊断检查项
-
-- Xilinx Vivado
-- uv
-- SynthPilot MCP
-
-如果本机没有完整 EDA 环境，可以使用 `--no-tool-check` 仅生成设计说明模板。
-
-## CLI 使用
-
-### 列出技能
-
-```bash
-python .trae/agent/agent.py --list-skills
-```
-
-### 运行诊断
-
-```bash
+```powershell
 python .trae/agent/agent.py --diagnostic
+python .trae/agent/agent.py --list-skills
+python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd
+python .trae/agent/agent.py --smoke-loop --output-dir .tmp-agent-output
+python .trae/agent/agent.py --sim-smoke --output-dir .tmp-agent-output
+python .trae/agent/agent.py --sim-smoke --no-wave-gui --output-dir .tmp-agent-output
+python .trae/agent/agent.py --generate-rtl async-fifo --output-dir outputs
+python .trae/agent/agent.py --sim-rtl async-fifo --output-dir outputs
+python .trae/agent/agent.py --sim-rtl async-fifo --no-wave-gui --output-dir outputs
+python .trae/agent/agent.py --regress-rtl async-fifo --output-dir outputs
+python .trae/agent/agent.py --uvm-smoke async-fifo --no-wave-gui --output-dir outputs
+python .trae/agent/agent.py --uvm-coverage async-fifo --output-dir outputs
+python .trae/agent/agent.py --analyze-rtl-vcd async-fifo --output-dir outputs
+python .trae/agent/agent.py --check-rtl async-fifo --output-dir outputs
+python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 ```
 
-### 生成设计说明模板
-
-```bash
-python .trae/agent/agent.py --no-tool-check --output-dir outputs "设计一个UART控制器"
-```
-
-### 交互式输入
-
-```bash
-python .trae/agent/agent.py --no-tool-check
-```
-
-## 参数说明
+## 参数
 
 | 参数 | 说明 |
 | --- | --- |
-| `--diagnostic` | 只运行环境诊断 |
-| `--list-skills` | 列出技能配置 |
-| `--output-dir <path>` | 指定产物根目录，默认 `outputs` |
-| `--no-tool-check` | 跳过 Vivado、SynthPilot 等外部工具检查 |
-| `requirement` | 用户自然语言设计需求 |
+| `--diagnostic` | 检查 Vivado、`uv`、SynthPilot MCP 和技能文件 |
+| `--list-skills` | 列出当前 Agent 技能配置 |
+| `--analyze-vcd <file>` | 分析 VCD，可配合 `--vcd-condition`、`--vcd-show`、`--vcd-limit` |
+| `--smoke-loop` | 生成内置握手 VCD 并运行 VCD 分析 |
+| `--sim-smoke` | 使用可用仿真器运行握手 RTL smoke，优先 Vivado |
+| `--no-wave-gui` | Vivado/xsim 仿真后不打开 GUI 波形 |
+| `--generate-rtl async-fifo` | 生成异步 FIFO RTL/TB/Vivado 脚本工程 |
+| `--sim-rtl async-fifo` | 运行异步 FIFO Vivado/xsim 仿真，并默认打开 Vivado 工程与最新 WDB |
+| `--regress-rtl async-fifo` | 运行异步 FIFO 多参数 Vivado/xsim 回归，并生成回归摘要 |
+| `--uvm-smoke async-fifo` | 生成并运行 async FIFO 最小 UVM smoke，输出 UVM 日志、WDB 和中文报告 |
+| `--uvm-coverage async-fifo` | 运行 async FIFO UVM smoke 并启用 Vivado/xsim code coverage |
+| `--analyze-rtl-vcd async-fifo` | 分析 async FIFO VCD 中的写/读 handshake 事件 |
+| `--check-rtl async-fifo` | 检查 async FIFO 工程产物、报告、WCFG，并生成波形可见性验收报告 |
+| `--open-wave async-fifo` | 不重新仿真，打开 async FIFO 工程和最新 WDB 波形 |
+| `--output-dir <path>` | 指定输出根目录 |
+| `--no-tool-check` | 普通需求文档流程中跳过外部工具检查 |
 
-`--diagnostic`、`--list-skills` 和普通工作流互斥。`--no-tool-check` 只适用于普通工作流。
+## Vivado 流程
 
-## 输出文档
+`--sim-smoke` 会写入握手 RTL 与 testbench，调用 Vivado/xsim 生成 `handshake_trace.vcd`，再用 VCD 分析器查找 `tb.valid=1,tb.ready=1` 的传输事件。GUI 波形打开使用 `handshake_smoke.wdb`，不要把 `.vcd` 传给 `open_wave_database`。
 
-普通工作流会生成：
+如果只需要批处理结果：
+
+```powershell
+python .trae/agent/agent.py --sim-smoke --no-wave-gui --output-dir .tmp-agent-output
+```
+
+## 异步 FIFO
+
+第一个 RTL 目标是异步 FIFO：
+
+```powershell
+python .trae/agent/agent.py --generate-rtl async-fifo --output-dir outputs
+python .trae/agent/agent.py --sim-rtl async-fifo --output-dir outputs
+```
+
+生成目录：
 
 ```text
-outputs/<project-slug>/design_spec.md
+outputs/async-fifo/
+  rtl/async_fifo.v
+  tb/tb_async_fifo.v
+  uvm/async_fifo_if.sv
+  uvm/async_fifo_uvm_pkg.sv
+  uvm/tb_async_fifo_uvm.sv
+  sim/run_vivado_async_fifo.tcl
+  sim/run_vivado_async_fifo_uvm.tcl
+  sim/run_vivado_async_fifo_uvm_coverage.tcl
+  sim/create_async_fifo_project.tcl
+  sim/open_async_fifo_project_gui.tcl
+  vivado_project/async_fifo_project.xpr
+  reports/
+  README.md
 ```
 
-文档包含：
+`async_fifo.v` 包含 `DATA_WIDTH`、`ADDR_WIDTH` 参数、Gray 指针转换、两级 `(* async_reg = "true" *)` 同步器、寄存化 `full`/`empty` 判断。`tb_async_fifo.v` 会产生 `async_fifo_trace.vcd`，并覆盖 `basic_ordered`、`full_boundary`、`empty_boundary`、`reset_recovery`、`mixed_stress`。
 
-1. 需求摘要。
-2. Agent 匹配结果。
-3. 初步设计目标。
-4. 建议模块划分。
-5. 初步接口定义。
-6. 验证计划占位。
-7. 后续人工确认项。
+`--sim-rtl async-fifo` 会先运行 `run_vivado_async_fifo.tcl`，再用 `create_async_fifo_project.tcl` 生成或更新 Vivado 工程，最后通过 `open_async_fifo_project_gui.tcl` 打开工程和最新 `async_fifo_smoke_*.wdb` 波形。流程也保留 `async_fifo_smoke.wdb` 作为历史固定名兼容路径。
 
-## 开发测试
+## P2.6-P2.12
 
-安装测试依赖：
+- P2.6：`parse_async_fifo_wcfg_summary()` 验证 `async_fifo_debug.wcfg`，检查 `WVObjectSize` 和关键信号。
+- P2.7：`write_async_fifo_regression_matrix()` 输出 `reports/regression_matrix.md`，记录 `DATA_WIDTH` / `ADDR_WIDTH` 回归组合。
+- P2.8：`write_async_fifo_summary_report()` 输出 `reports/sim_summary.md` 和 `reports/sim_summary.html`，汇总 VCD、WDB、WCFG、场景、统计和命令。
+- P2.9：`run_async_fifo_regression()` 驱动真实参数矩阵，`--regress-rtl async-fifo` 输出 `reports/regression_summary.md` 和 `reports/regression_summary.html`。
+- P2.10：`write_async_fifo_wave_visibility_report()` 输出 `reports/wave_visibility.md` 和 `reports/wave_visibility.html`，验收 Vivado 工程、最新 WDB、GUI Tcl、`open_project`、`open_wave_database` 和 WCFG 关键对象。
+- P2.11：`write_async_fifo_wave_screenshot_report()` 输出 `reports/wave_screenshot.md`、`reports/wave_screenshot.html` 和 `reports/capture_wave_screenshot.ps1`，用于沉淀人工可见的 Vivado GUI 波形截图。
+- P2.12：`write_async_fifo_reports_index()` 输出 `reports/index.md` 和 `reports/index.html`，集中链接仿真摘要、回归摘要、波形可见性、截图验收和问题复盘。
 
-```bash
-python -m pip install -r requirements-dev.txt
+## P3.0
+
+- P3.0：`write_async_fifo_uvm_smoke_project()` 生成最小 UVM 环境，包括 interface、sequence、driver、monitor、scoreboard、env 和 `async_fifo_basic_test`。
+- `--uvm-smoke async-fifo --no-wave-gui --output-dir outputs` 会批量运行 Vivado/xsim UVM smoke，生成 `sim/async_fifo_uvm_smoke.log`、`sim/async_fifo_uvm_smoke.wdb`、`reports/uvm_smoke_report.md` 和 `reports/uvm_smoke_report.html`。
+- 当前验收标记是 `ASYNC_FIFO_UVM_SCOREBOARD_PASS` 和 `ASYNC_FIFO_UVM_TEST_DONE`；P3.0 不做覆盖率统计，覆盖率建议作为 P3.1 单独接入。
+- 如果需要看波形，先批量跑通 smoke，再用 Vivado GUI 打开对应 WDB，避免把回归批处理和人工 GUI 查看混在一起。
+
+## P3.1
+
+- P3.1：`write_async_fifo_uvm_coverage_project()` 复用 P3.0 UVM 环境，并额外生成 `sim/run_vivado_async_fifo_uvm_coverage.tcl`。
+- `--uvm-coverage async-fifo --output-dir outputs` 会启用 `-cc_type sbct`，将 Vivado/xsim code coverage 写入 `sim/coverage/xsim.codeCov/async_fifo_uvm_cov/xsim.CCInfo`。
+- 覆盖率报告输出到 `reports/uvm_coverage_report.md` 和 `reports/uvm_coverage_report.html`，中文记录 UVM 标记、WDB、覆盖率目录和 code coverage DB。
+- 本阶段覆盖率先做产物级验收：确认 scoreboard/test done 通过，且 `xsim.codeCov` 数据库存在；覆盖率百分比解析和阈值 gate 可作为 P3.2。
+
+## P3.2-P3.7
+
+- P3.2：`write_async_fifo_uvm_coverage_summary_report()` 生成 `reports/uvm_coverage_summary.md/html`，解析 `xsim.CCInfo` 中的可读元信息，并支持 `--coverage-threshold` / `--coverage-percent` gate。
+- P3.3：`extract_async_fifo_coverage_percent()` 支持从文本报告解析 statement、branch、condition、toggle 和 total 百分比，为后续接入 Vivado 官方百分比导出预留稳定入口。
+- P3.4：UVM package 中加入 `covergroup async_fifo_cg`，`write_async_fifo_uvm_functional_coverage_report()` 输出 `reports/uvm_functional_coverage.md/html`。
+- P3.5：`--uvm-random-regress async-fifo --uvm-seeds 11,22,33` 运行多 seed UVM 回归，并生成 `reports/uvm_random_regression.md/html`。
+- P3.6：`write_async_fifo_uvm_smoke_project()` 额外生成 `uvm/async_fifo_sva.sv`，并在 UVM top 中绑定基础 SVA。
+- P3.7：`--open-uvm-wave async-fifo --uvm-wave-kind smoke|coverage` 直接打开 UVM WDB，避免混用 RTL WDB 或 VCD。
+
+## 问题复盘
+
+Vivado/async FIFO 仿真过程中遇到的问题已沉淀到：
+
+```text
+docs/vivado_async_fifo_lessons_learned.md
 ```
 
-运行测试：
-
-```bash
-python -m pytest tests/test_agent.py -v
-```
-
-## 故障排除
-
-| 问题 | 解决方案 |
-| --- | --- |
-| Vivado 未找到 | 安装 Vivado 并添加到 PATH，或使用 `--no-tool-check` 仅生成模板 |
-| uv 未找到 | 安装 uv，参考 [uv 安装文档](https://astral.sh/uv) |
-| SynthPilot 不可用 | 确认 `uvx synthpilot --version` 可运行 |
-| 技能文件缺失 | 检查 `.trae/skills` 目录 |
-
-## 版本历史
-
-| 版本 | 日期 | 更新内容 |
-| --- | --- | --- |
-| v1.1 | 2026-06-18 | 增加 CLI 参数、诊断模式、技能列表和设计说明模板生成 |
-| v1.0 | 2026-05-15 | 初始版本 |
+后续如果出现“GUI 打开但没有波形”，先检查三件事：WDB 是否打开、Scope/Objects 是否有对象、`async_fifo_debug.wcfg` 的 `WVObjectSize` 是否大于 0。
