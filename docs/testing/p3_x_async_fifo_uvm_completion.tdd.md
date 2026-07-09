@@ -2,7 +2,7 @@
 
 ## 来源计划
 
-用户要求“完成 P3.x 的所有任务”。本阶段承接 P3.0-P3.2，补齐 P3.3-P3.12：覆盖率百分比文本解析降级路径、functional coverage、随机 seed 回归、SVA 断言包、UVM WDB GUI 专用入口、seed 独立输出目录、UVM GUI 波形截图验收、覆盖率 gate 诊断增强、Vivado 覆盖率百分比自动导出、真实 Vivado 2025.2 coverage 导出验收。
+用户要求“完成 P3.x 的所有任务”。本阶段承接 P3.0-P3.2，补齐 P3.3-P3.13：覆盖率百分比文本解析降级路径、functional coverage、随机 seed 回归、SVA 断言包、UVM WDB GUI 专用入口、seed 独立输出目录、UVM GUI 波形截图验收、覆盖率 gate 诊断增强、Vivado 覆盖率百分比自动导出、真实 Vivado 2025.2 coverage 导出验收，以及覆盖率报告总览增强。
 
 ## 用户旅程
 
@@ -131,6 +131,7 @@ outputs\async-fifo\reports\uvm_random_regression.md 显示 3/3 PASS
 | 11 | 覆盖率 gate 诊断输出当前覆盖率、阈值、差距和缺失百分比原因 | `tests/test_agent.py::test_write_async_fifo_uvm_coverage_summary_report_gates_threshold` / `tests/test_agent.py::test_write_async_fifo_uvm_coverage_summary_report_requires_percent_when_threshold_set` | 报告 | PASS |
 | 12 | Vivado coverage Tcl 自动尝试导出 `uvm_coverage_percent.txt`，runner 自动解析 `Total Coverage` 并驱动 gate | `tests/test_agent.py::test_generate_async_fifo_uvm_coverage_script_enables_xsim_code_coverage` / `tests/test_agent.py::test_run_async_fifo_uvm_coverage_uses_auto_percent_report` | 报告/集成边界 | PASS |
 | 13 | Vivado 2025.2 使用 `xcrg` 生成真实 coverage HTML 和 score 文本，runner 自动解析并驱动 gate | `tests/test_agent.py::test_extract_async_fifo_coverage_percent_parses_xcrg_scores` / `python .trae/agent/agent.py --uvm-coverage async-fifo --coverage-threshold 1 --output-dir outputs` | 真实工具集成 | PASS |
+| 14 | P3.13 coverage summary 和 reports index 直接链接 `xcrg` 官方 code/functional HTML，并展示 line/branch/condition/toggle 分项覆盖率 | `tests/test_agent.py::test_async_fifo_reports_index_links_core_reports_and_lessons` / `tests/test_agent.py::test_write_async_fifo_uvm_coverage_summary_report_gates_threshold` | 报告 | PASS |
 
 ## 已知缺口
 

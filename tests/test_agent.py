@@ -727,8 +727,23 @@ def test_async_fifo_reports_index_links_core_reports_and_lessons(tmp_path):
         "regression_summary.html",
         "wave_visibility.html",
         "wave_screenshot.html",
+        "uvm_coverage_summary.html",
     ]:
         (reports_dir / name).write_text("<html></html>\n", encoding="utf-8")
+    xcrg_code_report = reports_dir / "uvm_coverage_xcrg" / "codeCoverageReport" / "dashboard.html"
+    xcrg_func_report = reports_dir / "uvm_coverage_xcrg" / "functionalCoverageReport" / "dashboard.html"
+    xcrg_code_report.parent.mkdir(parents=True, exist_ok=True)
+    xcrg_func_report.parent.mkdir(parents=True, exist_ok=True)
+    xcrg_code_report.write_text("<html>code</html>\n", encoding="utf-8")
+    xcrg_func_report.write_text("<html>functional</html>\n", encoding="utf-8")
+    (reports_dir / "xcrg_coverage.log").write_text("xcrg ok\n", encoding="utf-8")
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "Line Coverage Score 60.2041\n"
+        "Branch Coverage Score 23.5294\n"
+        "Condition Coverage Score 22\n"
+        "Toggle Coverage Score 4.84\n",
+        encoding="utf-8",
+    )
 
     report = agent.write_async_fifo_reports_index(project_dir)
     text = report["markdown_path"].read_text(encoding="utf-8")
@@ -747,6 +762,14 @@ def test_async_fifo_reports_index_links_core_reports_and_lessons(tmp_path):
     assert "regression_summary.html" in html_text
     assert "wave_visibility.html" in html_text
     assert "wave_screenshot.html" in html_text
+    assert "uvm_coverage_summary.html" in text
+    assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in text
+    assert "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html" in text
+    assert "xcrg_coverage.log" in text
+    assert "uvm_coverage_percent.txt" in text
+    assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in html_text
+    assert "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html" in html_text
+    assert "xcrg_coverage.log" in html_text
 
 
 def test_async_fifo_summary_report_includes_wcfg_scenarios_and_commands(monkeypatch, tmp_path):
@@ -1135,6 +1158,22 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_threshold(tmp_path):
         b"xsim.codeCov\x00async_fifo_uvm_cov\x00sbct\x00"
         b"../rtl/async_fifo.v\x00tb_async_fifo_uvm.dut\x00"
     )
+    reports_dir = project_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    xcrg_code_report = reports_dir / "uvm_coverage_xcrg" / "codeCoverageReport" / "dashboard.html"
+    xcrg_func_report = reports_dir / "uvm_coverage_xcrg" / "functionalCoverageReport" / "dashboard.html"
+    xcrg_code_report.parent.mkdir(parents=True, exist_ok=True)
+    xcrg_func_report.parent.mkdir(parents=True, exist_ok=True)
+    xcrg_code_report.write_text("<html>code coverage</html>\n", encoding="utf-8")
+    xcrg_func_report.write_text("<html>functional coverage</html>\n", encoding="utf-8")
+    (reports_dir / "xcrg_coverage.log").write_text("xcrg ok\n", encoding="utf-8")
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "Line Coverage Score 60.2041\n"
+        "Branch Coverage Score 23.5294\n"
+        "Condition Coverage Score 22\n"
+        "Toggle Coverage Score 4.84\n",
+        encoding="utf-8",
+    )
 
     report = agent.write_async_fifo_uvm_coverage_summary_report(
         project_dir,
@@ -1151,6 +1190,11 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_threshold(tmp_path):
     assert "差距 4.5%" in report["gate_diagnostic"]
     assert report["markdown_path"].name == "uvm_coverage_summary.md"
     assert report["html_path"].name == "uvm_coverage_summary.html"
+    assert report["coverage_percent_summary"]["total_percent"] == 27.64
+    assert report["coverage_percent_summary"]["metrics"]["statement"] == 60.2041
+    assert report["xcrg_code_report_path"] == xcrg_code_report
+    assert report["xcrg_functional_report_path"] == xcrg_func_report
+    assert report["xcrg_log_path"] == reports_dir / "xcrg_coverage.log"
     text = report["markdown_path"].read_text(encoding="utf-8")
     html_text = report["html_path"].read_text(encoding="utf-8")
     assert "# async-fifo UVM 覆盖率摘要" in text
@@ -1163,8 +1207,20 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_threshold(tmp_path):
     assert "statement / branch / condition / toggle" in text
     assert "../rtl/async_fifo.v" in text
     assert "tb_async_fifo_uvm.dut" in text
+    assert "60.2%" in text
+    assert "23.5%" in text
+    assert "22.0%" in text
+    assert "4.8%" in text
+    assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in text
+    assert "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html" in text
+    assert "xcrg_coverage.log" in text
+    assert "uvm_coverage_percent.txt" in text
     assert "覆盖率摘要" in html_text
     assert "coverage-dashboard fail" in html_text
+    assert "60.2%" in html_text
+    assert "23.5%" in html_text
+    assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in html_text
+    assert "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html" in html_text
     assert "差距 4.5%" in html_text
 
 

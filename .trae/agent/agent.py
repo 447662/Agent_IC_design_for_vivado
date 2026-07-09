@@ -916,6 +916,13 @@ Write-Host "Saved UVM waveform screenshot to $output"
             ("UVM GUI 波形截图", "uvm_wave_screenshot.html", "uvm_wave_screenshot.md", "UVM WDB 人工可见波形截图与截图捕获脚本"),
             ("问题复盘", "docs/vivado_async_fifo_lessons_learned.md", None, "历史问题、根因、修复方式和后续建议"),
         ]
+        report_items.extend([
+            ("UVM Coverage Summary", "uvm_coverage_summary.html", "uvm_coverage_summary.md", "P3.13 summary with gate result, coverage scores, and xcrg links"),
+            ("Vivado Code Coverage", "uvm_coverage_xcrg/codeCoverageReport/dashboard.html", None, "Official xcrg code coverage HTML dashboard"),
+            ("Vivado Functional Coverage", "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html", None, "Official xcrg functional coverage HTML dashboard"),
+            ("XCRG Log", "xcrg_coverage.log", None, "Vivado xcrg export log"),
+            ("Coverage Percent Text", "uvm_coverage_percent.txt", None, "Parsed xcrg score text used by coverage gate"),
+        ])
         ready_count = 0
         rows = []
         for title, html_name, md_name, note in report_items:
@@ -1907,6 +1914,10 @@ exit 0
         coverage_dir = sim_dir / "coverage"
         code_cov_dir = coverage_dir / "xsim.codeCov" / "async_fifo_uvm_cov"
         code_cov_info = code_cov_dir / "xsim.CCInfo"
+        coverage_percent_report_path = reports_dir / "uvm_coverage_percent.txt"
+        xcrg_code_report_path = reports_dir / "uvm_coverage_xcrg" / "codeCoverageReport" / "dashboard.html"
+        xcrg_functional_report_path = reports_dir / "uvm_coverage_xcrg" / "functionalCoverageReport" / "dashboard.html"
+        xcrg_log_path = reports_dir / "xcrg_coverage.log"
 
         log_text = ""
         if log_path.exists():
@@ -1917,6 +1928,7 @@ exit 0
         combined = "\n".join(part for part in [log_text, tool_text] if part)
         smoke_passed = "ASYNC_FIFO_UVM_SCOREBOARD_PASS" in combined and "ASYNC_FIFO_UVM_TEST_DONE" in combined
         coverage_summary = self.parse_async_fifo_coverage_summary(code_cov_info)
+        coverage_percent_summary = self.extract_async_fifo_coverage_percent(coverage_percent_report_path)
         coverage_ready = coverage_summary["available"]
 
         coverage_gate_passed = True
@@ -1953,6 +1965,35 @@ exit 0
         status = "PASS" if passed else "FAIL"
         coverage_types_text = " / ".join(coverage_summary["coverage_types"]) or "未识别"
         current_coverage_text = "N/A" if coverage_percent is None else "{:.1f}%".format(float(coverage_percent))
+        metric_labels = [
+            ("statement", "Statement/Line"),
+            ("branch", "Branch"),
+            ("condition", "Condition"),
+            ("toggle", "Toggle"),
+        ]
+        coverage_metric_lines = []
+        coverage_metric_cards = []
+        for metric_key, metric_label in metric_labels:
+            metric_value = coverage_percent_summary["metrics"].get(metric_key)
+            metric_text = "N/A" if metric_value is None else "{:.1f}%".format(metric_value)
+            coverage_metric_lines.append("- {} Coverage: {}".format(metric_label, metric_text))
+            coverage_metric_cards.append(
+                '<div class="metric"><span>{} Coverage</span><strong>{}</strong></div>'.format(
+                    html.escape(metric_label),
+                    html.escape(metric_text),
+                )
+            )
+        total_metric_text = (
+            "N/A"
+            if coverage_percent_summary["total_percent"] is None
+            else "{:.1f}%".format(float(coverage_percent_summary["total_percent"]))
+        )
+        xcrg_links = [
+            ("Vivado Code Coverage", "uvm_coverage_xcrg/codeCoverageReport/dashboard.html", xcrg_code_report_path),
+            ("Vivado Functional Coverage", "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html", xcrg_functional_report_path),
+            ("XCRG Log", "xcrg_coverage.log", xcrg_log_path),
+            ("Coverage Percent Text", "uvm_coverage_percent.txt", coverage_percent_report_path),
+        ]
         threshold_text = "未设置" if coverage_threshold is None else "{:.1f}%".format(float(coverage_threshold))
 
         lines = [
@@ -1996,6 +2037,20 @@ exit 0
                 "",
                 "- Vivado batch return code：{}".format(sim_result.returncode),
             ])
+        lines.extend([
+            "",
+            "## P3.13 xcrg Coverage Scores",
+            "",
+            "- Total Coverage: {}".format(total_metric_text),
+            *coverage_metric_lines,
+            "",
+            "## P3.13 xcrg Report Links",
+            "",
+        ])
+        lines.extend(
+            "- {}: `{}` ({})".format(title, rel_path, "FOUND" if path.exists() else "MISSING")
+            for title, rel_path, path in xcrg_links
+        )
         md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         dashboard_class = "pass" if passed else "fail"
@@ -2033,6 +2088,10 @@ exit 0
             ".metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}",
             ".metric{padding:14px;border-radius:8px;background:#f7f9fc;border:1px solid #e2e8f0}",
             ".metric span{display:block;color:#637083;font-size:13px}.metric strong{display:block;margin-top:6px;font-size:24px}",
+            ".links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}",
+            ".link-card{padding:14px;border-radius:8px;background:#f8fbff;border:1px solid #dbe7f5}",
+            ".link-card a{color:#175cd3;word-break:break-all}",
+            ".link-card strong{display:block;margin-bottom:6px}",
             ".diagnostic{padding:14px 16px;margin:14px 0;border-radius:8px;background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12}",
             ".badge{display:inline-block;margin:3px 6px 3px 0;padding:5px 9px;border-radius:999px;background:#e7f0f8;color:#17324d;font-weight:600}",
             ".muted{background:#eef1f5;color:#637083}",
@@ -2068,6 +2127,26 @@ exit 0
             "</html>",
             "",
         ]
+        xcrg_html_block = [
+            "<h2>P3.13 xcrg Coverage Scores</h2>",
+            '<div class="metrics">',
+            '<div class="metric"><span>Total Coverage</span><strong>{}</strong></div>'.format(html.escape(total_metric_text)),
+            "\n".join(coverage_metric_cards),
+            "</div>",
+            "<h2>P3.13 xcrg Report Links</h2>",
+            '<div class="links">',
+            "\n".join(
+                '<article class="link-card"><strong>{}</strong><a href="{}">{}</a><p>{}</p></article>'.format(
+                    html.escape(title),
+                    html.escape(rel_path),
+                    html.escape(rel_path),
+                    "FOUND" if path.exists() else "MISSING",
+                )
+                for title, rel_path, path in xcrg_links
+            ),
+            "</div>",
+        ]
+        html_lines[-5:-5] = xcrg_html_block
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
         return {
             "passed": passed,
@@ -2077,9 +2156,14 @@ exit 0
             "coverage_gap": coverage_gap,
             "gate_diagnostic": gate_diagnostic,
             "coverage_summary": coverage_summary,
+            "coverage_percent_summary": coverage_percent_summary,
             "markdown_path": md_path,
             "html_path": html_path,
             "log_path": log_path,
+            "xcrg_code_report_path": xcrg_code_report_path,
+            "xcrg_functional_report_path": xcrg_functional_report_path,
+            "xcrg_log_path": xcrg_log_path,
+            "coverage_percent_report_path": coverage_percent_report_path,
             "wdb_path": wdb_path,
             "coverage_dir": coverage_dir,
             "code_cov_dir": code_cov_dir,
