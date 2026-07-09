@@ -77,3 +77,16 @@ P5.2 暂不要求：
 - 复用优先：复用 async FIFO 已沉淀的 Vivado/WDB/VCD/RWave 经验，但不把第二个目标硬塞进 async FIFO 的专用函数。
 - 报告中文为主：用户阅读报告必须是中文，测试断言优先使用稳定路径、状态和 ASCII 标记。
 - 不自动删除用户文件：所有新产物写入独立输出目录。
+
+## 2026-07-09 状态快照
+
+P5.0-P5.5 已完成并推送到 GitHub：
+
+- P5.0：最小 target registry 与 `--list-targets`。
+- P5.1：target 配置文件化，使用 `.trae/agent/targets/*.json`。
+- P5.2：第二个 RTL target `sync-fifo` 最小闭环。
+- P5.3：第三个 RTL target `round-robin-arbiter` 最小闭环。
+- P5.4：通用 `design_spec.md/html` 生成。
+- P5.5：通用 `verification_plan.md/html` 生成。
+
+后续未完成规划已经集中记录到 `docs/roadmap/project_followup_backlog.md`。后续继续设计时，以该 backlog 作为入口，再结合 `p4_future_upgrade_roadmap.md` 和 `p5_general_digital_ic_agent_design.md` 细化任务。
