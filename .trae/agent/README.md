@@ -57,6 +57,7 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 - 默认 `--wave-backend auto`：优先使用 RWaveAnalyzer 的 `rwave`，不可用或运行失败时降级到 `VCD_ANALYZER-main`。
 - `RWAVE_BIN` 可指定本机 `rwave.exe` 绝对路径；如果未设置，Agent 会查找 PATH 和已构建的 RWaveAnalyzer `target/release/rwave.exe`。
 - `--wave-backend rwave` 用于强制验证 RWaveAnalyzer；`--wave-backend vcd-analyzer` 用于强制旧 Python 分析器兼容路径。
+- `--analyze-rtl-vcd async-fifo` 在 RWaveAnalyzer 可用时优先走 batch 模式：一次加载 `async_fifo_trace.vcd`，连续执行 `info`、写计数变化搜索、读计数变化搜索，减少重复解析 VCD 的开销。
 - 当前已经用最新 `RWaveAnalyzer-main.zip` 临时解压并 `cargo build --release` 验证，`rwave 0.1.4` 可以读取现有 `handshake_trace.vcd`。
 
 如果只需要批处理结果：

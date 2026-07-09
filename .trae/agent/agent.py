@@ -412,6 +412,48 @@ class DigitalICAgent:
         data["_waveform_backend"] = "rwave"
         return data
 
+    def run_rwave_batch_json(self, waveform_path, command_lines):
+        rwave_command = self.resolve_rwave_command()
+        if not rwave_command:
+            raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
+
+        result = subprocess.run(
+            [rwave_command, "--batch", "--json", str(waveform_path)],
+            input="\n".join(str(line) for line in command_lines) + "\n",
+            cwd=self.project_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip() or "rwave batch failed"
+            raise RuntimeError(message)
+
+        parsed = {}
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("rwave batch returned invalid JSON: {}".format(exc))
+
+            result_id = row.get("id")
+            if not result_id:
+                raise RuntimeError("rwave batch result missing id")
+            if row.get("ok") is False:
+                error = row.get("error") or "rwave batch command failed"
+                raise RuntimeError("{}: {}".format(result_id, error))
+
+            item = row.get("result", {})
+            if isinstance(item, dict):
+                item["_waveform_backend"] = "rwave"
+            parsed[result_id] = item
+
+        return parsed
+
     def run_vcd_analyzer_json(self, *args):
         analyzer_path = self.resolve_vcd_analyzer_path()
         if not analyzer_path.exists():
@@ -514,10 +556,45 @@ class DigitalICAgent:
     def resolve_async_fifo_vcd_path(self, output_dir="outputs"):
         return Path(output_dir) / "async-fifo" / "sim" / "async_fifo_trace.vcd"
 
+    def collect_async_fifo_vcd_analysis_with_rwave_batch(self, vcd_path, limit=20):
+        command_lines = [
+            "info #info",
+            (
+                "search --condition tb_async_fifo.full=0 "
+                "--changed tb_async_fifo.write_count "
+                "--show tb_async_fifo.wr_data,tb_async_fifo.write_count "
+                "--limit {} #write_events"
+            ).format(int(limit)),
+            (
+                "search --condition tb_async_fifo.error_count=0 "
+                "--changed tb_async_fifo.read_count "
+                "--show tb_async_fifo.rd_data,tb_async_fifo.read_count "
+                "--limit {} #read_events"
+            ).format(int(limit)),
+        ]
+        batch = self.run_rwave_batch_json(vcd_path, command_lines)
+        return {
+            "vcd_path": vcd_path,
+            "info": batch["info"],
+            "write_events": batch["write_events"],
+            "read_events": batch["read_events"],
+        }
+
     def collect_async_fifo_vcd_analysis(self, output_dir="outputs", limit=20, waveform_backend="auto"):
         vcd_path = self.resolve_async_fifo_vcd_path(output_dir)
         if not vcd_path.exists():
             raise FileNotFoundError("Async FIFO VCD file not found: {}".format(vcd_path))
+
+        backend = str(waveform_backend or "auto").strip().lower()
+        if backend == "rwave" or (backend == "auto" and self.resolve_rwave_command()):
+            try:
+                return self.collect_async_fifo_vcd_analysis_with_rwave_batch(vcd_path, limit=limit)
+            except FileNotFoundError:
+                if backend == "rwave":
+                    raise
+            except RuntimeError:
+                if backend == "rwave":
+                    raise
 
         info = self.run_waveform_analyzer_json("info", vcd_path, backend=waveform_backend)
         write_events = self.run_waveform_analyzer_json(

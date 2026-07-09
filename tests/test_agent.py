@@ -262,6 +262,46 @@ def test_waveform_analyzer_can_require_rwave(monkeypatch, tmp_path):
         raise AssertionError("Expected forced rwave backend to fail when rwave is missing")
 
 
+def test_rwave_batch_json_parses_ndjson_results(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "wave.vcd"
+    vcd_path.write_text("$date\nwave\n$end\n", encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr(agent, "resolve_rwave_command", lambda: "rwave")
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+
+        class Result:
+            returncode = 0
+            stdout = "\n".join([
+                '{"id":"info","ok":true,"result":{"signal_count":12}}',
+                '{"id":"write_events","ok":true,"result":{"total":2,"events":[]}}',
+                '{"id":"read_events","ok":true,"result":{"total":3,"events":[]}}',
+            ])
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    result = agent.run_rwave_batch_json(vcd_path, [
+        "info #info",
+        "search --condition tb_async_fifo.full=0 --changed tb_async_fifo.write_count #write_events",
+        "search --condition tb_async_fifo.error_count=0 --changed tb_async_fifo.read_count #read_events",
+    ])
+
+    assert result["info"]["signal_count"] == 12
+    assert result["write_events"]["total"] == 2
+    assert result["read_events"]["total"] == 3
+    assert calls[0][0] == ["rwave", "--batch", "--json", str(vcd_path)]
+    assert "info #info" in calls[0][1]["input"]
+    assert "tb_async_fifo.write_count" in calls[0][1]["input"]
+    assert "tb_async_fifo.read_count" in calls[0][1]["input"]
+
+
 def test_cli_smoke_loop_generates_and_analyzes_vcd(tmp_path):
     result = run_agent("--smoke-loop", "--output-dir", str(tmp_path), "--vcd-limit", "5")
 
@@ -1025,25 +1065,36 @@ def test_analyze_async_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, t
     vcd_path.write_text("$date\nasync fifo\n$end\n", encoding="utf-8")
     calls = []
 
-    def fake_run_waveform_analyzer_json(*args, backend="auto"):
-        calls.append(args)
-        if args[0] == "info":
-            return {
+    monkeypatch.setattr(agent, "resolve_rwave_command", lambda: "rwave")
+
+    def fake_run_rwave_batch_json(path, command_lines):
+        calls.append((path, command_lines))
+        return {
+            "info": {
                 "signal_count": 12,
                 "time_min_h": "0 ns",
                 "time_max_h": "240 ns",
                 "duration_h": "240 ns",
                 "timescale": "1 ns",
-            }
-        return {
-            "total": 2,
-            "events": [
-                {"time_h": "50 ns", "values": {"data": "0x11"}},
-                {"time_h": "60 ns", "values": {"data": "0x22"}},
-            ],
+                "_waveform_backend": "rwave",
+            },
+            "write_events": {
+                "total": 2,
+                "events": [
+                    {"time_h": "50 ns", "values": {"data": "0x11"}},
+                    {"time_h": "60 ns", "values": {"data": "0x22"}},
+                ],
+            },
+            "read_events": {
+                "total": 2,
+                "events": [
+                    {"time_h": "70 ns", "values": {"data": "0x11"}},
+                    {"time_h": "80 ns", "values": {"data": "0x22"}},
+                ],
+            },
         }
 
-    monkeypatch.setattr(agent, "run_waveform_analyzer_json", fake_run_waveform_analyzer_json)
+    monkeypatch.setattr(agent, "run_rwave_batch_json", fake_run_rwave_batch_json)
 
     assert agent.analyze_async_fifo_vcd(output_dir=tmp_path, limit=4) is True
 
@@ -1051,11 +1102,13 @@ def test_analyze_async_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, t
     assert "Async FIFO VCD analysis" in captured.out
     assert "Write handshakes: 2" in captured.out
     assert "Read handshakes: 2" in captured.out
-    assert calls[0] == ("info", vcd_path)
-    assert "tb_async_fifo.full=0" in calls[1]
-    assert "tb_async_fifo.write_count" in calls[1]
-    assert "tb_async_fifo.error_count=0" in calls[2]
-    assert "tb_async_fifo.read_count" in calls[2]
+    assert calls[0][0] == vcd_path
+    assert len(calls[0][1]) == 3
+    assert calls[0][1][0] == "info #info"
+    assert "tb_async_fifo.full=0" in calls[0][1][1]
+    assert "tb_async_fifo.write_count" in calls[0][1][1]
+    assert "tb_async_fifo.error_count=0" in calls[0][1][2]
+    assert "tb_async_fifo.read_count" in calls[0][1][2]
 
 
 def test_cli_analyze_rtl_vcd_async_fifo_invokes_analyzer(monkeypatch, tmp_path):

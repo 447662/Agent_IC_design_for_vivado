@@ -78,9 +78,28 @@ Backend: rwave
 | 4 | `--wave-backend rwave` 在缺少 rwave 时不会静默降级 | `test_waveform_analyzer_can_require_rwave` | PASS |
 | 5 | async FIFO VCD 分析走统一后端入口 | `test_analyze_async_fifo_vcd_reports_write_and_read_handshakes` | PASS |
 | 6 | CLI `--analyze-rtl-vcd` 能透传指定后端 | `test_cli_analyze_rtl_vcd_async_fifo_invokes_analyzer` | PASS |
+| 7 | RWaveAnalyzer batch NDJSON 输出可按 id 汇总 | `test_rwave_batch_json_parses_ndjson_results` | PASS |
+| 8 | async FIFO 在 RWaveAnalyzer 可用时优先一次 batch 完成三类查询 | `test_analyze_async_fifo_vcd_reports_write_and_read_handshakes` | PASS |
+
+## Batch 模式补充
+
+- 新增 `DigitalICAgent.run_rwave_batch_json()`：调用 `rwave --batch --json <waveform>`，通过 stdin 输入多条查询命令，并按每行 NDJSON 的 `id` 字段汇总结果。
+- async FIFO VCD 分析在 `--wave-backend auto` 且能找到 `rwave` 时优先使用 batch：一次加载 `async_fifo_trace.vcd`，连续执行 `info #info`、写 handshake 搜索、读 handshake 搜索。
+- `--wave-backend rwave` 为强制模式，batch 找不到或失败时直接报错；`auto` 模式保留旧版 `VCD_ANALYZER-main` 降级路径，保证没有 RWaveAnalyzer 时流程仍可运行。
+
+阶段目标测试：
+
+```powershell
+python -m pytest tests/test_agent.py -q -k "rwave_batch or analyze_async_fifo_vcd" --basetemp .tmp-agent-output\pytest-rwave-batch-green
+```
+
+结果：
+
+```text
+2 passed, 72 deselected
+```
 
 ## 后续
 
 - 增加 `--wave-format` 或自动识别 FST/GHW 的端到端样例。
-- 为 RWaveAnalyzer batch 模式增加一次加载、多查询的 async FIFO 分析路径。
 - 将波形后端信息写入 `sim_summary.html` 和报告总览页，便于回溯每次仿真使用的分析器。

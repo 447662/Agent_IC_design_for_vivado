@@ -151,6 +151,7 @@ python -m pytest tests/test_agent.py -v --basetemp .tmp-pytest
 - `--wave-backend auto` 是默认模式：优先调用 `RWAVE_BIN`、PATH 中的 `rwave`，或已构建的 RWaveAnalyzer `target/release/rwave.exe`；不可用时降级到 `VCD_ANALYZER-main/VCD_ANALYZER-main/vcd_analyzer.py`。
 - `--wave-backend rwave` 强制使用 RWaveAnalyzer，适合验证 VCD/FST/GHW 统一分析路径；如果找不到 `rwave` 会直接失败。
 - `--wave-backend vcd-analyzer` 强制使用旧版 Python VCD_ANALYZER，适合做兼容性对照。
+- async FIFO 的 `--analyze-rtl-vcd async-fifo` 在 RWaveAnalyzer 可用时会优先使用 `rwave --batch --json`，一次加载 VCD 并完成 `info`、写 handshake、读 handshake 三类查询；`auto` 模式下 batch 不可用时仍保留旧后端降级路径。
 - 最新 `RWaveAnalyzer-main.zip` 是本地下载包，不提交到仓库；需要验证时可临时解压并运行 `cargo build --release`，再设置 `RWAVE_BIN=<rwave.exe 路径>`。
 
 ## 项目结构
