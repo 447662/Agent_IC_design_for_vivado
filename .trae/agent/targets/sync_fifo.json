@@ -1,0 +1,17 @@
+{
+  "name": "sync-fifo",
+  "display_name": "Synchronous FIFO",
+  "design_family": "fifo",
+  "aliases": [
+    "sync_fifo",
+    "syncfifo"
+  ],
+  "flows": [
+    "generate-rtl",
+    "sim-rtl",
+    "analyze-rtl-vcd",
+    "check-rtl",
+    "open-wave"
+  ],
+  "description": "Single-clock FIFO with Vivado/xsim simulation, VCD/RWave analysis, and WDB GUI flow."
+}

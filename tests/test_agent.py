@@ -555,7 +555,7 @@ def test_p5_target_registry_lists_async_fifo_metadata():
     async_fifo = agent.get_target("async_fifo")
 
     assert target_config["name"] == "async-fifo"
-    assert target_names == ["async-fifo"]
+    assert target_names == ["async-fifo", "sync-fifo"]
     assert async_fifo["name"] == "async-fifo"
     assert async_fifo["display_name"] == "Asynchronous FIFO"
     assert async_fifo["design_family"] == "fifo"
@@ -564,6 +564,27 @@ def test_p5_target_registry_lists_async_fifo_metadata():
     assert "sim-rtl" in async_fifo["flows"]
     assert "uvm-coverage" in async_fifo["flows"]
     assert agent.normalize_rtl_target("async_fifo") == "async-fifo"
+
+
+def test_p5_2_target_registry_lists_sync_fifo_metadata():
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    target_config = json.loads((AGENT_TARGETS_DIR / "sync_fifo.json").read_text(encoding="utf-8"))
+    targets = agent.list_targets()
+    target_names = [target["name"] for target in targets]
+    sync_fifo = agent.get_target("sync_fifo")
+
+    assert target_config["name"] == "sync-fifo"
+    assert target_names == ["async-fifo", "sync-fifo"]
+    assert sync_fifo["name"] == "sync-fifo"
+    assert sync_fifo["display_name"] == "Synchronous FIFO"
+    assert sync_fifo["design_family"] == "fifo"
+    assert "sync_fifo" in sync_fifo["aliases"]
+    assert "generate-rtl" in sync_fifo["flows"]
+    assert "sim-rtl" in sync_fifo["flows"]
+    assert "analyze-rtl-vcd" in sync_fifo["flows"]
+    assert agent.normalize_rtl_target("sync_fifo") == "sync-fifo"
 
 
 def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
@@ -670,6 +691,64 @@ def test_generate_async_fifo_project_creates_rtl_tb_sim_reports(tmp_path):
     assert "save_wave_config $wave_cfg" in gui_script
 
 
+def test_p5_2_generate_sync_fifo_project_creates_rtl_tb_sim_reports(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    project_dir = agent.generate_rtl_project("sync-fifo", tmp_path)
+
+    assert project_dir == tmp_path / "sync-fifo"
+    rtl_path = project_dir / "rtl" / "sync_fifo.v"
+    tb_path = project_dir / "tb" / "tb_sync_fifo.v"
+    sim_script_path = project_dir / "sim" / "run_vivado_sync_fifo.tcl"
+    project_script_path = project_dir / "sim" / "create_sync_fifo_project.tcl"
+    gui_script_path = project_dir / "sim" / "open_sync_fifo_project_gui.tcl"
+    readme_path = project_dir / "README.md"
+
+    for path in [rtl_path, tb_path, sim_script_path, project_script_path, gui_script_path, project_dir / "reports", readme_path]:
+        assert path.exists()
+
+    rtl = rtl_path.read_text(encoding="utf-8")
+    assert "module sync_fifo" in rtl
+    assert "parameter DATA_WIDTH = 8" in rtl
+    assert "parameter ADDR_WIDTH = 4" in rtl
+    assert "reg [DATA_WIDTH-1:0] mem" in rtl
+    assert "assign full" in rtl
+    assert "assign empty" in rtl
+    assert "wire wr_fire" in rtl
+    assert "wire rd_fire" in rtl
+
+    tb = tb_path.read_text(encoding="utf-8")
+    assert "module tb_sync_fifo" in tb
+    assert "$dumpfile(\"sync_fifo_trace.vcd\")" in tb
+    assert "expected_data" in tb
+    assert "scenario_id" in tb
+    assert "SYNC_FIFO_SCENARIO basic_ordered PASS" in tb
+    assert "SYNC_FIFO_SCENARIO full_boundary PASS" in tb
+    assert "SYNC_FIFO_SCENARIO empty_boundary PASS" in tb
+    assert "SYNC_FIFO_SCENARIO mixed_stress PASS" in tb
+    assert "SYNC_FIFO_SCOREBOARD_PASS" in tb
+    assert "$fatal(1, \"SYNC_FIFO_SCOREBOARD_FAIL" in tb
+
+    sim_script = sim_script_path.read_text(encoding="utf-8")
+    assert "sync_fifo.v" in sim_script
+    assert "tb_sync_fifo.v" in sim_script
+    assert "sync_fifo_smoke" in sim_script
+
+    project_script = project_script_path.read_text(encoding="utf-8")
+    assert "create_project sync_fifo_project" in project_script
+    assert "sync_fifo_project.xpr" in project_script
+
+    gui_script = gui_script_path.read_text(encoding="utf-8")
+    assert "open_project $xpr_path" in gui_script
+    assert "open_wave_database $wave_db" in gui_script
+    assert "sync_fifo_smoke.wdb" in gui_script
+    assert "sync_fifo_debug.wcfg" in gui_script
+    assert "add_wave_divider {Control}" in gui_script
+    assert "add_wave_divider {Data}" in gui_script
+    assert "save_wave_config $wave_cfg" in gui_script
+
+
 def test_cli_generate_rtl_async_fifo_creates_project(tmp_path):
     result = run_agent(
         "--generate-rtl",
@@ -682,6 +761,22 @@ def test_cli_generate_rtl_async_fifo_creates_project(tmp_path):
     assert "async_fifo.v" in result.stdout
     assert (tmp_path / "async-fifo" / "rtl" / "async_fifo.v").exists()
     assert (tmp_path / "async-fifo" / "tb" / "tb_async_fifo.v").exists()
+
+
+def test_p5_2_cli_generate_rtl_sync_fifo_creates_project(tmp_path):
+    result = run_agent(
+        "--generate-rtl",
+        "sync-fifo",
+        "--output-dir",
+        str(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "sync_fifo.v" in result.stdout
+    assert "tb_sync_fifo.v" in result.stdout
+    assert "run_vivado_sync_fifo.tcl" in result.stdout
+    assert (tmp_path / "sync-fifo" / "rtl" / "sync_fifo.v").exists()
+    assert (tmp_path / "sync-fifo" / "tb" / "tb_sync_fifo.v").exists()
 
 
 def test_run_async_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypatch, tmp_path):
@@ -727,6 +822,118 @@ def test_run_async_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypatch,
         ([vivado_path, "-mode", "batch", "-source", "run_vivado_async_fifo.tcl"], sim_dir),
         ([vivado_path, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_async_fifo_project.tcl"], sim_dir),
     ]
+
+
+def test_p5_2_run_sync_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vivado_path = r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
+    calls = []
+
+    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
+
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+        calls.append(([str(part) for part in command], Path(cwd)))
+        if "run_vivado_sync_fifo.tcl" in command:
+            (Path(cwd) / "sync_fifo_trace.vcd").write_text("$date\nsync fifo\n$end\n", encoding="utf-8")
+            (Path(cwd) / "sync_fifo_smoke.wdb").write_text("wdb placeholder", encoding="utf-8")
+        if "create_sync_fifo_project.tcl" in command:
+            xpr = Path(cwd).parent / "vivado_project" / "sync_fifo_project.xpr"
+            xpr.parent.mkdir(parents=True, exist_ok=True)
+            xpr.write_text("<Project />\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="SYNC_FIFO_SCOREBOARD_PASS", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent, "open_sync_fifo_project_gui", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("GUI should be skipped")))
+    monkeypatch.setattr(
+        agent,
+        "collect_sync_fifo_vcd_analysis",
+        lambda output_dir="outputs", limit=20, waveform_backend="auto": {
+            "info": {"signal_count": 3, "time_min_h": "0 ns", "time_max_h": "10 ns", "duration_h": "10 ns", "timescale": "1 ns"},
+            "write_events": {"total": 1, "events": [{"time_h": "1 ns", "values": {"wr_data": "0x11"}}]},
+            "read_events": {"total": 1, "events": [{"time_h": "2 ns", "values": {"rd_data": "0x11"}}]},
+        },
+    )
+
+    assert agent.run_sync_fifo_vivado_sim(output_dir=tmp_path, open_wave_gui=False) is True
+
+    sim_dir = tmp_path / "sync-fifo" / "sim"
+    assert calls == [
+        ([vivado_path, "-mode", "batch", "-source", "run_vivado_sync_fifo.tcl"], sim_dir),
+        ([vivado_path, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_sync_fifo_project.tcl"], sim_dir),
+    ]
+    assert (tmp_path / "sync-fifo" / "sim" / "sync_fifo_trace.vcd").exists()
+    assert (tmp_path / "sync-fifo" / "sim" / "sync_fifo_smoke.wdb").exists()
+    assert (tmp_path / "sync-fifo" / "vivado_project" / "sync_fifo_project.xpr").exists()
+    assert (tmp_path / "sync-fifo" / "reports" / "sim_report.md").exists()
+    assert (tmp_path / "sync-fifo" / "reports" / "sim_report.html").exists()
+
+
+def test_p5_2_analyze_sync_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, tmp_path, capsys):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "sync-fifo" / "sim" / "sync_fifo_trace.vcd"
+    vcd_path.parent.mkdir(parents=True)
+    vcd_path.write_text("$date\nsync fifo\n$end\n", encoding="utf-8")
+    calls = []
+
+    def fake_run_waveform_analyzer_json(*args, backend="auto"):
+        calls.append(args)
+        if args[0] == "info":
+            return {
+                "signal_count": 9,
+                "time_min_h": "0 ns",
+                "time_max_h": "180 ns",
+                "duration_h": "180 ns",
+                "timescale": "1 ns",
+                "_waveform_backend": "vcd_analyzer",
+            }
+        return {
+            "total": 2,
+            "events": [
+                {"time_h": "50 ns", "values": {"data": "0x11"}},
+                {"time_h": "60 ns", "values": {"data": "0x22"}},
+            ],
+        }
+
+    monkeypatch.setattr(agent, "run_waveform_analyzer_json", fake_run_waveform_analyzer_json)
+
+    assert agent.analyze_sync_fifo_vcd(output_dir=tmp_path, limit=4) is True
+
+    captured = capsys.readouterr()
+    assert "Sync FIFO VCD analysis" in captured.out
+    assert "Write handshakes: 2" in captured.out
+    assert "Read handshakes: 2" in captured.out
+    assert calls[0] == ("info", vcd_path)
+    assert "tb_sync_fifo.full=0" in calls[1]
+    assert "tb_sync_fifo.write_count" in calls[1]
+    assert "tb_sync_fifo.empty=0" in calls[2]
+    assert "tb_sync_fifo.read_count" in calls[2]
+
+
+def test_p5_2_cli_analyze_rtl_vcd_sync_fifo_invokes_analyzer(monkeypatch, tmp_path):
+    module = load_agent_module()
+    calls = []
+
+    monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
+
+    def fake_analyze_sync_fifo_vcd(self, output_dir="outputs", limit=20, waveform_backend="auto"):
+        calls.append((output_dir, limit, waveform_backend))
+        return True
+
+    monkeypatch.setattr(module.DigitalICAgent, "analyze_sync_fifo_vcd", fake_analyze_sync_fifo_vcd)
+
+    assert module.main([
+        "--analyze-rtl-vcd",
+        "sync-fifo",
+        "--output-dir",
+        str(tmp_path),
+        "--vcd-limit",
+        "6",
+        "--wave-backend",
+        "rwave",
+    ]) == 0
+    assert calls == [(str(tmp_path), 6, "rwave")]
 
 
 def test_async_fifo_wcfg_validation_detects_required_wave_objects(tmp_path):
