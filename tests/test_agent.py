@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
 AGENT_CONFIG_PATH = ROOT / ".trae" / "agent" / "agent.json"
+AGENT_TARGETS_DIR = ROOT / ".trae" / "agent" / "targets"
 TRAE_CONFIG_PATH = ROOT / ".trae" / "config.json"
 HANDSHAKE_VCD_PATH = (
     ROOT
@@ -404,10 +405,12 @@ def test_p5_target_registry_lists_async_fifo_metadata():
     module = load_agent_module()
     agent = module.DigitalICAgent()
 
+    target_config = json.loads((AGENT_TARGETS_DIR / "async_fifo.json").read_text(encoding="utf-8"))
     targets = agent.list_targets()
     target_names = [target["name"] for target in targets]
     async_fifo = agent.get_target("async_fifo")
 
+    assert target_config["name"] == "async-fifo"
     assert target_names == ["async-fifo"]
     assert async_fifo["name"] == "async-fifo"
     assert async_fifo["display_name"] == "Asynchronous FIFO"
@@ -417,6 +420,22 @@ def test_p5_target_registry_lists_async_fifo_metadata():
     assert "sim-rtl" in async_fifo["flows"]
     assert "uvm-coverage" in async_fifo["flows"]
     assert agent.normalize_rtl_target("async_fifo") == "async-fifo"
+
+
+def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
+    module = load_agent_module()
+    targets_dir = tmp_path / "targets"
+    targets_dir.mkdir()
+    (targets_dir / "broken.json").write_text('{"display_name": "Broken"}', encoding="utf-8")
+
+    agent = module.DigitalICAgent()
+
+    try:
+        agent.load_target_registry(targets_dir)
+    except ValueError as exc:
+        assert "missing required field: name" in str(exc)
+    else:
+        raise AssertionError("Expected invalid target config to raise ValueError")
 
 
 def test_cli_list_targets_outputs_registered_targets(capsys):

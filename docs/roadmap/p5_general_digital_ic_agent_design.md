@@ -142,7 +142,7 @@ reports/lessons_learned.md
 - `--list-targets` 显示 async FIFO。
 - 原有 `--generate-rtl async-fifo`、`--sim-rtl async-fifo`、`--uvm-coverage async-fifo` 测试全绿。
 
-当前状态：已完成最小实现。`DigitalICAgent` 已提供 `build_target_registry()`、`list_targets()`、`get_target()` 和 `print_targets()`，CLI 已新增 `--list-targets`。当前注册目标为 `async-fifo`，别名包括 `async_fifo` 和 `asyncfifo`，现有 async FIFO flow 保持兼容。
+当前状态：已完成。`DigitalICAgent` 已提供 `load_target_registry()`、`build_target_registry()`、`list_targets()`、`get_target()` 和 `print_targets()`，CLI 已新增 `--list-targets`。当前注册目标为 `async-fifo`，别名包括 `async_fifo` 和 `asyncfifo`，现有 async FIFO flow 保持兼容。
 
 ### P5.1：目标配置文件
 
@@ -151,10 +151,12 @@ reports/lessons_learned.md
 建议路径：
 
 ```text
-.trae/agent/targets/async_fifo.yaml
+.trae/agent/targets/async_fifo.json
 ```
 
 建议内容：
+
+当前状态：已完成。`async-fifo` 的目标元信息已经迁移到 `.trae/agent/targets/async_fifo.json`，Agent 启动时从 `.trae/agent/targets/*.json` 加载 registry，并校验 `name`、`display_name`、`design_family`、`aliases`、`flows`、`description` 必填字段。P5.1 暂不引入 YAML 依赖，避免为一个配置格式增加额外运行时依赖。
 
 - 设计族。
 - 默认参数。

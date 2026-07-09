@@ -1,0 +1,22 @@
+{
+  "name": "async-fifo",
+  "display_name": "Asynchronous FIFO",
+  "design_family": "fifo",
+  "aliases": [
+    "async_fifo",
+    "asyncfifo"
+  ],
+  "flows": [
+    "generate-rtl",
+    "sim-rtl",
+    "regress-rtl",
+    "uvm-smoke",
+    "uvm-coverage",
+    "uvm-random-regress",
+    "analyze-rtl-vcd",
+    "check-rtl",
+    "open-wave",
+    "open-uvm-wave"
+  ],
+  "description": "Dual-clock FIFO with Gray pointers, Vivado/xsim simulation, UVM smoke, coverage, and WDB GUI flows."
+}

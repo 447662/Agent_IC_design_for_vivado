@@ -132,6 +132,7 @@ outputs/async-fifo/
 - P4 暂不作为当前必须实现项，coverage closure、低覆盖项定位、分项 gate、趋势记录和 GUI 自动验收已整理到 `docs/roadmap/p4_future_upgrade_roadmap.md`。
 - P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
 - P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理 `async-fifo` 元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。
+- P5.1 已完成目标配置文件化：`DigitalICAgent.load_target_registry()` 从 `.trae/agent/targets/*.json` 加载目标元信息，当前 async FIFO 配置为 `.trae/agent/targets/async_fifo.json`。
 
 ## 问题复盘
 

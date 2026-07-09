@@ -42,7 +42,8 @@ class DigitalICAgent:
         self.skill_mapping = {skill["name"]: skill for skill in self.agent_config["skills"]}
         self.mcp_servers = self.agent_config["mcpServers"]
         self.cli_tools = self.agent_config["cliTools"]
-        self.targets = self.build_target_registry()
+        self.targets_dir = self.base_dir / "targets"
+        self.targets = self.load_target_registry()
         self.OK = "[OK]"
         self.NO = "[NO]"
         self.WARN = "[WARN]"
@@ -119,27 +120,37 @@ class DigitalICAgent:
         return "未知"
 
     def build_target_registry(self):
-        return {
-            "async-fifo": {
-                "name": "async-fifo",
-                "display_name": "Asynchronous FIFO",
-                "design_family": "fifo",
-                "aliases": ["async_fifo", "asyncfifo"],
-                "flows": [
-                    "generate-rtl",
-                    "sim-rtl",
-                    "regress-rtl",
-                    "uvm-smoke",
-                    "uvm-coverage",
-                    "uvm-random-regress",
-                    "analyze-rtl-vcd",
-                    "check-rtl",
-                    "open-wave",
-                    "open-uvm-wave",
-                ],
-                "description": "Dual-clock FIFO with Gray pointers, Vivado/xsim simulation, UVM smoke, coverage, and WDB GUI flows.",
-            },
-        }
+        return self.load_target_registry()
+
+    def load_target_registry(self, targets_dir=None):
+        targets_dir = Path(targets_dir) if targets_dir else self.targets_dir
+        if not targets_dir.exists():
+            raise FileNotFoundError("Target registry directory not found: {}".format(targets_dir))
+
+        targets = {}
+        required_fields = ["name", "display_name", "design_family", "aliases", "flows", "description"]
+        for config_path in sorted(targets_dir.glob("*.json")):
+            with config_path.open("r", encoding="utf-8") as f:
+                target = json.load(f)
+
+            for field in required_fields:
+                if field not in target:
+                    raise ValueError("{} missing required field: {}".format(config_path, field))
+
+            target_name = str(target["name"]).strip().lower()
+            if not target_name:
+                raise ValueError("{} has empty target name".format(config_path))
+            if target_name in targets:
+                raise ValueError("Duplicate RTL target: {}".format(target_name))
+
+            target["name"] = target_name
+            target["aliases"] = [str(alias).strip() for alias in target.get("aliases", []) if str(alias).strip()]
+            target["flows"] = [str(flow).strip() for flow in target.get("flows", []) if str(flow).strip()]
+            targets[target_name] = target
+
+        if not targets:
+            raise ValueError("No RTL target configs found in {}".format(targets_dir))
+        return targets
 
     def list_targets(self):
         return [self.targets[name] for name in sorted(self.targets)]
