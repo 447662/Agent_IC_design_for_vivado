@@ -1,0 +1,19 @@
+{
+  "name": "round-robin-arbiter",
+  "display_name": "Round-Robin Arbiter",
+  "design_family": "arbiter",
+  "aliases": [
+    "round_robin_arbiter",
+    "roundrobinarbiter",
+    "rr-arbiter",
+    "rr_arbiter"
+  ],
+  "flows": [
+    "generate-rtl",
+    "sim-rtl",
+    "analyze-rtl-vcd",
+    "check-rtl",
+    "open-wave"
+  ],
+  "description": "Four-requester round-robin arbiter with Vivado/xsim simulation, fairness scenarios, VCD/RWave analysis, and WDB GUI flow."
+}

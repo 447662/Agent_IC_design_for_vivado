@@ -555,7 +555,7 @@ def test_p5_target_registry_lists_async_fifo_metadata():
     async_fifo = agent.get_target("async_fifo")
 
     assert target_config["name"] == "async-fifo"
-    assert target_names == ["async-fifo", "sync-fifo"]
+    assert target_names == ["async-fifo", "round-robin-arbiter", "sync-fifo"]
     assert async_fifo["name"] == "async-fifo"
     assert async_fifo["display_name"] == "Asynchronous FIFO"
     assert async_fifo["design_family"] == "fifo"
@@ -576,7 +576,7 @@ def test_p5_2_target_registry_lists_sync_fifo_metadata():
     sync_fifo = agent.get_target("sync_fifo")
 
     assert target_config["name"] == "sync-fifo"
-    assert target_names == ["async-fifo", "sync-fifo"]
+    assert target_names == ["async-fifo", "round-robin-arbiter", "sync-fifo"]
     assert sync_fifo["name"] == "sync-fifo"
     assert sync_fifo["display_name"] == "Synchronous FIFO"
     assert sync_fifo["design_family"] == "fifo"
@@ -585,6 +585,29 @@ def test_p5_2_target_registry_lists_sync_fifo_metadata():
     assert "sim-rtl" in sync_fifo["flows"]
     assert "analyze-rtl-vcd" in sync_fifo["flows"]
     assert agent.normalize_rtl_target("sync_fifo") == "sync-fifo"
+
+
+def test_p5_3_target_registry_lists_round_robin_arbiter_metadata():
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    target_config = json.loads((AGENT_TARGETS_DIR / "round_robin_arbiter.json").read_text(encoding="utf-8"))
+    targets = agent.list_targets()
+    target_names = [target["name"] for target in targets]
+    arbiter = agent.get_target("round_robin_arbiter")
+
+    assert target_config["name"] == "round-robin-arbiter"
+    assert target_names == ["async-fifo", "round-robin-arbiter", "sync-fifo"]
+    assert arbiter["name"] == "round-robin-arbiter"
+    assert arbiter["display_name"] == "Round-Robin Arbiter"
+    assert arbiter["design_family"] == "arbiter"
+    assert "round_robin_arbiter" in arbiter["aliases"]
+    assert "rr-arbiter" in arbiter["aliases"]
+    assert "generate-rtl" in arbiter["flows"]
+    assert "sim-rtl" in arbiter["flows"]
+    assert "analyze-rtl-vcd" in arbiter["flows"]
+    assert "open-wave" in arbiter["flows"]
+    assert agent.normalize_rtl_target("round_robin_arbiter") == "round-robin-arbiter"
 
 
 def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
@@ -749,6 +772,68 @@ def test_p5_2_generate_sync_fifo_project_creates_rtl_tb_sim_reports(tmp_path):
     assert "save_wave_config $wave_cfg" in gui_script
 
 
+def test_p5_3_generate_round_robin_arbiter_project_creates_rtl_tb_sim_reports(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    project_dir = agent.generate_rtl_project("round-robin-arbiter", tmp_path)
+
+    assert project_dir == tmp_path / "round-robin-arbiter"
+    rtl_path = project_dir / "rtl" / "round_robin_arbiter.v"
+    tb_path = project_dir / "tb" / "tb_round_robin_arbiter.v"
+    sim_script_path = project_dir / "sim" / "run_vivado_round_robin_arbiter.tcl"
+    project_script_path = project_dir / "sim" / "create_round_robin_arbiter_project.tcl"
+    gui_script_path = project_dir / "sim" / "open_round_robin_arbiter_project_gui.tcl"
+    readme_path = project_dir / "README.md"
+
+    for path in [rtl_path, tb_path, sim_script_path, project_script_path, gui_script_path, project_dir / "reports", readme_path]:
+        assert path.exists()
+
+    rtl = rtl_path.read_text(encoding="utf-8")
+    assert "module round_robin_arbiter" in rtl
+    assert "parameter REQUESTERS = 4" in rtl
+    assert "input  wire [REQUESTERS-1:0] req" in rtl
+    assert "output reg  [REQUESTERS-1:0] grant" in rtl
+    assert "output wire grant_valid" in rtl
+    assert "reg [REQUESTERS-1:0] pointer" in rtl
+    assert "wire [REQUESTERS-1:0] grant_next" in rtl
+    assert "assign grant_valid = |grant" in rtl
+
+    tb = tb_path.read_text(encoding="utf-8")
+    assert "module tb_round_robin_arbiter" in tb
+    assert "$dumpfile(\"round_robin_arbiter_trace.vcd\")" in tb
+    assert "scenario_id" in tb
+    assert "grant_count" in tb
+    assert "error_count" in tb
+    assert "task automatic expect_grant" in tb
+    assert "ROUND_ROBIN_ARBITER_SCENARIO single_request PASS" in tb
+    assert "ROUND_ROBIN_ARBITER_SCENARIO multiple_requests PASS" in tb
+    assert "ROUND_ROBIN_ARBITER_SCENARIO rotating_grant PASS" in tb
+    assert "ROUND_ROBIN_ARBITER_SCENARIO reset_recovery PASS" in tb
+    assert "ROUND_ROBIN_ARBITER_SCENARIO fairness_window PASS" in tb
+    assert "ROUND_ROBIN_ARBITER_SCOREBOARD_PASS" in tb
+    assert "$fatal(1, \"ROUND_ROBIN_ARBITER_SCOREBOARD_FAIL" in tb
+
+    sim_script = sim_script_path.read_text(encoding="utf-8")
+    assert "round_robin_arbiter.v" in sim_script
+    assert "tb_round_robin_arbiter.v" in sim_script
+    assert "round_robin_arbiter_smoke" in sim_script
+
+    project_script = project_script_path.read_text(encoding="utf-8")
+    assert "create_project round_robin_arbiter_project" in project_script
+    assert "round_robin_arbiter_project.xpr" in project_script
+
+    gui_script = gui_script_path.read_text(encoding="utf-8")
+    assert "open_project $xpr_path" in gui_script
+    assert "open_wave_database $wave_db" in gui_script
+    assert "round_robin_arbiter_smoke.wdb" in gui_script
+    assert "round_robin_arbiter_debug.wcfg" in gui_script
+    assert "add_wave_divider {Control}" in gui_script
+    assert "add_wave_divider {Requests And Grants}" in gui_script
+    assert "add_wave_divider {Fairness}" in gui_script
+    assert "save_wave_config $wave_cfg" in gui_script
+
+
 def test_cli_generate_rtl_async_fifo_creates_project(tmp_path):
     result = run_agent(
         "--generate-rtl",
@@ -777,6 +862,22 @@ def test_p5_2_cli_generate_rtl_sync_fifo_creates_project(tmp_path):
     assert "run_vivado_sync_fifo.tcl" in result.stdout
     assert (tmp_path / "sync-fifo" / "rtl" / "sync_fifo.v").exists()
     assert (tmp_path / "sync-fifo" / "tb" / "tb_sync_fifo.v").exists()
+
+
+def test_p5_3_cli_generate_rtl_round_robin_arbiter_creates_project(tmp_path):
+    result = run_agent(
+        "--generate-rtl",
+        "round-robin-arbiter",
+        "--output-dir",
+        str(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "round_robin_arbiter.v" in result.stdout
+    assert "tb_round_robin_arbiter.v" in result.stdout
+    assert "run_vivado_round_robin_arbiter.tcl" in result.stdout
+    assert (tmp_path / "round-robin-arbiter" / "rtl" / "round_robin_arbiter.v").exists()
+    assert (tmp_path / "round-robin-arbiter" / "tb" / "tb_round_robin_arbiter.v").exists()
 
 
 def test_run_async_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypatch, tmp_path):
@@ -869,6 +970,51 @@ def test_p5_2_run_sync_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypa
     assert (tmp_path / "sync-fifo" / "reports" / "sim_report.html").exists()
 
 
+def test_p5_3_run_round_robin_arbiter_vivado_sim_creates_project_and_can_skip_gui(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vivado_path = r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
+    calls = []
+
+    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
+
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+        calls.append(([str(part) for part in command], Path(cwd)))
+        if "run_vivado_round_robin_arbiter.tcl" in command:
+            (Path(cwd) / "round_robin_arbiter_trace.vcd").write_text("$date\nround robin arbiter\n$end\n", encoding="utf-8")
+            (Path(cwd) / "round_robin_arbiter_smoke.wdb").write_text("wdb placeholder", encoding="utf-8")
+        if "create_round_robin_arbiter_project.tcl" in command:
+            xpr = Path(cwd).parent / "vivado_project" / "round_robin_arbiter_project.xpr"
+            xpr.parent.mkdir(parents=True, exist_ok=True)
+            xpr.write_text("<Project />\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="ROUND_ROBIN_ARBITER_SCOREBOARD_PASS", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(agent, "open_round_robin_arbiter_project_gui", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("GUI should be skipped")))
+    monkeypatch.setattr(
+        agent,
+        "collect_round_robin_arbiter_vcd_analysis",
+        lambda output_dir="outputs", limit=20, waveform_backend="auto": {
+            "info": {"signal_count": 4, "time_min_h": "0 ns", "time_max_h": "100 ns", "duration_h": "100 ns", "timescale": "1 ns"},
+            "grant_events": {"total": 4, "events": [{"time_h": "20 ns", "values": {"grant": "0x1"}}]},
+            "fairness_events": {"total": 4, "events": [{"time_h": "30 ns", "values": {"grant_count": "1"}}]},
+        },
+    )
+
+    assert agent.run_round_robin_arbiter_vivado_sim(output_dir=tmp_path, open_wave_gui=False) is True
+
+    sim_dir = tmp_path / "round-robin-arbiter" / "sim"
+    assert calls == [
+        ([vivado_path, "-mode", "batch", "-source", "run_vivado_round_robin_arbiter.tcl"], sim_dir),
+        ([vivado_path, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_round_robin_arbiter_project.tcl"], sim_dir),
+    ]
+    assert (tmp_path / "round-robin-arbiter" / "sim" / "round_robin_arbiter_trace.vcd").exists()
+    assert (tmp_path / "round-robin-arbiter" / "sim" / "round_robin_arbiter_smoke.wdb").exists()
+    assert (tmp_path / "round-robin-arbiter" / "vivado_project" / "round_robin_arbiter_project.xpr").exists()
+    assert (tmp_path / "round-robin-arbiter" / "reports" / "sim_report.md").exists()
+    assert (tmp_path / "round-robin-arbiter" / "reports" / "sim_report.html").exists()
+
+
 def test_p5_2_analyze_sync_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, tmp_path, capsys):
     module = load_agent_module()
     agent = module.DigitalICAgent()
@@ -934,6 +1080,74 @@ def test_p5_2_cli_analyze_rtl_vcd_sync_fifo_invokes_analyzer(monkeypatch, tmp_pa
         "rwave",
     ]) == 0
     assert calls == [(str(tmp_path), 6, "rwave")]
+
+
+def test_p5_3_analyze_round_robin_arbiter_vcd_reports_grants_and_fairness(monkeypatch, tmp_path, capsys):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "round-robin-arbiter" / "sim" / "round_robin_arbiter_trace.vcd"
+    vcd_path.parent.mkdir(parents=True)
+    vcd_path.write_text("$date\nround robin arbiter\n$end\n", encoding="utf-8")
+    calls = []
+
+    def fake_run_waveform_analyzer_json(*args, backend="auto"):
+        calls.append(args)
+        if args[0] == "info":
+            return {
+                "signal_count": 12,
+                "time_min_h": "0 ns",
+                "time_max_h": "240 ns",
+                "duration_h": "240 ns",
+                "timescale": "1 ns",
+                "_waveform_backend": "vcd_analyzer",
+            }
+        return {
+            "total": 4,
+            "events": [
+                {"time_h": "50 ns", "values": {"grant": "0x1"}},
+                {"time_h": "60 ns", "values": {"grant": "0x2"}},
+            ],
+        }
+
+    monkeypatch.setattr(agent, "run_waveform_analyzer_json", fake_run_waveform_analyzer_json)
+
+    assert agent.analyze_round_robin_arbiter_vcd(output_dir=tmp_path, limit=4) is True
+
+    captured = capsys.readouterr()
+    assert "Round-Robin Arbiter VCD analysis" in captured.out
+    assert "Grant events: 4" in captured.out
+    assert "Fairness checkpoints: 4" in captured.out
+    assert calls[0] == ("info", vcd_path)
+    assert "tb_round_robin_arbiter.grant_valid=1" in calls[1]
+    assert "tb_round_robin_arbiter.grant_count" in calls[1]
+    assert "tb_round_robin_arbiter.grant_valid=1" in calls[2]
+    assert "tb_round_robin_arbiter.grant_count" in calls[2]
+    assert any("tb_round_robin_arbiter.scenario_id" in str(arg) for arg in calls[2])
+
+
+def test_p5_3_cli_analyze_rtl_vcd_round_robin_arbiter_invokes_analyzer(monkeypatch, tmp_path):
+    module = load_agent_module()
+    calls = []
+
+    monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
+
+    def fake_analyze_round_robin_arbiter_vcd(self, output_dir="outputs", limit=20, waveform_backend="auto"):
+        calls.append((output_dir, limit, waveform_backend))
+        return True
+
+    monkeypatch.setattr(module.DigitalICAgent, "analyze_round_robin_arbiter_vcd", fake_analyze_round_robin_arbiter_vcd)
+
+    assert module.main([
+        "--analyze-rtl-vcd",
+        "round-robin-arbiter",
+        "--output-dir",
+        str(tmp_path),
+        "--vcd-limit",
+        "7",
+        "--wave-backend",
+        "rwave",
+    ]) == 0
+    assert calls == [(str(tmp_path), 7, "rwave")]
 
 
 def test_async_fifo_wcfg_validation_detects_required_wave_objects(tmp_path):

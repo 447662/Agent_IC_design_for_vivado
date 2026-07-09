@@ -1,5 +1,18 @@
 # Agent IC Design for Vivado
 
+## P5.3 round-robin-arbiter
+
+P5.3 已完成第三个 RTL 目标 `round-robin-arbiter` 的最小闭环，用于验证非 FIFO 控制逻辑设计族。当前支持 target 配置、RTL/TB/Vivado Tcl 生成、真实 Vivado/xsim 仿真、VCD grant/fairness 分析、WDB GUI 打开和中文仿真报告。
+
+```powershell
+python .trae/agent/agent.py --generate-rtl round-robin-arbiter --output-dir outputs
+python .trae/agent/agent.py --sim-rtl round-robin-arbiter --no-wave-gui --output-dir outputs
+python .trae/agent/agent.py --analyze-rtl-vcd round-robin-arbiter --output-dir outputs
+python .trae/agent/agent.py --open-wave round-robin-arbiter --output-dir outputs
+```
+
+真实验收产物包括 `outputs/round-robin-arbiter/sim/round_robin_arbiter_trace.vcd`、`outputs/round-robin-arbiter/sim/round_robin_arbiter_smoke_20260709_230319.wdb`、`outputs/round-robin-arbiter/vivado_project/round_robin_arbiter_project.xpr` 和 `outputs/round-robin-arbiter/reports/sim_report.md/html`。TDD 证据见 `docs/testing/p5_3_round_robin_arbiter_target.tdd.md`。
+
 这是一个面向 Vivado 的数字 IC 前端设计 Agent 原型。当前重点是把“需求分析 -> RTL 生成 -> Vivado/xsim 仿真 -> VCD 分析 -> GUI 波形查看 -> 报告沉淀”串成可重复流程。
 
 ## 当前能力
