@@ -147,4 +147,4 @@ Success: no issues found in 23 source files
 - 全量覆盖率为 `79.64%`，超过项目 `68%` 门槛。
 - 真实 GUI 验收依赖可交互 Windows 桌面和前台窗口权限；无交互 CI 应保留 Tcl/JSON 单元与集成测试，将窗口截图验收放在具备桌面会话的 Windows runner。
 - 截图指标用于判断窗口非空，不替代对具体波形时间区间、光标位置或信号值的语义断言；这些可作为后续精细 GUI 验收扩展。
-- 下一步进入 P4.7，统一工程 dashboard 的阶段状态、最近运行、失败入口和报告卡片。
+- P4.7 工程 dashboard 与 P4 收尾复核均已完成；真实 GUI 自动验收仍保留为需要可交互 Windows runner 的持续集成扩展。

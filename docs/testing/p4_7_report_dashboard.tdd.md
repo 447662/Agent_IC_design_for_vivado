@@ -145,4 +145,52 @@ Mypy: Success, 23 source files
 - `project_overview.py` 覆盖率为 `90.7%`，全量覆盖率为 `80.19%`。
 - 本地 `file://` 浏览器访问受安全策略限制，本轮未提供浏览器像素截图；DOM、CSS、断链和响应式规则已通过静态验收。
 - dashboard 当前聚合现有文件和 manifest；外部工具若不更新 manifest，需要先运行对应 Agent flow 或 `--generate-overview` 刷新状态。
-- P4.0-P4.7 已全部完成，下一步进入 P4 收尾复核。
+- P4.0-P4.7 已全部完成，后续收尾复核发现并修复了顶层项目总览对缺失 manifest 生成断链的问题。
+
+## P4 Closure Regression
+
+初次真实输出扫描：
+
+```text
+Dashboard pages: 3
+Relative links: 119
+Broken links: 3
+```
+
+断链均来自顶层 `outputs/index.html`：
+
+- `environment-report/artifacts.json`
+- `round-robin-arbiter/artifacts.json`
+- `sync-fifo/artifacts.json`
+
+TDD 检查点：
+
+```text
+c0cb3355 test: reject missing manifest links in project overview
+87a89592 fix: avoid broken manifest links in project overview
+f501fa35 test: require missing manifest status for overview targets
+320db6a0 fix: render missing target manifests as status text
+```
+
+关键 RED/GREEN：
+
+```text
+RED: 1 failed
+GREEN: 1 passed
+Related overview/dashboard tests: 5 passed, 171 deselected
+```
+
+最终验证：
+
+```text
+Ruff: All checks passed!
+Mypy: Success, 23 source files
+183 passed in 25.62s
+TOTAL 80.22%
+project_overview.py 90.9%
+Dashboard pages: 3
+Relative links: 116
+Broken links: 0
+```
+
+P4 收尾复核已完成，详细结论见 `docs/testing/p4_closure_audit.md`。
