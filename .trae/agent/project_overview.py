@@ -414,7 +414,7 @@ def render_project_overview_markdown(
                 latest_flow=_markdown_text(target["latest_flow"]),
                 latest_status=target["latest_status"],
                 recorded_at=_markdown_text(target["recorded_at"]),
-                manifest=target["manifest_href"],
+                manifest=manifest_entry,
                 error=_markdown_text(target["error"]),
             )
         )
