@@ -97,9 +97,9 @@ Broken links: 0
 
 ## High-Value Fixes
 
-1. 为 target/environment `artifacts.json` 和 coverage history 增加 rotation、归档和压缩策略。
-2. 增加具备桌面会话的 Windows runner，自动执行 Vivado Tcl、WDB 打开和 GUI 可见性验收。
-3. 将 dashboard 相对链接扫描固化为自动测试或 CI 检查，避免生成物入口回归。
+1. 增加具备桌面会话的 Windows runner，自动执行 Vivado Tcl、WDB 打开和 GUI 可见性验收。
+2. 将 dashboard 相对链接扫描固化为自动测试或 CI 检查，避免生成物入口回归。
+3. 为 gzip JSONL 归档增加按大小/日期分卷、恢复和合并工具。
 
 ## Evidence Missing
 
@@ -109,4 +109,22 @@ Broken links: 0
 
 ## Next Action
 
-P4 基线已冻结。下一项建议实现 artifact/history rotation，先定义默认保留数量、压缩格式和手动保留机制，再按 TDD 接入 target/environment manifest 与 coverage history。
+P4 基线已冻结，artifact/history rotation 已按 TDD 完成。下一项建议实现 Windows/Vivado 自动验收，并将 dashboard 相对链接扫描固化到 CI。
+
+## Post-Audit Follow-Up
+
+Artifact/history rotation 已完成：
+
+```text
+446c717b test: define artifact and history rotation behavior
+ef265ad2 feat: add compressed artifact and history rotation
+3 passed, 176 deselected
+13 passed, 166 deselected
+186 passed in 18.80s
+TOTAL 80.55%
+history_rotation.py 90.9%
+Ruff: All checks passed!
+Mypy: Success, 24 source files
+```
+
+详细证据见 `docs/testing/artifact_history_rotation.tdd.md`。

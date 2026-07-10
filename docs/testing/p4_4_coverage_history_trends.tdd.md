@@ -200,6 +200,6 @@ python -m coverage report .trae/agent/coverage_history.py
 
 ## 已知后续
 
-- `coverage_history.jsonl` 当前保持 append-only，不做轮转；长期回归的保留和压缩策略仍属于技术债。
+- Post-P4 artifact/history rotation 已交付：`coverage_history.jsonl` 默认保留最近 `200` 条，溢出记录写入 `coverage_history.archive.jsonl.gz`，趋势报告展示归档入口。
 - 当前趋势报告展示相邻两次运行 delta；跨 target 聚合过滤可在统一 dashboard 阶段继续增强。
 - 下一步 P4.5 将归档失败 seed 的 log、WDB、coverage DB、Tcl、目标配置和可复现命令。

@@ -184,6 +184,7 @@ outputs/async-fifo/
 - P4.7 的通用报告内核位于 `project_overview.py`，每个 target dashboard 统一展示 Spec、RTL、Simulation、UVM、Coverage、Wave、Lessons 七阶段、最近运行、最近失败、重跑命令和失败归档；缺少目标 dashboard 时回退到顶层总览锚点，工程资源仅收录顶层报告和官方嵌套 `dashboard.html`。
 - P4.7 定向回归最终为 `3 passed, 173 deselected`，全量回归 `183 passed`，总覆盖率 `80.19%`，`project_overview.py` 覆盖率 `90.7%`；Ruff 与 Mypy 均通过。
 - P4 收尾复核修复了顶层总览对缺失 target/environment manifest 生成断链的问题；最终全量回归 `183 passed`，总覆盖率 `80.22%`，`project_overview.py` 覆盖率 `90.9%`，真实 dashboard 扫描 `3` 个页面、`116` 个相对链接、`0` 个断链。
+- P4 收尾后的 artifact/history rotation 已完成：target/environment `artifacts.json` 与 coverage history 默认保留最近 `200` 条活动记录，溢出记录按顺序追加到 `*.archive.jsonl.gz`；传入 `None` 可关闭未来轮转，整个过程不删除归档文件。
 - P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
 - P5 系列执行记录已落地到 `docs/roadmap/p5_series_execution_record.md`，用于跟踪 P5.0-P5.12 的状态和验收口径。
 - P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理目标元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。
@@ -204,7 +205,9 @@ outputs/async-fifo/
 - `environment_report.py` 负责环境探测、中文 Markdown/HTML 和项目级 environment manifest。
 - `project_overview.py` 负责注册目标发现、manifest 状态聚合、统一报告 surface 和顶层 Markdown/HTML。
 - `coverage_gates.py` 负责目标无关的分项 coverage gate 计算，统一输出 `PASS/FAIL/MISSING/SKIP`、gap 和诊断。
-- `coverage_history.py` 负责追加 `coverage_history.jsonl`，并生成带相邻运行 delta 的 `coverage_trend.md/html`。
+- `artifact_manifest.py` 负责 target 运行记录、工具和产物状态，并在 `artifacts.json` 中维护活动窗口与归档元数据。
+- `history_rotation.py` 提供共享的记录限制校验、gzip JSONL 归档追加和 rotation metadata 计算。
+- `coverage_history.py` 负责维护 `coverage_history.jsonl` 活动窗口、压缩归档和带相邻运行 delta 的 `coverage_trend.md/html`。
 - `failure_archive.py` 负责目标和 flow 无关的失败运行材料复制、JSON manifest、重跑脚本和波形打开脚本生成。
 - `target_flows.py` 负责 target flow handler 注册和参数转发。
 - `target_checks.py` 负责通用 RTL/TB/Vivado/VCD/WDB 产物检查。
