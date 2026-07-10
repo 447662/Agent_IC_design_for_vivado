@@ -8,8 +8,8 @@
 # Date: 2026-05-15
 # -----------------------------------------------------------------------------
 
-import html
 import hashlib
+import html
 import json
 import os
 import re
@@ -26,6 +26,18 @@ if str(AGENT_MODULE_DIR) not in sys.path:
 from agent_runtime import CommandRunner, TargetHandler
 from agent_cli import build_requirement, parse_args, parse_seed_list
 from agent_config import load_agent_config, normalize_configured_command
+from agent_reports import (
+    render_markdown_document_html as render_markdown_html_document,
+)
+from agent_waveform import (
+    resolve_rwave_command as get_rwave_command,
+    resolve_rwave_source_dir as get_rwave_source_dir,
+    resolve_vcd_analyzer_path as get_vcd_analyzer_path,
+)
+from target_checks import check_rtl_project as run_rtl_project_checks
+from target_flows import (
+    build_target_handlers as build_registered_target_handlers,
+)
 from target_registry import (
     get_target as get_registered_target,
     list_targets as list_registered_targets,
@@ -155,93 +167,7 @@ class DigitalICAgent:
         return True
 
     def build_target_handlers(self):
-        return {
-            "async-fifo": TargetHandler("async-fifo", {
-                "generate-rtl": lambda output_dir="outputs", data_width=8, addr_width=4, **_: self.write_async_fifo_project(
-                    output_dir,
-                    data_width=data_width,
-                    addr_width=addr_width,
-                ),
-                "sim-rtl": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_async_fifo_vivado_sim(
-                    output_dir=output_dir,
-                    open_wave_gui=open_wave_gui,
-                ),
-                "regress-rtl": lambda output_dir="outputs", open_wave_gui=False, **_: self.run_async_fifo_regression(
-                    output_dir=output_dir,
-                    open_wave_gui=open_wave_gui,
-                ),
-                "uvm-smoke": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_async_fifo_uvm_smoke(
-                    output_dir=output_dir,
-                    open_wave_gui=open_wave_gui,
-                ),
-                "uvm-coverage": lambda output_dir="outputs", coverage_threshold=None, coverage_percent=None, **_: self.run_async_fifo_uvm_coverage(
-                    output_dir=output_dir,
-                    coverage_threshold=coverage_threshold,
-                    coverage_percent=coverage_percent,
-                ),
-                "uvm-random-regress": lambda output_dir="outputs", seeds=None, **_: self.run_async_fifo_uvm_random_regression(
-                    output_dir=output_dir,
-                    seeds=seeds,
-                ),
-                "analyze-rtl-vcd": lambda output_dir="outputs", limit=20, waveform_backend="auto", **_: self.analyze_async_fifo_vcd(
-                    output_dir=output_dir,
-                    limit=limit,
-                    waveform_backend=waveform_backend,
-                ),
-                "check-rtl": lambda output_dir="outputs", **_: self.check_async_fifo_rtl(
-                    output_dir=output_dir,
-                ),
-                "open-wave": lambda output_dir="outputs", **_: self.open_async_fifo_project_gui(
-                    Path(output_dir) / "async-fifo",
-                ),
-                "open-uvm-wave": lambda output_dir="outputs", wave_kind="coverage", **_: self.open_async_fifo_uvm_wave_gui(
-                    Path(output_dir) / "async-fifo",
-                    wave_kind=wave_kind,
-                ),
-            }),
-            "sync-fifo": TargetHandler("sync-fifo", {
-                "generate-rtl": lambda output_dir="outputs", data_width=8, addr_width=4, **_: self.write_sync_fifo_project(
-                    output_dir,
-                    data_width=data_width,
-                    addr_width=addr_width,
-                ),
-                "sim-rtl": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_sync_fifo_vivado_sim(
-                    output_dir=output_dir,
-                    open_wave_gui=open_wave_gui,
-                ),
-                "analyze-rtl-vcd": lambda output_dir="outputs", limit=20, waveform_backend="auto", **_: self.analyze_sync_fifo_vcd(
-                    output_dir=output_dir,
-                    limit=limit,
-                    waveform_backend=waveform_backend,
-                ),
-                "check-rtl": lambda output_dir="outputs", **_: self.check_sync_fifo_rtl(
-                    output_dir=output_dir,
-                ),
-                "open-wave": lambda output_dir="outputs", **_: self.open_sync_fifo_project_gui(
-                    Path(output_dir) / "sync-fifo",
-                ),
-            }),
-            "round-robin-arbiter": TargetHandler("round-robin-arbiter", {
-                "generate-rtl": lambda output_dir="outputs", **_: self.write_round_robin_arbiter_project(
-                    output_dir,
-                ),
-                "sim-rtl": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_round_robin_arbiter_vivado_sim(
-                    output_dir=output_dir,
-                    open_wave_gui=open_wave_gui,
-                ),
-                "analyze-rtl-vcd": lambda output_dir="outputs", limit=20, waveform_backend="auto", **_: self.analyze_round_robin_arbiter_vcd(
-                    output_dir=output_dir,
-                    limit=limit,
-                    waveform_backend=waveform_backend,
-                ),
-                "check-rtl": lambda output_dir="outputs", **_: self.check_round_robin_arbiter_rtl(
-                    output_dir=output_dir,
-                ),
-                "open-wave": lambda output_dir="outputs", **_: self.open_round_robin_arbiter_project_gui(
-                    Path(output_dir) / "round-robin-arbiter",
-                ),
-            }),
-        }
+        return build_registered_target_handlers(self)
 
     def validate_target_handlers(self):
         if set(self.target_handlers) != set(self.targets):
@@ -584,88 +510,11 @@ class DigitalICAgent:
         return scenarios
 
     def render_markdown_document_html(self, title, markdown_text, variant="doc"):
-        body = []
-        in_table = False
-        table_rows = 0
-
-        def close_table():
-            nonlocal in_table, table_rows
-            if in_table:
-                body.append("</tbody></table>")
-                in_table = False
-                table_rows = 0
-
-        for raw_line in markdown_text.splitlines():
-            line = raw_line.rstrip()
-            if not line:
-                close_table()
-                continue
-            if line.startswith("|") and line.endswith("|"):
-                cells = [html.escape(cell.strip()) for cell in line.strip("|").split("|")]
-                if all(set(cell.replace(" ", "")) <= set("-:") for cell in cells):
-                    continue
-                if not in_table:
-                    body.append("<table><tbody>")
-                    in_table = True
-                    table_rows = 0
-                tag = "th" if table_rows == 0 else "td"
-                body.append("<tr>{}</tr>".format("".join("<{}>{}</{}>".format(tag, cell, tag) for cell in cells)))
-                table_rows += 1
-                continue
-
-            close_table()
-            if line.startswith("# "):
-                body.append("<h1>{}</h1>".format(html.escape(line[2:].strip())))
-            elif line.startswith("## "):
-                body.append("<h2>{}</h2>".format(html.escape(line[3:].strip())))
-            elif line.startswith("### "):
-                body.append("<h3>{}</h3>".format(html.escape(line[4:].strip())))
-            elif line.startswith("- "):
-                body.append("<p class=\"bullet\">{}</p>".format(html.escape(line[2:].strip())))
-            else:
-                body.append("<p>{}</p>".format(html.escape(line)))
-        close_table()
-
-        css = """
-        :root { --bg:#f4f7fb; --panel:#ffffff; --ink:#1b2430; --muted:#5d6b7a; --line:#d9e1ec; --accent:#1f6feb; --accent2:#0f766e; }
-        * { box-sizing:border-box; }
-        body { margin:0; background:var(--bg); color:var(--ink); font-family:"Microsoft YaHei", "Segoe UI", Arial, sans-serif; line-height:1.65; }
-        .page { max-width:1100px; margin:0 auto; padding:36px 20px 56px; }
-        .hero { padding:28px 30px; border-radius:8px; background:linear-gradient(135deg,#172033,#244a72); color:white; box-shadow:0 18px 45px rgba(23,32,51,.18); }
-        .hero h1 { margin:0 0 8px; font-size:32px; letter-spacing:0; }
-        .hero p { margin:0; color:#dce9ff; }
-        .doc-card, .scenario-card { margin-top:18px; padding:26px; border:1px solid var(--line); border-radius:8px; background:var(--panel); box-shadow:0 10px 30px rgba(20,31,48,.08); }
-        h1 { margin:0 0 16px; font-size:28px; }
-        h2 { margin:28px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--line); font-size:22px; }
-        h3 { margin:20px 0 8px; font-size:17px; color:var(--accent2); }
-        p { margin:8px 0; color:var(--muted); }
-        .bullet { padding-left:18px; position:relative; }
-        .bullet:before { content:""; width:6px; height:6px; border-radius:50%; background:var(--accent); position:absolute; left:0; top:.75em; }
-        table { width:100%; border-collapse:collapse; margin:12px 0 18px; overflow:hidden; border:1px solid var(--line); border-radius:8px; }
-        th, td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
-        th { background:#eef4fb; color:#1b2430; font-weight:700; }
-        code { padding:2px 5px; border-radius:5px; background:#edf2f7; color:#0f3d66; }
-        @media (max-width: 700px) { .page { padding:20px 12px 36px; } .hero, .doc-card, .scenario-card { padding:20px; } .hero h1 { font-size:25px; } table { display:block; overflow-x:auto; } }
-        """
-        card_class = "scenario-card" if variant == "scenario" else "doc-card"
-        return """<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
-<style>{css}</style>
-</head>
-<body>
-<main class="page">
-<section class="hero"><h1>{title}</h1><p>由 Digital IC Agent 基于目标配置和场景目录自动生成。</p></section>
-<section class="{card_class}">
-{body}
-</section>
-</main>
-</body>
-</html>
-""".format(title=html.escape(title), css=css, card_class=card_class, body="\n".join(body))
+        return render_markdown_html_document(
+            title,
+            markdown_text,
+            variant=variant,
+        )
 
     def render_target_design_spec(self, target, requirement=None):
         catalog = self.target_spec_catalog(target)
@@ -784,46 +633,18 @@ class DigitalICAgent:
         return {"md_path": md_path, "html_path": html_path}
 
     def resolve_vcd_analyzer_path(self):
-        return (
-            self.project_root
-            / "VCD_ANALYZER-main"
-            / "VCD_ANALYZER-main"
-            / "vcd_analyzer.py"
-        )
+        return get_vcd_analyzer_path(self.project_root)
 
     def resolve_rwave_source_dir(self):
-        candidates = [
-            self.project_root / "RWaveAnalyzer-main" / "RWaveAnalyzer-main",
-            self.project_root / "docs" / "tools_archive" / "RWaveAnalyzer-main" / "RWaveAnalyzer-main",
-        ]
-        for candidate in candidates:
-            if (candidate / "Cargo.toml").exists() and (candidate / "crates" / "rwave").exists():
-                return candidate
-        return None
+        return get_rwave_source_dir(self.project_root)
 
     def resolve_rwave_command(self):
-        env_path = os.environ.get("RWAVE_BIN")
-        if env_path:
-            env_candidate = Path(env_path)
-            if env_candidate.exists():
-                return str(env_candidate)
-
-        path_candidate = shutil.which("rwave")
-        if path_candidate:
-            return path_candidate
-
-        source_dir = self.resolve_rwave_source_dir()
-        if source_dir:
-            built_candidates = [
-                source_dir / "target" / "release" / "rwave.exe",
-                source_dir / "target" / "release" / "rwave",
-                source_dir / "dist" / "rwave-windows-amd64.exe",
-                source_dir / "dist" / "rwave-linux-amd64",
-            ]
-            for candidate in built_candidates:
-                if candidate.exists():
-                    return str(candidate)
-        return None
+        return get_rwave_command(
+            self.project_root,
+            env=os.environ,
+            which=shutil.which,
+            source_dir_resolver=self.resolve_rwave_source_dir,
+        )
 
     def run_rwave_json(self, *args):
         rwave_command = self.resolve_rwave_command()
@@ -3699,51 +3520,20 @@ exit 0
         rtl_markers,
         tb_markers,
     ):
-        project_dir = Path(output_dir) / target_name
-        rtl_path = project_dir / "rtl" / rtl_name
-        tb_path = project_dir / "tb" / tb_name
-        sim_dir = project_dir / "sim"
-        sim_script_path = sim_dir / sim_script_name
-        project_script_path = sim_dir / project_script_name
-        gui_script_path = sim_dir / gui_script_name
-        xpr_path = project_dir / "vivado_project" / xpr_name
-        vcd_path = sim_dir / vcd_name
-        wave_db_path = wave_db_resolver(sim_dir)
-        report_path = project_dir / "reports" / "sim_report.md"
-
-        checks = [
-            ("RTL exists", rtl_path.exists(), rtl_path),
-            ("Testbench exists", tb_path.exists(), tb_path),
-            ("Vivado sim script exists", sim_script_path.exists(), sim_script_path),
-            ("Vivado project script exists", project_script_path.exists(), project_script_path),
-            ("Vivado GUI script exists", gui_script_path.exists(), gui_script_path),
-            ("Vivado project exists", xpr_path.exists(), xpr_path),
-            ("VCD exists", vcd_path.exists(), vcd_path),
-            ("WDB exists", wave_db_path.exists(), wave_db_path),
-            ("Simulation report exists", report_path.exists(), report_path),
-        ]
-
-        if rtl_path.exists():
-            rtl_text = rtl_path.read_text(encoding="utf-8")
-            checks.extend(
-                (label, token in rtl_text, rtl_path)
-                for label, token in rtl_markers
-            )
-
-        if tb_path.exists():
-            tb_text = tb_path.read_text(encoding="utf-8")
-            checks.extend(
-                (label, token in tb_text, tb_path)
-                for label, token in tb_markers
-            )
-
-        print("{} RTL check".format(target_name))
-        print("=" * 60)
-        ok = True
-        for label, passed, path in checks:
-            print("[{}] {}: {}".format("OK" if passed else "NO", label, path))
-            ok = ok and passed
-        return ok
+        return run_rtl_project_checks(
+            target_name=target_name,
+            output_dir=output_dir,
+            rtl_name=rtl_name,
+            tb_name=tb_name,
+            sim_script_name=sim_script_name,
+            project_script_name=project_script_name,
+            gui_script_name=gui_script_name,
+            xpr_name=xpr_name,
+            vcd_name=vcd_name,
+            wave_db_resolver=wave_db_resolver,
+            rtl_markers=rtl_markers,
+            tb_markers=tb_markers,
+        )
 
     def check_sync_fifo_rtl(self, output_dir="outputs"):
         return self.check_rtl_project(
