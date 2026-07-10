@@ -138,6 +138,13 @@ def _clean_text(value: object) -> str:
     return " ".join(str(value or "").split())
 
 
+def _instance_name(value: object) -> str:
+    instance = re.sub(r"\s+\.", ".", _clean_text(value))
+    if instance.startswith("his."):
+        return "t" + instance
+    return instance
+
+
 def _header(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", " ", _clean_text(value).lower()).strip()
 
@@ -260,7 +267,7 @@ def _coverage_item(
 ) -> CoverageItem:
     return {
         "source_file": source_file,
-        "instance": _clean_text(instance),
+        "instance": _instance_name(instance),
         "metric": metric,
         "score": round(score, 1),
         "details": details,
