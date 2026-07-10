@@ -1,5 +1,23 @@
 import json
 import sys
+from pathlib import Path
+
+
+RWAVE_ONLY_FORMATS = {".fst", ".ghw"}
+
+
+def _waveform_suffix(args):
+    if len(args) < 2:
+        return ""
+    return Path(str(args[1])).suffix.lower()
+
+
+def _raise_rwave_required(waveform_suffix, error):
+    format_name = waveform_suffix.lstrip(".").upper() or "This"
+    message = "{} waveform requires RWaveAnalyzer: {}".format(format_name, error)
+    if isinstance(error, FileNotFoundError):
+        raise FileNotFoundError(message) from error
+    raise RuntimeError(message) from error
 
 
 def run_rwave_json(self, *args):
@@ -108,7 +126,13 @@ def run_vcd_analyzer_json(self, *args):
 
 def run_waveform_analyzer_json(self, *args, backend="auto"):
     backend = str(backend or "auto").strip().lower()
+    waveform_suffix = _waveform_suffix(args)
     if backend in ("vcd", "vcd_analyzer", "vcd-analyzer"):
+        if waveform_suffix in RWAVE_ONLY_FORMATS:
+            raise ValueError(
+                "VCD_ANALYZER only supports VCD waveforms; {} requires "
+                "RWaveAnalyzer".format(waveform_suffix or "this format")
+            )
         return self.run_vcd_analyzer_json(*args)
     if backend == "rwave":
         return self.run_rwave_json(*args)
@@ -117,9 +141,13 @@ def run_waveform_analyzer_json(self, *args, backend="auto"):
 
     try:
         return self.run_rwave_json(*args)
-    except FileNotFoundError:
+    except FileNotFoundError as rwave_error:
+        if waveform_suffix in RWAVE_ONLY_FORMATS:
+            _raise_rwave_required(waveform_suffix, rwave_error)
         return self.run_vcd_analyzer_json(*args)
     except RuntimeError as rwave_error:
+        if waveform_suffix in RWAVE_ONLY_FORMATS:
+            _raise_rwave_required(waveform_suffix, rwave_error)
         try:
             data = self.run_vcd_analyzer_json(*args)
         except (FileNotFoundError, RuntimeError):

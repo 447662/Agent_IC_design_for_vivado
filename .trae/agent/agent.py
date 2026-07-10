@@ -37,6 +37,7 @@ from agent_waveform import (
 from artifact_manifest import record_artifact_run as append_artifact_run
 from environment_report import write_environment_report as build_environment_report
 from project_overview import write_project_overview as build_project_overview
+from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
 from adapters.report import (
     render_target_design_spec as adapter_render_target_design_spec,
     render_target_verification_plan as adapter_render_target_verification_plan,
@@ -436,6 +437,7 @@ class DigitalICAgent:
     create_target_scaffold = build_target_scaffold
     write_environment_report = build_environment_report
     write_project_overview = build_project_overview
+    write_waveform_sample_report = build_waveform_sample_report
 
     def refresh_project_overview(self, output_dir="outputs"):
         try:
@@ -472,17 +474,45 @@ class DigitalICAgent:
     run_vcd_analyzer_json = adapter_run_vcd_analyzer_json
     run_waveform_analyzer_json = adapter_run_waveform_analyzer_json
 
-    def analyze_vcd(self, vcd_path, condition=None, show=None, limit=20, waveform_backend="auto"):
-        vcd_file = Path(vcd_path)
-        if not vcd_file.exists():
-            print("VCD file not found: {}".format(vcd_file), file=sys.stderr)
+    def analyze_waveform(
+        self,
+        waveform_path,
+        condition=None,
+        show=None,
+        limit=20,
+        waveform_backend="auto",
+        report_title="波形分析报告",
+    ):
+        waveform_file = Path(waveform_path)
+        waveform_format = waveform_file.suffix.lstrip(".").upper()
+        if waveform_format not in {"VCD", "FST", "GHW"}:
+            print(
+                "Unsupported waveform format: {}".format(
+                    waveform_file.suffix or "<none>"
+                ),
+                file=sys.stderr,
+            )
+            return False
+        if not waveform_file.exists():
+            print("Waveform file not found: {}".format(waveform_file), file=sys.stderr)
             return False
 
         try:
-            info = self.run_waveform_analyzer_json("info", vcd_file, backend=waveform_backend)
+            info = self.run_waveform_analyzer_json(
+                "info",
+                waveform_file,
+                backend=waveform_backend,
+            )
             search_result = None
             if condition:
-                search_args = ["search", vcd_file, "--condition", condition, "--limit", limit]
+                search_args = [
+                    "search",
+                    waveform_file,
+                    "--condition",
+                    condition,
+                    "--limit",
+                    limit,
+                ]
                 if show:
                     search_args.extend(["--show", show])
                 search_result = self.run_waveform_analyzer_json(*search_args, backend=waveform_backend)
@@ -490,9 +520,10 @@ class DigitalICAgent:
             print(str(exc), file=sys.stderr)
             return False
 
-        print("VCD 分析报告")
+        print(report_title)
         print("=" * 60)
-        print("文件: {}".format(vcd_file))
+        print("文件: {}".format(waveform_file))
+        print("格式: {}".format(waveform_format))
         print("Backend: {}".format(info.get("_waveform_backend", "unknown")))
         print("信号数量: {}".format(info.get("signal_count", "unknown")))
         print("时间范围: {} - {}".format(info.get("time_min_h", "unknown"), info.get("time_max_h", "unknown")))
@@ -526,6 +557,27 @@ class DigitalICAgent:
                     print("  {}. {} {}".format(index, begin, values))
 
         return True
+
+    def analyze_vcd(
+        self,
+        vcd_path,
+        condition=None,
+        show=None,
+        limit=20,
+        waveform_backend="auto",
+    ):
+        vcd_file = Path(vcd_path)
+        if not vcd_file.exists():
+            print("VCD file not found: {}".format(vcd_file), file=sys.stderr)
+            return False
+        return self.analyze_waveform(
+            vcd_file,
+            condition=condition,
+            show=show,
+            limit=limit,
+            waveform_backend=waveform_backend,
+            report_title="VCD 分析报告",
+        )
 
     def resolve_async_fifo_vcd_path(self, output_dir="outputs"):
         return Path(output_dir) / "async-fifo" / "sim" / "async_fifo_trace.vcd"
@@ -5720,6 +5772,17 @@ def main(argv=None):
         print("HTML: {}".format(overview["html_path"]))
         return 1 if overview["status"] == "FAIL" else 0
 
+    if args.verify_waveform_samples:
+        try:
+            report = agent.write_waveform_sample_report(output_dir=args.output_dir)
+        except (OSError, ValueError) as exc:
+            print("波形样例验证报告生成失败: {}".format(exc), file=sys.stderr)
+            return 1
+        print("波形样例验证状态: {}".format(report["status"]))
+        print("Markdown: {}".format(report["markdown_path"]))
+        print("HTML: {}".format(report["html_path"]))
+        return 0 if report["status"] == "PASS" else 1
+
     if args.smoke_loop:
         return 0 if agent.run_smoke_loop(
             output_dir=args.output_dir,
@@ -5885,6 +5948,15 @@ def main(argv=None):
     if args.analyze_vcd:
         return 0 if agent.analyze_vcd(
             args.analyze_vcd,
+            condition=args.vcd_condition,
+            show=args.vcd_show,
+            limit=args.vcd_limit,
+            waveform_backend=args.wave_backend,
+        ) else 1
+
+    if args.analyze_waveform:
+        return 0 if agent.analyze_waveform(
+            args.analyze_waveform,
             condition=args.vcd_condition,
             show=args.vcd_show,
             limit=args.vcd_limit,

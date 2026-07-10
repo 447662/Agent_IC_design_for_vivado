@@ -5,9 +5,19 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="数字IC前端设计Agent")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
+        "--analyze-waveform",
+        metavar="FILE",
+        help="Analyze a VCD, FST, or GHW waveform file",
+    )
+    mode_group.add_argument(
         "--analyze-vcd",
         metavar="FILE",
         help="Analyze a VCD waveform file",
+    )
+    mode_group.add_argument(
+        "--verify-waveform-samples",
+        action="store_true",
+        help="Verify bundled VCD/FST/GHW samples with RWaveAnalyzer",
     )
     mode_group.add_argument(
         "--smoke-loop",
@@ -185,7 +195,9 @@ def parse_args(argv=None):
         or args.generate_overview
         or args.list_skills
         or args.list_targets
+        or args.analyze_waveform
         or args.analyze_vcd
+        or args.verify_waveform_samples
         or args.smoke_loop
         or args.sim_smoke
         or args.generate_rtl
