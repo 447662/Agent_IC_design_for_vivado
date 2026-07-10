@@ -4427,6 +4427,105 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_threshold(tmp_path):
     assert "差距 4.5%" in html_text
 
 
+def test_write_async_fifo_uvm_coverage_summary_report_gates_component_thresholds(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = tmp_path / "async-fifo"
+    sim_dir = project_dir / "sim"
+    reports_dir = project_dir / "reports"
+    cov_dir = sim_dir / "coverage" / "xsim.codeCov" / "async_fifo_uvm_cov"
+    cov_dir.mkdir(parents=True)
+    reports_dir.mkdir(parents=True)
+    (sim_dir / "async_fifo_uvm_coverage.log").write_text(
+        "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\n"
+        "ASYNC_FIFO_UVM_TEST_DONE\n",
+        encoding="utf-8",
+    )
+    (cov_dir / "xsim.CCInfo").write_bytes(
+        b"xsim.codeCov\x00async_fifo_uvm_cov\x00sbct\x00"
+        b"../rtl/async_fifo.v\x00tb_async_fifo_uvm.dut\x00"
+    )
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "Line Coverage Score 85\n"
+        "Branch Coverage Score 55\n"
+        "Condition Coverage Score 90\n"
+        "Toggle Coverage Score 45\n"
+        "Functional Coverage Score 92\n"
+        "Total Coverage : 73.4%\n",
+        encoding="utf-8",
+    )
+
+    report = agent.write_async_fifo_uvm_coverage_summary_report(
+        project_dir,
+        coverage_threshold=70.0,
+        coverage_percent=73.4,
+        coverage_thresholds={
+            "statement": 80.0,
+            "branch": 60.0,
+            "condition": 90.0,
+            "toggle": 40.0,
+            "functional": 90.0,
+        },
+    )
+
+    assert report["passed"] is False
+    assert report["coverage_gate_passed"] is False
+    assert report["coverage_gates"]["total"]["result"] == "PASS"
+    assert report["coverage_gates"]["statement"]["result"] == "PASS"
+    assert report["coverage_gates"]["branch"]["result"] == "FAIL"
+    assert report["coverage_gates"]["branch"]["gap"] == 5.0
+    assert report["coverage_gates"]["condition"]["result"] == "PASS"
+    assert report["coverage_gates"]["toggle"]["result"] == "PASS"
+    assert report["coverage_gates"]["functional"]["result"] == "PASS"
+    markdown = report["markdown_path"].read_text(encoding="utf-8")
+    html_text = report["html_path"].read_text(encoding="utf-8")
+    assert "## P4.3 分项 Coverage Gate" in markdown
+    assert "| Branch | 55.0% | 60.0% | 5.0% | FAIL |" in markdown
+    assert "| Functional | 92.0% | 90.0% | -2.0% | PASS |" in markdown
+    assert "P4.3 Component Coverage Gates" in html_text
+    assert 'data-metric="branch"' in html_text
+    assert 'class="component-gate fail"' in html_text
+
+
+def test_write_async_fifo_uvm_coverage_summary_report_marks_missing_component_data(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = tmp_path / "async-fifo"
+    sim_dir = project_dir / "sim"
+    reports_dir = project_dir / "reports"
+    cov_dir = sim_dir / "coverage" / "xsim.codeCov" / "async_fifo_uvm_cov"
+    cov_dir.mkdir(parents=True)
+    reports_dir.mkdir(parents=True)
+    (sim_dir / "async_fifo_uvm_coverage.log").write_text(
+        "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\n"
+        "ASYNC_FIFO_UVM_TEST_DONE\n",
+        encoding="utf-8",
+    )
+    (cov_dir / "xsim.CCInfo").write_bytes(
+        b"xsim.codeCov\x00async_fifo_uvm_cov\x00sbct\x00"
+    )
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "Line Coverage Score 85\n",
+        encoding="utf-8",
+    )
+
+    report = agent.write_async_fifo_uvm_coverage_summary_report(
+        project_dir,
+        coverage_thresholds={"functional": 90.0},
+    )
+
+    functional_gate = report["coverage_gates"]["functional"]
+    assert report["passed"] is False
+    assert report["coverage_gate_passed"] is False
+    assert functional_gate["current"] is None
+    assert functional_gate["gap"] is None
+    assert functional_gate["result"] == "MISSING"
+    assert functional_gate["diagnostic"] == "数据源缺失"
+    markdown = report["markdown_path"].read_text(encoding="utf-8")
+    assert "| Functional | N/A | 90.0% | N/A | MISSING | 数据源缺失 |" in markdown
+    assert "| Functional | 0.0%" not in markdown
+
+
 def test_write_async_fifo_uvm_coverage_summary_report_requires_percent_when_threshold_set(tmp_path):
     module = load_agent_module()
     agent = module.DigitalICAgent()
@@ -4538,14 +4637,81 @@ def test_run_async_fifo_uvm_coverage_uses_auto_percent_report(monkeypatch, tmp_p
     assert "PASS" in text
 
 
+def test_run_async_fifo_uvm_coverage_fails_when_component_gate_not_met(monkeypatch, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vivado_path = r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
+
+    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
+
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
+        sim_dir = Path(cwd)
+        reports_dir = sim_dir.parent / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        (sim_dir / "async_fifo_uvm_coverage.log").write_text(
+            "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\n"
+            "ASYNC_FIFO_UVM_TEST_DONE\n"
+            "ASYNC_FIFO_UVM_FCOV_PASS full=1 empty=1 reset=1 mixed=1\n"
+            "ASYNC_FIFO_UVM_ASSERT_PASS\n",
+            encoding="utf-8",
+        )
+        (sim_dir / "async_fifo_uvm_coverage.wdb").write_text(
+            "wdb placeholder",
+            encoding="utf-8",
+        )
+        cov_dir = sim_dir / "coverage" / "xsim.codeCov" / "async_fifo_uvm_cov"
+        cov_dir.mkdir(parents=True, exist_ok=True)
+        (cov_dir / "xsim.CCInfo").write_bytes(
+            b"xsim.codeCov\x00async_fifo_uvm_cov\x00sbct\x00"
+        )
+        (reports_dir / "uvm_coverage_percent.txt").write_text(
+            "Line Coverage Score 91.5\n"
+            "Branch Coverage Score 48\n"
+            "Condition Coverage Score 79.5\n"
+            "Toggle Coverage Score 66\n"
+            "Functional Coverage Score 95\n"
+            "Total Coverage : 80.0%\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    assert agent.run_async_fifo_uvm_coverage(
+        output_dir=tmp_path,
+        coverage_thresholds={"branch": 50.0},
+    ) is False
+
+    project_dir = tmp_path / "async-fifo"
+    summary = project_dir / "reports" / "uvm_coverage_summary.md"
+    reports_index = project_dir / "reports" / "index.md"
+    assert "| Branch | 48.0% | 50.0% | 2.0% | FAIL |" in summary.read_text(encoding="utf-8")
+    assert reports_index.exists()
+
+
 def test_cli_uvm_coverage_async_fifo_invokes_runner(monkeypatch, tmp_path):
     module = load_agent_module()
     calls = []
 
     monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
 
-    def fake_run_uvm_coverage(self, target, output_dir="outputs", coverage_threshold=None, coverage_percent=None):
-        calls.append((target, output_dir, coverage_threshold, coverage_percent))
+    def fake_run_uvm_coverage(
+        self,
+        target,
+        output_dir="outputs",
+        coverage_threshold=None,
+        coverage_percent=None,
+        coverage_thresholds=None,
+    ):
+        calls.append(
+            (
+                target,
+                output_dir,
+                coverage_threshold,
+                coverage_percent,
+                coverage_thresholds,
+            )
+        )
         return True
 
     monkeypatch.setattr(module.DigitalICAgent, "run_uvm_coverage", fake_run_uvm_coverage)
@@ -4560,7 +4726,7 @@ def test_cli_uvm_coverage_async_fifo_invokes_runner(monkeypatch, tmp_path):
         "--output-dir",
         str(tmp_path),
     ]) == 0
-    assert calls == [("async-fifo", str(tmp_path), 80.0, 82.5)]
+    assert calls == [("async-fifo", str(tmp_path), 80.0, 82.5, {})]
 
 
 def test_cli_uvm_coverage_async_fifo_keeps_threshold_optional(monkeypatch, tmp_path):
@@ -4569,14 +4735,89 @@ def test_cli_uvm_coverage_async_fifo_keeps_threshold_optional(monkeypatch, tmp_p
 
     monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
 
-    def fake_run_uvm_coverage(self, target, output_dir="outputs", coverage_threshold=None, coverage_percent=None):
-        calls.append((target, output_dir, coverage_threshold, coverage_percent))
+    def fake_run_uvm_coverage(
+        self,
+        target,
+        output_dir="outputs",
+        coverage_threshold=None,
+        coverage_percent=None,
+        coverage_thresholds=None,
+    ):
+        calls.append(
+            (
+                target,
+                output_dir,
+                coverage_threshold,
+                coverage_percent,
+                coverage_thresholds,
+            )
+        )
         return True
 
     monkeypatch.setattr(module.DigitalICAgent, "run_uvm_coverage", fake_run_uvm_coverage)
 
     assert module.main(["--uvm-coverage", "async-fifo", "--output-dir", str(tmp_path)]) == 0
-    assert calls == [("async-fifo", str(tmp_path), None, None)]
+    assert calls == [("async-fifo", str(tmp_path), None, None, {})]
+
+
+def test_cli_uvm_coverage_async_fifo_forwards_component_thresholds(monkeypatch, tmp_path):
+    module = load_agent_module()
+    calls = []
+
+    monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
+
+    def fake_run_uvm_coverage(
+        self,
+        target,
+        output_dir="outputs",
+        coverage_threshold=None,
+        coverage_percent=None,
+        coverage_thresholds=None,
+    ):
+        calls.append(
+            (
+                target,
+                output_dir,
+                coverage_threshold,
+                coverage_percent,
+                coverage_thresholds,
+            )
+        )
+        return True
+
+    monkeypatch.setattr(module.DigitalICAgent, "run_uvm_coverage", fake_run_uvm_coverage)
+
+    assert module.main([
+        "--uvm-coverage",
+        "async-fifo",
+        "--coverage-line-threshold",
+        "80",
+        "--coverage-branch-threshold",
+        "50",
+        "--coverage-condition-threshold",
+        "75",
+        "--coverage-toggle-threshold",
+        "40",
+        "--coverage-functional-threshold",
+        "90",
+        "--output-dir",
+        str(tmp_path),
+    ]) == 0
+    assert calls == [
+        (
+            "async-fifo",
+            str(tmp_path),
+            None,
+            None,
+            {
+                "statement": 80.0,
+                "branch": 50.0,
+                "condition": 75.0,
+                "toggle": 40.0,
+                "functional": 90.0,
+            },
+        )
+    ]
 
 
 def test_run_async_fifo_uvm_coverage_refreshes_reports_index(monkeypatch, tmp_path):
