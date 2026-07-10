@@ -7,7 +7,6 @@ addopts = "-ra"
 target-version = "py311"
 line-length = 100
 extend-exclude = [
-    "OpenCLI",
     "outputs",
     ".tmp",
     ".tmp-*",
@@ -58,7 +57,7 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
-exclude = "(OpenCLI|outputs|VCD_ANALYZER-main|RWaveAnalyzer-main|docs/tools_archive)"
+exclude = "(outputs|VCD_ANALYZER-main|RWaveAnalyzer-main|docs/tools_archive)"
 
 [tool.coverage.run]
 branch = true
