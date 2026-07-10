@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
+AGENT_RUNTIME_PATH = ROOT / ".trae" / "agent" / "agent_runtime.py"
+TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
 AGENT_CONFIG_PATH = ROOT / ".trae" / "agent" / "agent.json"
 AGENT_TARGETS_DIR = ROOT / ".trae" / "agent" / "targets"
 TRAE_CONFIG_PATH = ROOT / ".trae" / "config.json"
@@ -24,6 +26,15 @@ def load_agent_module():
     spec = importlib.util.spec_from_file_location("digital_ic_agent", AGENT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_local_module(module_name, module_path):
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -131,6 +142,16 @@ def test_command_runner_converts_timeout_to_failed_result(monkeypatch):
     assert result.returncode == 124
     assert "timed out after 9 seconds" in result.stderr
     assert result.stdout == "partial"
+
+
+def test_runtime_components_live_in_dedicated_module():
+    assert AGENT_RUNTIME_PATH.exists()
+
+    runtime = load_local_module("agent_runtime", AGENT_RUNTIME_PATH)
+    module = load_agent_module()
+
+    assert module.CommandRunner is runtime.CommandRunner
+    assert module.TargetHandler is runtime.TargetHandler
 
 
 def test_project_owned_text_files_are_valid_utf8():
@@ -731,6 +752,35 @@ def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
 
     try:
         agent.load_target_registry(targets_dir)
+    except ValueError as exc:
+        assert "missing required field: name" in str(exc)
+    else:
+        raise AssertionError("Expected invalid target config to raise ValueError")
+
+
+def test_target_registry_module_preserves_sorting_aliases_and_validation(tmp_path):
+    assert TARGET_REGISTRY_PATH.exists()
+
+    registry = load_local_module("target_registry", TARGET_REGISTRY_PATH)
+    targets = registry.load_target_registry(AGENT_TARGETS_DIR)
+
+    assert [target["name"] for target in registry.list_targets(targets)] == [
+        "async-fifo",
+        "round-robin-arbiter",
+        "sync-fifo",
+    ]
+    assert registry.get_target(targets, "round_robin_arbiter")["name"] == (
+        "round-robin-arbiter"
+    )
+
+    broken_dir = tmp_path / "targets"
+    broken_dir.mkdir()
+    (broken_dir / "broken.json").write_text(
+        '{"display_name": "Broken"}',
+        encoding="utf-8",
+    )
+    try:
+        registry.load_target_registry(broken_dir)
     except ValueError as exc:
         assert "missing required field: name" in str(exc)
     else:
