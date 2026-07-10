@@ -20,6 +20,7 @@ ARTIFACT_MANIFEST_PATH = ROOT / ".trae" / "agent" / "artifact_manifest.py"
 ENVIRONMENT_REPORT_PATH = ROOT / ".trae" / "agent" / "environment_report.py"
 PROJECT_OVERVIEW_PATH = ROOT / ".trae" / "agent" / "project_overview.py"
 WAVEFORM_SAMPLES_PATH = ROOT / ".trae" / "agent" / "waveform_samples.py"
+COVERAGE_CLOSURE_PATH = ROOT / ".trae" / "agent" / "coverage_closure.py"
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
@@ -1572,6 +1573,327 @@ def test_p5_12_waveform_samples_module_is_in_mypy_scope():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     assert '".trae/agent/waveform_samples.py"' in pyproject
+
+
+def test_p4_0_parses_xcrg_scores_and_existing_gate_threshold():
+    module = load_local_module("coverage_closure_parser", COVERAGE_CLOSURE_PATH)
+    score_text = """
+Line Coverage Score 60.2041
+Branch Coverage Score 23.5294
+Condition Coverage Score 22
+Toggle Coverage Score 4.84
+"""
+    summary_text = """
+- 当前覆盖率：27.6%
+- 覆盖率阈值：1.0%
+"""
+
+    scores = module.parse_coverage_scores(score_text, summary_text)
+
+    assert scores == {
+        "total": 27.6,
+        "statement": 60.2,
+        "branch": 23.5,
+        "condition": 22.0,
+        "toggle": 4.8,
+    }
+    assert module.parse_gate_threshold(summary_text) == 1.0
+
+
+def test_p4_0_coverage_dashboard_aggregates_gaps_and_skipped_targets(tmp_path):
+    module = load_local_module("coverage_closure_dashboard", COVERAGE_CLOSURE_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "async-fifo",
+                    "display_name": "Asynchronous FIFO",
+                    "design_family": "fifo",
+                    "flows": ["uvm-coverage"],
+                    "scenario_catalog": [
+                        {"id": "full_boundary", "status": "PASS"},
+                        {"id": "reset_recovery", "status": "PASS"},
+                    ],
+                    "coverage_metrics": [
+                        {
+                            "id": "statement",
+                            "label": "Statement coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "branch",
+                            "label": "Branch coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "condition",
+                            "label": "Condition coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "toggle",
+                            "label": "Toggle coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "functional",
+                            "label": "Functional coverage",
+                            "source": "UVM covergroup",
+                            "status": "PASS",
+                        },
+                    ],
+                },
+                {
+                    "name": "sync-fifo",
+                    "display_name": "Synchronous FIFO",
+                    "design_family": "fifo",
+                    "flows": [],
+                    "scenario_catalog": [],
+                    "coverage_metrics": [
+                        {
+                            "id": "statement",
+                            "label": "Statement coverage",
+                            "source": "not-enabled",
+                            "status": "SKIP",
+                        },
+                        {
+                            "id": "functional",
+                            "label": "Functional coverage",
+                            "source": "no-uvm-flow",
+                            "status": "N/A",
+                        },
+                    ],
+                },
+                {
+                    "name": "round-robin-arbiter",
+                    "display_name": "Round-Robin Arbiter",
+                    "design_family": "arbiter",
+                    "flows": [],
+                    "scenario_catalog": [],
+                    "coverage_metrics": [
+                        {
+                            "id": "branch",
+                            "label": "Branch coverage",
+                            "source": "not-enabled",
+                            "status": "SKIP",
+                        }
+                    ],
+                },
+            ]
+
+    async_dir = tmp_path / "async-fifo"
+    reports_dir = async_dir / "reports"
+    reports_dir.mkdir(parents=True)
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "\n".join(
+            [
+                "Line Coverage Score 60.2041",
+                "Branch Coverage Score 23.5294",
+                "Condition Coverage Score 22",
+                "Toggle Coverage Score 4.84",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (reports_dir / "uvm_coverage_summary.md").write_text(
+        "\n".join(
+            [
+                "# async-fifo UVM 覆盖率摘要",
+                "- 当前覆盖率：27.6%",
+                "- 覆盖率阈值：1.0%",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for report_path in [
+        reports_dir / "uvm_coverage_summary.html",
+        reports_dir
+        / "uvm_coverage_xcrg"
+        / "codeCoverageReport"
+        / "dashboard.html",
+        reports_dir
+        / "uvm_coverage_xcrg"
+        / "functionalCoverageReport"
+        / "dashboard.html",
+        reports_dir / "xcrg_coverage.log",
+        async_dir / "sim" / "async_fifo_uvm_coverage.wdb",
+    ]:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text("fixture\n", encoding="utf-8")
+
+    result = module.write_coverage_closure_report(
+        FakeAgent(),
+        output_dir=tmp_path,
+        target_threshold=80.0,
+    )
+
+    assert result["status"] == "WARN"
+    assert result["target_count"] == 3
+    assert result["gap_target_count"] == 1
+    assert result["skipped_target_count"] == 2
+    assert [item["name"] for item in result["targets"]] == [
+        "async-fifo",
+        "round-robin-arbiter",
+        "sync-fifo",
+    ]
+
+    async_target = result["targets"][0]
+    assert async_target["status"] == "GAP"
+    assert async_target["current_total"] == 27.6
+    assert async_target["current_threshold"] == 1.0
+    assert async_target["target_threshold"] == 80.0
+    assert async_target["gap"] == 52.4
+    assert [item["id"] for item in async_target["low_coverage_items"]] == [
+        "total",
+        "statement",
+        "branch",
+        "condition",
+        "toggle",
+        "functional",
+    ]
+    assert async_target["recommended_scenarios"] == []
+    assert "P4.1" in async_target["next_action"]
+
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    assert "# 多 Target Coverage Closure 看板" in markdown
+    assert "| async-fifo | fifo | GAP | 27.6% | 80.0% | 52.4% |" in markdown
+    assert "| round-robin-arbiter | arbiter | SKIP | - | 80.0% | - |" in markdown
+    assert "Statement coverage | 60.2% | 80.0% | GAP" in markdown
+    assert "Functional coverage | - | 80.0% | MISSING" in markdown
+    assert "../async-fifo/reports/uvm_coverage_summary.html" in markdown
+    assert "../async-fifo/sim/async_fifo_uvm_coverage.wdb" in markdown
+    assert '<html lang="zh-CN">' in html_text
+    assert 'class="target-card gap"' in html_text
+    assert "乱码" not in html_text
+
+
+def test_p4_0_coverage_dashboard_marks_enabled_target_without_data_not_run(tmp_path):
+    module = load_local_module("coverage_closure_not_run", COVERAGE_CLOSURE_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "enabled-target",
+                    "display_name": "Enabled Target",
+                    "design_family": "custom",
+                    "flows": ["uvm-coverage"],
+                    "scenario_catalog": [],
+                    "coverage_metrics": [
+                        {
+                            "id": "branch",
+                            "label": "Branch coverage",
+                            "source": "xcrg",
+                            "status": "PASS",
+                        }
+                    ],
+                }
+            ]
+
+    result = module.write_coverage_closure_report(FakeAgent(), output_dir=tmp_path)
+
+    assert result["status"] == "WARN"
+    assert result["targets"][0]["status"] == "NOT_RUN"
+    assert result["targets"][0]["current_total"] is None
+    assert result["targets"][0]["gap"] is None
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    assert "尚未找到 coverage 数值产物" in markdown
+    assert "0.0%" not in markdown
+
+
+def test_p4_0_coverage_dashboard_isolates_invalid_target_report(tmp_path):
+    module = load_local_module("coverage_closure_invalid", COVERAGE_CLOSURE_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "broken-target",
+                    "display_name": "Broken Target",
+                    "design_family": "custom",
+                    "flows": ["uvm-coverage"],
+                    "scenario_catalog": [],
+                    "coverage_metrics": [
+                        {
+                            "id": "branch",
+                            "label": "Branch coverage",
+                            "source": "xcrg",
+                            "status": "PASS",
+                        }
+                    ],
+                },
+                {
+                    "name": "skipped-target",
+                    "display_name": "Skipped Target",
+                    "design_family": "custom",
+                    "flows": [],
+                    "scenario_catalog": [],
+                    "coverage_metrics": [
+                        {
+                            "id": "branch",
+                            "label": "Branch coverage",
+                            "source": "not-enabled",
+                            "status": "SKIP",
+                        }
+                    ],
+                },
+            ]
+
+    report_path = (
+        tmp_path / "broken-target" / "reports" / "uvm_coverage_percent.txt"
+    )
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text("xcrg completed without score rows\n", encoding="utf-8")
+
+    result = module.write_coverage_closure_report(FakeAgent(), output_dir=tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["targets"][0]["status"] == "INVALID"
+    assert result["targets"][1]["status"] == "SKIP"
+    assert "未解析到 coverage score" in result["targets"][0]["error"]
+
+
+def test_p4_0_cli_accepts_coverage_closure_target():
+    cli_module = load_local_module("agent_cli_p4_0", AGENT_CLI_PATH)
+
+    args = cli_module.parse_args(
+        ["--coverage-closure", "--coverage-target", "85"]
+    )
+
+    assert args.coverage_closure is True
+    assert args.coverage_target == 85.0
+
+
+def test_p4_0_cli_generates_empty_coverage_dashboard(tmp_path):
+    result = run_agent(
+        "--coverage-closure",
+        "--coverage-target",
+        "80",
+        "--output-dir",
+        str(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Coverage closure 状态: WARN" in result.stdout
+    assert (tmp_path / "coverage-closure" / "index.md").exists()
+    assert (tmp_path / "coverage-closure" / "index.html").exists()
+    markdown = (
+        tmp_path / "coverage-closure" / "index.md"
+    ).read_text(encoding="utf-8")
+    assert "| async-fifo | fifo | NOT_RUN | - | 80.0% | - |" in markdown
+    assert "| sync-fifo | fifo | SKIP | - | 80.0% | - |" in markdown
+
+
+def test_p4_0_coverage_closure_module_is_in_mypy_scope():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '".trae/agent/coverage_closure.py"' in pyproject
 
 
 def test_readmes_document_current_vivado_and_async_fifo_flow():
