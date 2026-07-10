@@ -4644,8 +4644,9 @@ if {[file exists $latest_wdb_path]} {
     set latest_fh [open $latest_wdb_path r]
     set latest_wdb [string trim [read $latest_fh]]
     close $latest_fh
-    if {$latest_wdb ne ""} {
-        set wave_db [file normalize [file join $script_dir $latest_wdb]]
+    set latest_candidate [file normalize [file join $script_dir $latest_wdb]]
+    if {$latest_wdb ne "" && [file exists $latest_candidate]} {
+        set wave_db $latest_candidate
     }
 }
 if {![file exists $xpr_path]} {
