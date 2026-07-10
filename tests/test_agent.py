@@ -22,6 +22,9 @@ PROJECT_OVERVIEW_PATH = ROOT / ".trae" / "agent" / "project_overview.py"
 WAVEFORM_SAMPLES_PATH = ROOT / ".trae" / "agent" / "waveform_samples.py"
 COVERAGE_CLOSURE_PATH = ROOT / ".trae" / "agent" / "coverage_closure.py"
 XCRG_COVERAGE_PATH = ROOT / ".trae" / "agent" / "xcrg_coverage.py"
+COVERAGE_RECOMMENDATIONS_PATH = (
+    ROOT / ".trae" / "agent" / "coverage_recommendations.py"
+)
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
@@ -1903,6 +1906,307 @@ def test_p4_1_xcrg_coverage_module_is_in_mypy_scope():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     assert '".trae/agent/xcrg_coverage.py"' in pyproject
+
+
+def _p4_2_scenario_catalog():
+    return [
+        {
+            "id": "full_boundary",
+            "type": "boundary",
+            "purpose": "写满边界与 full 标志",
+            "status": "PASS",
+            "coverage_match": {
+                "tokens": ["full", "write_full"],
+                "metrics": ["cover_point", "cross"],
+                "priority": "HIGH",
+            },
+        },
+        {
+            "id": "empty_boundary",
+            "type": "boundary",
+            "purpose": "读空边界与 empty 标志",
+            "status": "PASS",
+            "coverage_match": {
+                "tokens": ["empty", "read_empty"],
+                "metrics": ["cover_point", "cross"],
+                "priority": "HIGH",
+            },
+        },
+        {
+            "id": "reset_recovery",
+            "type": "recovery",
+            "purpose": "复位后重新收发",
+            "status": "PASS",
+            "coverage_match": {
+                "tokens": ["reset", "rst"],
+                "source_patterns": ["uvm/*sva*.sv"],
+                "metrics": ["statement", "branch", "condition", "toggle"],
+                "priority": "MEDIUM",
+            },
+        },
+        {
+            "id": "clock_ratio_sweep",
+            "type": "timing",
+            "purpose": "写快读慢、读快写慢和相位错开",
+            "status": "PASS",
+            "coverage_match": {
+                "tokens": ["clock", "wr_clk", "rd_clk"],
+                "source_patterns": ["rtl/async_fifo.v"],
+                "metrics": ["toggle"],
+                "priority": "MEDIUM",
+            },
+        },
+        {
+            "id": "mixed_stress",
+            "type": "stress",
+            "purpose": "读写混合压力与随机 burst",
+            "status": "PASS",
+            "coverage_match": {
+                "metrics": [
+                    "statement",
+                    "branch",
+                    "condition",
+                    "toggle",
+                    "functional_group",
+                ],
+                "fallback": True,
+                "priority": "LOW",
+            },
+        },
+        {
+            "id": "disabled_full",
+            "type": "boundary",
+            "purpose": "不可执行的 full 场景",
+            "status": "SKIP",
+            "coverage_match": {
+                "tokens": ["full"],
+                "priority": "HIGH",
+            },
+        },
+    ]
+
+
+def test_p4_2_maps_low_coverage_items_to_scenario_ids_and_evidence():
+    module = load_local_module(
+        "coverage_recommendations_p4_2",
+        COVERAGE_RECOMMENDATIONS_PATH,
+    )
+    low_coverage_items = [
+        {
+            "source_file": "uvm/async_fifo_uvm_pkg.sv",
+            "instance": "this.async_fifo_cg",
+            "metric": "cover_point",
+            "score": 0.0,
+            "details": {"name": "cp_full", "scope": "cover_point"},
+            "source_report": "../reports/grp0.html",
+        },
+        {
+            "source_file": "uvm/async_fifo_uvm_pkg.sv",
+            "instance": "this.async_fifo_cg",
+            "metric": "cross",
+            "score": 0.0,
+            "details": {"name": "cross_read_empty", "scope": "cross"},
+            "source_report": "../reports/grp0.html",
+        },
+        {
+            "source_file": "uvm/async_fifo_sva.sv",
+            "instance": "tb.async_fifo_sva_i",
+            "metric": "branch",
+            "score": 0.0,
+            "details": {"name": "async_fifo_sva", "scope": "module"},
+            "source_report": "../reports/mod6.html",
+        },
+        {
+            "source_file": "rtl/async_fifo.v",
+            "instance": "tb.dut",
+            "metric": "toggle",
+            "score": 17.0,
+            "details": {"name": "async_fifo_default", "scope": "module"},
+            "source_report": "../reports/mod1.html",
+        },
+        {
+            "source_file": "uvm/async_fifo_uvm_pkg.sv",
+            "instance": "async_fifo_uvm_pkg",
+            "metric": "condition",
+            "score": 15.2,
+            "details": {"name": "async_fifo_uvm_pkg", "scope": "module"},
+            "source_report": "../reports/mod4.html",
+        },
+    ]
+
+    result = module.recommend_scenarios(
+        low_coverage_items,
+        _p4_2_scenario_catalog(),
+    )
+
+    assert result["recommended_scenarios"] == [
+        "full_boundary",
+        "empty_boundary",
+        "reset_recovery",
+        "clock_ratio_sweep",
+        "mixed_stress",
+    ]
+    assert not any(
+        item["scenario_id"] == "disabled_full"
+        for item in result["recommendations"]
+    )
+    full_recommendation = result["recommendations"][0]
+    assert full_recommendation["scenario_id"] == "full_boundary"
+    assert full_recommendation["priority"] == "HIGH"
+    assert full_recommendation["matched_items"] == ["cp_full"]
+    assert full_recommendation["matched_metrics"] == ["cover_point"]
+    assert full_recommendation["evidence_count"] == 1
+    assert "cp_full" in full_recommendation["reason"]
+    assert module.recommend_scenarios([], _p4_2_scenario_catalog()) == {
+        "recommended_scenarios": [],
+        "recommendations": [],
+    }
+
+
+def test_p4_2_dashboard_renders_recommendations_and_json(tmp_path):
+    module = load_local_module(
+        "coverage_closure_p4_2_dashboard",
+        COVERAGE_CLOSURE_PATH,
+    )
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "async-fifo",
+                    "display_name": "Asynchronous FIFO",
+                    "design_family": "fifo",
+                    "flows": ["uvm-coverage"],
+                    "scenario_catalog": _p4_2_scenario_catalog(),
+                    "coverage_metrics": [
+                        {
+                            "id": "statement",
+                            "label": "Statement coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "branch",
+                            "label": "Branch coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "condition",
+                            "label": "Condition coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "toggle",
+                            "label": "Toggle coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "functional",
+                            "label": "Functional coverage",
+                            "source": "UVM covergroup",
+                            "status": "PASS",
+                        },
+                    ],
+                }
+            ]
+
+    async_dir = tmp_path / "async-fifo"
+    reports_dir = async_dir / "reports"
+    reports_dir.mkdir(parents=True)
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "\n".join(
+            [
+                "Line Coverage Score 60.2041",
+                "Branch Coverage Score 23.5294",
+                "Condition Coverage Score 22",
+                "Toggle Coverage Score 4.84",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (reports_dir / "uvm_coverage_summary.md").write_text(
+        "- Total Coverage: 27.6%\n- Coverage threshold: 1.0%\n",
+        encoding="utf-8",
+    )
+    _write_p4_1_xcrg_fixture(async_dir)
+
+    result = module.write_coverage_closure_report(
+        FakeAgent(),
+        output_dir=tmp_path,
+        target_threshold=80.0,
+    )
+
+    target = result["targets"][0]
+    assert target["recommended_scenarios"] == [
+        "full_boundary",
+        "empty_boundary",
+        "clock_ratio_sweep",
+        "mixed_stress",
+    ]
+    assert [
+        item["scenario_id"]
+        for item in target["scenario_recommendations"]
+    ] == target["recommended_scenarios"]
+    assert target["scenario_recommendations"][0]["matched_items"] == [
+        "cp_full"
+    ]
+
+    payload = json.loads(
+        result["low_coverage_items_path"].read_text(encoding="utf-8")
+    )
+    payload_target = payload["targets"][0]
+    assert payload_target["recommended_scenarios"] == (
+        target["recommended_scenarios"]
+    )
+    assert payload_target["scenario_recommendations"]
+
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    assert "### 推荐补测场景" in markdown
+    assert "`full_boundary`" in markdown
+    assert "cp_full" in markdown
+    assert "clock_ratio_sweep" in markdown
+    assert "推荐补测场景" in html_text
+    assert "mixed_stress" in html_text
+
+
+def test_p4_2_async_fifo_catalog_defines_coverage_matching_rules():
+    target = json.loads(
+        (
+            ROOT
+            / ".trae"
+            / "agent"
+            / "targets"
+            / "async_fifo.json"
+        ).read_text(encoding="utf-8")
+    )
+    scenarios = {
+        item["id"]: item
+        for item in target["scenario_catalog"]
+    }
+
+    assert "clock_ratio_sweep" in scenarios
+    for scenario_id in [
+        "full_boundary",
+        "empty_boundary",
+        "reset_recovery",
+        "clock_ratio_sweep",
+        "mixed_stress",
+    ]:
+        coverage_match = scenarios[scenario_id]["coverage_match"]
+        assert coverage_match["priority"] in {"HIGH", "MEDIUM", "LOW"}
+        assert coverage_match.get("tokens") or coverage_match.get(
+            "source_patterns"
+        ) or coverage_match.get("fallback")
+
+
+def test_p4_2_recommendations_module_is_in_mypy_scope():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '".trae/agent/coverage_recommendations.py"' in pyproject
 
 
 def test_p4_0_parses_xcrg_scores_and_existing_gate_threshold():
