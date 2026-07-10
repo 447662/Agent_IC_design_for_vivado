@@ -25,6 +25,11 @@ def parse_args(argv=None):
         help="Generate an RTL project skeleton, e.g. async-fifo",
     )
     mode_group.add_argument(
+        "--create-target",
+        metavar="TARGET",
+        help="Create a candidate target scaffold without installing it",
+    )
+    mode_group.add_argument(
         "--generate-spec",
         metavar="TARGET",
         help="Generate target design_spec.md/html, e.g. async-fifo",
@@ -172,6 +177,7 @@ def parse_args(argv=None):
         or args.smoke_loop
         or args.sim_smoke
         or args.generate_rtl
+        or args.create_target
         or args.generate_spec
         or args.generate_verification_plan
         or args.sim_rtl

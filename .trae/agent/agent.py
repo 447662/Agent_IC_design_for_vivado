@@ -62,6 +62,7 @@ from target_registry import (
     list_targets as list_registered_targets,
     load_target_registry as load_registered_targets,
 )
+from target_scaffolder import create_target_scaffold as build_target_scaffold
 
 
 def _configure_text_stream(stream):
@@ -406,6 +407,7 @@ class DigitalICAgent:
     write_target_design_spec = adapter_write_target_design_spec
     render_target_verification_plan = adapter_render_target_verification_plan
     write_target_verification_plan = adapter_write_target_verification_plan
+    create_target_scaffold = build_target_scaffold
 
     def resolve_vcd_analyzer_path(self):
         return get_vcd_analyzer_path(self.project_root)
@@ -5630,6 +5632,22 @@ def main(argv=None):
 
     if args.list_targets:
         agent.print_targets()
+        return 0
+
+    if args.create_target:
+        try:
+            description = " ".join(args.requirement).strip() or None
+            scaffold = agent.create_target_scaffold(
+                args.create_target,
+                output_dir=args.output_dir,
+                description=description,
+            )
+        except (OSError, ValueError) as exc:
+            print("Target scaffold generation failed: {}".format(exc), file=sys.stderr)
+            return 1
+        print("Created target scaffold: {}".format(scaffold["project_dir"]))
+        print("Target config: {}".format(scaffold["config_path"]))
+        print("TODO checklist: {}".format(scaffold["todo_path"]))
         return 0
 
     if args.diagnostic:

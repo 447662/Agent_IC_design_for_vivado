@@ -33,6 +33,7 @@ files = [
     ".trae/agent/adapters/vivado.py",
     ".trae/agent/adapters/waveform.py",
     ".trae/agent/target_registry.py",
+    ".trae/agent/target_scaffolder.py",
     ".trae/agent/target_checks.py",
     ".trae/agent/target_flows.py",
 ]
