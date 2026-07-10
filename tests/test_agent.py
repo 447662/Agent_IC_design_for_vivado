@@ -1417,6 +1417,16 @@ def test_p4_7_target_dashboard_groups_stages_recent_run_and_failure_entry(tmp_pa
             "<html></html>\n",
             encoding="utf-8",
         )
+    xcrg_dashboard = (
+        reports_dir
+        / "uvm_coverage_xcrg"
+        / "codeCoverageReport"
+        / "dashboard.html"
+    )
+    xcrg_detail = xcrg_dashboard.parent / "modules" / "detail.html"
+    xcrg_detail.parent.mkdir(parents=True)
+    xcrg_dashboard.write_text("<html>dashboard</html>\n", encoding="utf-8")
+    xcrg_detail.write_text("<html>detail</html>\n", encoding="utf-8")
     (project_dir / "artifacts.json").write_text(
         json.dumps(
             {
@@ -1483,7 +1493,7 @@ def test_p4_7_target_dashboard_groups_stages_recent_run_and_failure_entry(tmp_pa
     assert "coverage_trend.html" in markdown
     assert 'class="target-selector"' in html_text
     assert 'aria-current="page">async-fifo</a>' in html_text
-    assert 'href="../../sync-fifo/reports/index.html"' in html_text
+    assert 'href="../../index.html#target-sync-fifo"' in html_text
     for stage in [
         "Spec",
         "RTL",
@@ -1497,6 +1507,8 @@ def test_p4_7_target_dashboard_groups_stages_recent_run_and_failure_entry(tmp_pa
     assert 'class="failure-entry fail"' in html_text
     assert "coverage gate failed" in html_text
     assert "failure_archive.json" in html_text
+    assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in html_text
+    assert "uvm_coverage_xcrg/codeCoverageReport/modules/detail.html" not in html_text
     assert "乱码" not in html_text
 
 

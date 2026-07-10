@@ -644,6 +644,18 @@ def _dashboard_target_selector(agent, output_dir, current_target):
     for target_name in sorted(target_names):
         target_info = registered.get(target_name, {})
         current = target_name == current_target
+        target_dashboard = (
+            output_dir
+            / target_name
+            / "reports"
+            / "index.html"
+        )
+        if current:
+            href = "index.html"
+        elif target_dashboard.is_file():
+            href = "../../{}/reports/index.html".format(target_name)
+        else:
+            href = "../../index.html#target-{}".format(target_name)
         selectors.append(
             {
                 "name": target_name,
@@ -652,11 +664,7 @@ def _dashboard_target_selector(agent, output_dir, current_target):
                     target_name,
                 ),
                 "current": current,
-                "href": (
-                    "index.html"
-                    if current
-                    else "../../{}/reports/index.html".format(target_name)
-                ),
+                "href": href,
             }
         )
     return selectors
@@ -687,10 +695,18 @@ def _dashboard_resources(reports_dir, extra_resources=None):
     resources = []
     seen_hrefs = set()
     if reports_dir.is_dir():
-        for path in sorted(reports_dir.rglob("*")):
+        resource_paths = {
+            path
+            for path in reports_dir.iterdir()
+            if path.is_file()
+        }
+        resource_paths.update(reports_dir.rglob("dashboard.html"))
+        for path in sorted(
+            resource_paths,
+            key=lambda item: item.as_posix(),
+        ):
             if (
-                not path.is_file()
-                or path.name in {"index.html", "index.md"}
+                path.name in {"index.html", "index.md"}
                 or path.suffix.lower() not in RESOURCE_SUFFIXES
             ):
                 continue
