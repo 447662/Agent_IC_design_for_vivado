@@ -1,3 +1,4 @@
+import importlib
 import importlib.util
 import json
 import subprocess
@@ -15,6 +16,10 @@ AGENT_WAVEFORM_PATH = ROOT / ".trae" / "agent" / "agent_waveform.py"
 TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
+ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
+REPORT_ADAPTER_PATH = ADAPTERS_DIR / "report.py"
+WAVEFORM_ADAPTER_PATH = ADAPTERS_DIR / "waveform.py"
+VIVADO_ADAPTER_PATH = ADAPTERS_DIR / "vivado.py"
 AGENT_CONFIG_PATH = ROOT / ".trae" / "agent" / "agent.json"
 AGENT_TARGETS_DIR = ROOT / ".trae" / "agent" / "targets"
 TRAE_CONFIG_PATH = ROOT / ".trae" / "config.json"
@@ -304,6 +309,58 @@ def test_generic_target_checks_live_in_dedicated_module(tmp_path):
         rtl_markers=[("RTL marker", "module demo")],
         tb_markers=[("TB marker", "module tb_demo")],
     ) is True
+
+
+def test_p5_9_adapter_modules_own_extracted_agent_methods():
+    assert REPORT_ADAPTER_PATH.exists()
+    assert WAVEFORM_ADAPTER_PATH.exists()
+    assert VIVADO_ADAPTER_PATH.exists()
+
+    module = load_agent_module()
+    report_adapter = importlib.import_module("adapters.report")
+    waveform_adapter = importlib.import_module("adapters.waveform")
+    vivado_adapter = importlib.import_module("adapters.vivado")
+
+    assert module.DigitalICAgent.target_spec_catalog is report_adapter.target_spec_catalog
+    assert (
+        module.DigitalICAgent.target_scenario_catalog
+        is report_adapter.target_scenario_catalog
+    )
+    assert (
+        module.DigitalICAgent.render_target_design_spec
+        is report_adapter.render_target_design_spec
+    )
+    assert (
+        module.DigitalICAgent.write_target_design_spec
+        is report_adapter.write_target_design_spec
+    )
+    assert (
+        module.DigitalICAgent.render_target_verification_plan
+        is report_adapter.render_target_verification_plan
+    )
+    assert (
+        module.DigitalICAgent.write_target_verification_plan
+        is report_adapter.write_target_verification_plan
+    )
+    assert module.DigitalICAgent.run_rwave_json is waveform_adapter.run_rwave_json
+    assert (
+        module.DigitalICAgent.run_rwave_batch_json
+        is waveform_adapter.run_rwave_batch_json
+    )
+    assert (
+        module.DigitalICAgent.run_vcd_analyzer_json
+        is waveform_adapter.run_vcd_analyzer_json
+    )
+    assert (
+        module.DigitalICAgent.run_waveform_analyzer_json
+        is waveform_adapter.run_waveform_analyzer_json
+    )
+    assert (
+        module.DigitalICAgent.resolve_vivado_command
+        is vivado_adapter.resolve_vivado_command
+    )
+    assert module.DigitalICAgent.run_vivado_batch is vivado_adapter.run_vivado_batch
+    assert module.DigitalICAgent.launch_vivado_gui is vivado_adapter.launch_vivado_gui
 
 
 def test_project_owned_text_files_are_valid_utf8():
@@ -892,6 +949,106 @@ def test_p5_3_target_registry_lists_round_robin_arbiter_metadata():
     assert "analyze-rtl-vcd" in arbiter["flows"]
     assert "open-wave" in arbiter["flows"]
     assert agent.normalize_rtl_target("round_robin_arbiter") == "round-robin-arbiter"
+
+
+def test_p5_6_target_registry_exposes_common_capability_metadata():
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    allowed_statuses = {"PASS", "SKIP", "N/A"}
+
+    for target in agent.list_targets():
+        assert target["parameters"]
+        assert target["interfaces"]
+        assert target["checks"]
+        assert target["scenario_catalog"]
+        assert target["coverage_metrics"]
+        assert target["artifact_manifest"]
+
+        scenario_ids = [item["id"] for item in target["scenario_catalog"]]
+        metric_ids = [item["id"] for item in target["coverage_metrics"]]
+        artifact_ids = [item["id"] for item in target["artifact_manifest"]]
+        assert len(scenario_ids) == len(set(scenario_ids))
+        assert len(metric_ids) == len(set(metric_ids))
+        assert len(artifact_ids) == len(set(artifact_ids))
+
+        for item in (
+            target["scenario_catalog"]
+            + target["coverage_metrics"]
+            + target["artifact_manifest"]
+        ):
+            assert item["status"] in allowed_statuses
+
+
+def test_p5_6_target_registry_rejects_invalid_capability_status(tmp_path):
+    module = load_agent_module()
+    targets_dir = tmp_path / "targets"
+    targets_dir.mkdir()
+    config = {
+        "name": "demo",
+        "display_name": "Demo",
+        "design_family": "demo",
+        "aliases": [],
+        "flows": [],
+        "description": "Demo target",
+        "parameters": [
+            {"name": "WIDTH", "default": "8", "description": "Data width"},
+        ],
+        "interfaces": [
+            {
+                "name": "clk",
+                "direction": "input",
+                "width": "1",
+                "description": "Clock",
+            },
+        ],
+        "checks": ["Clock is present"],
+        "scenario_catalog": [
+            {
+                "id": "smoke",
+                "type": "functional",
+                "purpose": "Smoke scenario",
+                "status": "BROKEN",
+            },
+        ],
+        "coverage_metrics": [
+            {
+                "id": "line",
+                "label": "Line coverage",
+                "source": "xcrg",
+                "status": "SKIP",
+            },
+        ],
+        "artifact_manifest": [
+            {"id": "rtl", "path": "rtl/demo.v", "status": "PASS"},
+        ],
+        "notes": [],
+    }
+    (targets_dir / "demo.json").write_text(
+        json.dumps(config, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    agent = module.DigitalICAgent()
+    try:
+        agent.load_target_registry(targets_dir)
+    except ValueError as exc:
+        assert "invalid status" in str(exc)
+    else:
+        raise AssertionError("Expected invalid capability status to raise ValueError")
+
+
+def test_p5_6_spec_and_plan_surface_capability_statuses():
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    spec_text = agent.render_target_design_spec("sync-fifo")
+    plan_text = agent.render_target_verification_plan("sync-fifo")
+
+    assert "## 覆盖率能力" in spec_text
+    assert "## Artifact Manifest" in spec_text
+    assert "| SKIP |" in spec_text
+    assert "| 状态 |" in plan_text
+    assert "coverage_metrics" in plan_text
 
 
 def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
