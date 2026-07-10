@@ -1,3 +1,4 @@
+import re
 import tomllib
 from pathlib import Path
 
@@ -19,13 +20,13 @@ def test_pyproject_defines_python_quality_gates():
     assert tools["ruff"]["target-version"] == "py311"
     assert tools["mypy"]["python_version"] == "3.11"
     assert tools["mypy"]["check_untyped_defs"] is True
-    assert tools["coverage"]["report"]["fail_under"] >= 25
+    assert tools["coverage"]["report"]["fail_under"] >= 65
     assert tools["coverage"]["report"]["show_missing"] is True
 
 
 def test_development_requirements_include_quality_tools():
     requirements = {
-        line.split(";", 1)[0].strip().split("=", 1)[0].split("<", 1)[0].lower()
+        re.split(r"[<>=!~]", line.split(";", 1)[0].strip(), maxsplit=1)[0].lower()
         for line in DEV_REQUIREMENTS_PATH.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     }
@@ -44,7 +45,7 @@ def test_github_actions_runs_all_python_quality_gates():
     assert "python -m mypy" in workflow
     assert "python -m pytest" in workflow
     assert "--cov=.trae/agent" in workflow
-    assert "--cov-fail-under=" in workflow
+    assert "--cov-fail-under=68" in workflow
 
 
 def test_python_quality_artifacts_are_gitignored():

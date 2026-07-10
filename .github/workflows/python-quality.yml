@@ -1,0 +1,47 @@
+name: Python quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Ruff
+        run: python -m ruff check .trae/agent tests
+
+      - name: Mypy
+        run: python -m mypy
+
+      - name: Pytest with coverage
+        run: >-
+          python -m pytest tests
+          --cov=.trae/agent
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=68
+          --basetemp .tmp-pytest
