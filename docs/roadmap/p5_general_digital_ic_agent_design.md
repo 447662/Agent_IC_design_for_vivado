@@ -304,8 +304,9 @@ P4 不取消，只降级为后续升级池。P5 需要预留 P4 接口：
 
 ## 下一步建议
 
-P5.0-P5.12 的通用主流程已经形成，建议下一步转入 P4 coverage closure：
+P5.0-P5.12 的通用主流程已经形成，P4 coverage closure 已继续推进：
 
 - P4.0：多 target coverage closure 看板已完成。
-- P4.1：下一步从 xcrg HTML/log 提取低覆盖文件、实例、指标和来源。
-- P4.2：随后把低覆盖项映射到 target `scenario_catalog`，生成可执行补测建议。
+- P4.1：xcrg 低覆盖文件、实例、指标和来源提取已完成。
+- P4.2：低覆盖项到 target `scenario_catalog` 的可执行补测建议已完成。
+- 下一步进入 P4.3，为 Total/Line/Branch/Condition/Toggle/Functional coverage 增加分项 gate。
