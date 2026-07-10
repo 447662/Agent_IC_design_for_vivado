@@ -20,7 +20,7 @@
 | P5.4 | 通用规格文档生成 | 已完成 | 从目标配置和用户需求生成 `design_spec.md/html` |
 | P5.5 | 通用验证计划 | 已完成 | 从 scenario catalog 生成 `verification_plan.md/html` |
 | P5.6 | P4 能力挂载点 | 已完成 | 统一 target schema、`coverage_metrics`、`artifact_manifest` 和 PASS/SKIP/N/A 状态 |
-| P5.7 | 目标脚手架生成器 | 建议新增 | `--create-target` 能生成 target JSON 和模板占位 |
+| P5.7 | 目标脚手架生成器 | 已完成 | `--create-target` 生成可校验候选 JSON、RTL/TB/report 占位、README 和 TODO，且默认禁止覆盖 |
 | P5.8 | Artifact manifest | 建议新增 | 每次 flow 输出 `artifacts.json`，统一记录产物和重跑命令 |
 | P5.9 | Adapter 拆分 | 已完成 | 拆出 Vivado/RWave/Report adapter，并保持 CLI、测试和旧方法入口兼容 |
 | P5.10 | 环境预检报告 | 建议新增 | 记录 Vivado、RWave、Python、Git、权限和 GUI 前置条件 |
@@ -96,6 +96,26 @@ P5.9 建立了三个 adapter 边界：
 - 覆盖率：`72.63%`，高于项目 `68%` 门槛。
 - TDD 证据：`docs/testing/p5_6_p5_9_metadata_and_adapters.tdd.md`。
 
+## P5.7 执行结果
+
+P5.7 新增 `.trae/agent/target_scaffolder.py` 与 CLI `--create-target <name>`：
+
+- 将 `packet_router` 等名称规范为 `packet-router` target 和 `packet_router` Verilog module。
+- 生成通过 P5.6 registry 校验的候选 target JSON。
+- 生成最小 RTL、testbench、设计规格/验证计划/仿真报告占位、README 和 TODO。
+- 拒绝路径穿越等非法名称、已注册 target 和已存在的输出目录。
+- 候选配置不会自动安装到正式 registry，避免缺少 `TargetHandler` 时破坏启动。
+
+验收结果：
+
+- RED：`3 failed, 112 deselected`，失败原因是模块、方法和 CLI 尚不存在。
+- GREEN：`3 passed, 112 deselected`。
+- 完整回归：`119 passed in 11.88s`。
+- Ruff：通过。
+- Mypy：`Success: no issues found in 12 source files`。
+- 整体覆盖率：`73.14%`；`target_scaffolder.py`：`100.0%`。
+- TDD 证据：`docs/testing/p5_7_target_scaffolder.tdd.md`。
+
 ## 执行原则
 
 - 测试先行：先补失败测试，再实现最小功能。
@@ -105,7 +125,7 @@ P5.9 建立了三个 adapter 边界：
 
 ## 2026-07-10 状态快照
 
-P5.0-P5.6 与 P5.9 已完成：
+P5.0-P5.7 与 P5.9 已完成：
 
 - P5.0：最小 target registry 与 `--list-targets`。
 - P5.1：target 配置文件化，使用 `.trae/agent/targets/*.json`。
@@ -114,6 +134,7 @@ P5.0-P5.6 与 P5.9 已完成：
 - P5.4：通用 `design_spec.md/html` 生成。
 - P5.5：通用 `verification_plan.md/html` 生成。
 - P5.6：通用 target 元数据契约与严格校验。
+- P5.7：候选 target 脚手架生成器。
 - P5.9：Report、Waveform、Vivado adapter 拆分。
 
-后续建议按 P5.7、P5.8、P5.10 的顺序推进。未完成规划集中记录在 `docs/roadmap/project_followup_backlog.md`，后续继续设计时以该 backlog 作为入口，再结合 `p4_future_upgrade_roadmap.md` 和 `p5_general_digital_ic_agent_design.md` 细化任务。
+后续建议按 P5.8、P5.10、P5.11 的顺序推进。未完成规划集中记录在 `docs/roadmap/project_followup_backlog.md`，后续继续设计时以该 backlog 作为入口，再结合 `p4_future_upgrade_roadmap.md` 和 `p5_general_digital_ic_agent_design.md` 细化任务。
