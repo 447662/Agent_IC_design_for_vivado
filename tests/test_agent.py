@@ -4136,6 +4136,20 @@ def test_p4_6_wave_probe_and_capture_scripts_are_flow_agnostic():
     assert "async_fifo" not in source
 
 
+def test_p4_6_async_fifo_gui_script_ignores_stale_latest_wdb_pointer():
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    script = agent.render_async_fifo_open_project_gui_script()
+
+    assert "set latest_candidate [file normalize [file join $script_dir $latest_wdb]]" in script
+    assert (
+        'if {$latest_wdb ne "" && [file exists $latest_candidate]}'
+        in script
+    )
+    assert "set wave_db $latest_candidate" in script
+
+
 def test_async_fifo_wave_screenshot_report_embeds_png_and_capture_script(tmp_path):
     module = load_agent_module()
     agent = module.DigitalICAgent()
