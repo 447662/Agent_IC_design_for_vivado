@@ -38,7 +38,7 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 | `--diagnostic` | 检查 Vivado、`uv`、SynthPilot MCP 和技能文件 |
 | `--environment-report` | 生成 Python、Git、Vivado、RWave fallback、权限和 GUI 条件的中文 Markdown/HTML 预检报告 |
 | `--generate-overview` | 聚合所有 target 与环境 manifest，生成顶层 `index.md/html` 项目总览 |
-| `--coverage-closure` | 聚合所有 target 的 coverage 当前值、目标值、差距、状态与官方产物入口，生成 `coverage-closure/index.md/html` |
+| `--coverage-closure` | 聚合 coverage 当前值、目标值、差距和具体低覆盖项，生成 `coverage-closure/index.md/html` 与 `low_coverage_items.json` |
 | `--coverage-target <percent>` | 设置 coverage closure 目标阈值，默认 `80.0` |
 | `--list-skills` | 列出当前 Agent 技能配置 |
 | `--list-targets` | 列出当前可用 RTL 设计目标、别名和支持 flow |
@@ -177,7 +177,7 @@ outputs/async-fifo/
 
 ## P4-P5 路线
 
-- P4.0 已完成多 target coverage closure 看板；P4.1 低覆盖项提取、P4.2 场景补齐建议、分项 gate、趋势记录和 GUI 自动验收继续按 `docs/roadmap/p4_future_upgrade_roadmap.md` 推进。
+- P4.0/P4.1 已完成多 target coverage closure 看板与 xcrg 低覆盖项提取；下一步由 P4.2 将低覆盖项映射到 `scenario_catalog`。
 - P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
 - P5 系列执行记录已落地到 `docs/roadmap/p5_series_execution_record.md`，用于跟踪 P5.0-P5.12 的状态和验收口径。
 - P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理目标元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。
