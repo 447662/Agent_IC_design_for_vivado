@@ -38,6 +38,11 @@ from artifact_manifest import record_artifact_run as append_artifact_run
 from coverage_closure import (
     write_coverage_closure_report as build_coverage_closure_report,
 )
+from coverage_gates import (
+    COVERAGE_METRIC_LABELS,
+    COVERAGE_METRIC_ORDER,
+    evaluate_coverage_gates,
+)
 from environment_report import write_environment_report as build_environment_report
 from project_overview import write_project_overview as build_project_overview
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
@@ -1402,9 +1407,9 @@ Write-Host "Saved UVM waveform screenshot to $output"
             cards.append(
                 '<article class="report-card {klass}"><h2>{title}</h2><p>{note}</p><a href="{href}">{href}</a><span>{status}</span></article>'.format(
                     klass=klass,
-                    title=html.escape(item["title"]),
-                    note=html.escape(item["note"]),
-                    href=html.escape(item["html"]),
+                    title=html.escape(str(item["title"] or "")),
+                    note=html.escape(str(item["note"] or "")),
+                    href=html.escape(str(item["html"] or "")),
                     status="READY" if item["ready"] else "MISSING",
                 )
             )
@@ -2238,6 +2243,7 @@ exit 0
             "branch": r"Branch\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
             "condition": r"Condition\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
             "toggle": r"Toggle\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
+            "functional": r"Functional\s+Coverage(?:\s+Score|\s*:)\s*([0-9]+(?:\.[0-9]+)?)%?",
         }
         metrics = {}
         for name, pattern in patterns.items():
@@ -2247,8 +2253,13 @@ exit 0
 
         total_match = re.search(r"Total\s+Coverage\s*:\s*([0-9]+(?:\.[0-9]+)?)%", text, flags=re.IGNORECASE)
         total_percent = float(total_match.group(1)) if total_match else None
-        if total_percent is None and metrics:
-            total_percent = round(sum(metrics.values()) / len(metrics), 2)
+        code_metrics = [
+            metrics[name]
+            for name in ("statement", "branch", "condition", "toggle")
+            if name in metrics
+        ]
+        if total_percent is None and code_metrics:
+            total_percent = round(sum(code_metrics) / len(code_metrics), 2)
         return {
             "available": bool(metrics or total_percent is not None),
             "total_percent": total_percent,
@@ -2338,6 +2349,7 @@ exit 0
         sim_result=None,
         coverage_threshold=None,
         coverage_percent=None,
+        coverage_thresholds=None,
     ):
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
@@ -2367,24 +2379,67 @@ exit 0
         coverage_percent_summary = self.extract_async_fifo_coverage_percent(coverage_percent_report_path)
         coverage_ready = coverage_summary["available"]
 
-        coverage_gate_passed = True
-        gate_result = "SKIP"
-        coverage_gap = None
-        gate_diagnostic = "未设置覆盖率阈值，coverage gate 跳过。"
-        if coverage_threshold is not None:
-            if coverage_percent is None:
-                coverage_gate_passed = False
-                gate_result = "FAIL"
+        coverage_thresholds = dict(coverage_thresholds or {})
+        coverage_scores = {
+            "total": None if coverage_percent is None else float(coverage_percent),
+            **coverage_percent_summary["metrics"],
+        }
+        configured_thresholds = {
+            "total": coverage_threshold,
+            **coverage_thresholds,
+        }
+        coverage_gates, coverage_gate_passed = evaluate_coverage_gates(
+            coverage_scores,
+            configured_thresholds,
+        )
+        configured_gate_results = [
+            gate["result"]
+            for gate in coverage_gates.values()
+            if gate["threshold"] is not None
+        ]
+        if not configured_gate_results:
+            gate_result = "SKIP"
+        elif "FAIL" in configured_gate_results:
+            gate_result = "FAIL"
+        elif "MISSING" in configured_gate_results:
+            gate_result = "MISSING"
+        else:
+            gate_result = "PASS"
+
+        total_gate = coverage_gates["total"]
+        coverage_gap = total_gate["gap"]
+        if coverage_thresholds:
+            failed_labels = [
+                gate["label"]
+                for gate in coverage_gates.values()
+                if gate["result"] == "FAIL"
+            ]
+            missing_labels = [
+                gate["label"]
+                for gate in coverage_gates.values()
+                if gate["result"] == "MISSING"
+            ]
+            if failed_labels:
+                gate_diagnostic = "分项 gate 未达标：{}。".format(
+                    "、".join(failed_labels)
+                )
+            elif missing_labels:
+                gate_diagnostic = "分项 gate 数据源缺失：{}。".format(
+                    "、".join(missing_labels)
+                )
+            else:
+                gate_diagnostic = "所有已配置的分项 coverage gate 均通过。"
+        else:
+            gate_diagnostic = "未设置覆盖率阈值，coverage gate 跳过。"
+            if coverage_threshold is not None and coverage_percent is None:
                 gate_diagnostic = "已设置覆盖率阈值 {:.1f}%，但未提供可比较的覆盖率百分比。".format(
                     float(coverage_threshold)
                 )
-            else:
+            elif coverage_threshold is not None:
                 current_percent = float(coverage_percent)
                 threshold_percent = float(coverage_threshold)
-                coverage_gap = round(threshold_percent - current_percent, 1)
-                coverage_gate_passed = current_percent >= threshold_percent
-                gate_result = "PASS" if coverage_gate_passed else "FAIL"
-                if coverage_gate_passed:
+                assert coverage_gap is not None
+                if current_percent >= threshold_percent:
                     gate_diagnostic = "当前覆盖率 {:.1f}% 达到阈值 {:.1f}%，余量 {:.1f}%。".format(
                         current_percent,
                         threshold_percent,
@@ -2406,6 +2461,7 @@ exit 0
             ("branch", "Branch"),
             ("condition", "Condition"),
             ("toggle", "Toggle"),
+            ("functional", "Functional"),
         ]
         coverage_metric_lines = []
         coverage_metric_cards = []
@@ -2431,6 +2487,58 @@ exit 0
             ("Coverage Percent Text", "uvm_coverage_percent.txt", coverage_percent_report_path),
         ]
         threshold_text = "未设置" if coverage_threshold is None else "{:.1f}%".format(float(coverage_threshold))
+        coverage_gate_table_lines = [
+            "| 分项 | 当前值 | 阈值 | Gap | 结果 | 诊断 |",
+            "|---|---:|---:|---:|---|---|",
+        ]
+        coverage_gate_cards = []
+        for metric_key in COVERAGE_METRIC_ORDER:
+            gate = coverage_gates[metric_key]
+            current_text = (
+                "N/A"
+                if gate["current"] is None
+                else "{:.1f}%".format(gate["current"])
+            )
+            component_threshold_text = (
+                "未设置"
+                if gate["threshold"] is None
+                else "{:.1f}%".format(gate["threshold"])
+            )
+            gap_text = (
+                "N/A"
+                if gate["gap"] is None
+                else "{:.1f}%".format(gate["gap"])
+            )
+            coverage_gate_table_lines.append(
+                "| {} | {} | {} | {} | {} | {} |".format(
+                    gate["label"],
+                    current_text,
+                    component_threshold_text,
+                    gap_text,
+                    gate["result"],
+                    gate["diagnostic"],
+                )
+            )
+            gate_class = gate["result"].lower()
+            coverage_gate_cards.append(
+                '<article class="component-gate {gate_class}" data-metric="{metric}">'
+                "<h3>{label}</h3>"
+                "<p>当前值：<strong>{current}</strong></p>"
+                "<p>阈值：<strong>{threshold}</strong></p>"
+                "<p>Gap：<strong>{gap}</strong></p>"
+                "<p>结果：<strong>{result}</strong></p>"
+                "<p>{diagnostic}</p>"
+                "</article>".format(
+                    gate_class=html.escape(gate_class),
+                    metric=html.escape(metric_key),
+                    label=html.escape(COVERAGE_METRIC_LABELS[metric_key]),
+                    current=html.escape(current_text),
+                    threshold=html.escape(component_threshold_text),
+                    gap=html.escape(gap_text),
+                    result=html.escape(gate["result"]),
+                    diagnostic=html.escape(gate["diagnostic"]),
+                )
+            )
 
         lines = [
             "# async-fifo UVM 覆盖率摘要",
@@ -2452,6 +2560,10 @@ exit 0
             "",
             "- 诊断结论：{}".format(gate_diagnostic),
             "- 建议动作：优先查看 `uvm_coverage_report.html`、`uvm_functional_coverage.html` 和 `xsim.CCInfo`，确认低覆盖项或缺失百分比来源。",
+            "",
+            "## P4.3 分项 Coverage Gate",
+            "",
+            *coverage_gate_table_lines,
             "",
             "## 验收标记",
             "",
@@ -2529,13 +2641,18 @@ exit 0
             ".link-card a{color:#175cd3;word-break:break-all}",
             ".link-card strong{display:block;margin-bottom:6px}",
             ".diagnostic{padding:14px 16px;margin:14px 0;border-radius:8px;background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12}",
+            ".component-gates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}",
+            ".component-gate{padding:14px;border-radius:8px;background:#f8fafc;border:1px solid #dbe3ee}",
+            ".component-gate h3{margin:0 0 10px}.component-gate p{margin:7px 0}",
+            ".component-gate.pass{border-left:6px solid #0f8a5f}.component-gate.fail{border-left:6px solid #b42318}",
+            ".component-gate.missing{border-left:6px solid #b7791f}.component-gate.skip{border-left:6px solid #94a3b8}",
             ".badge{display:inline-block;margin:3px 6px 3px 0;padding:5px 9px;border-radius:999px;background:#e7f0f8;color:#17324d;font-weight:600}",
             ".muted{background:#eef1f5;color:#637083}",
             ".grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}",
             ".panel{padding:16px;border-radius:8px;background:#fbfcfe;border:1px solid #e2e8f0}",
             ".panel h2{margin:0 0 10px;font-size:18px}li{margin:6px 0;word-break:break-all}",
             "code{display:block;overflow-x:auto;padding:8px;border-radius:6px;background:#eef3f8}",
-            "@media(max-width:900px){.metrics,.grid{grid-template-columns:1fr}}",
+            "@media(max-width:900px){.metrics,.grid,.component-gates{grid-template-columns:1fr}}",
             "</style>",
             "</head>",
             "<body>",
@@ -2564,6 +2681,10 @@ exit 0
             "",
         ]
         xcrg_html_block = [
+            "<h2>P4.3 Component Coverage Gates</h2>",
+            '<div class="component-gates">',
+            "\n".join(coverage_gate_cards),
+            "</div>",
             "<h2>P3.13 xcrg Coverage Scores</h2>",
             '<div class="metrics">',
             '<div class="metric"><span>Total Coverage</span><strong>{}</strong></div>'.format(html.escape(total_metric_text)),
@@ -2589,6 +2710,8 @@ exit 0
             "coverage_gate_passed": coverage_gate_passed,
             "coverage_percent": coverage_percent,
             "coverage_threshold": coverage_threshold,
+            "coverage_thresholds": coverage_thresholds,
+            "coverage_gates": coverage_gates,
             "coverage_gap": coverage_gap,
             "gate_diagnostic": gate_diagnostic,
             "coverage_summary": coverage_summary,
@@ -5518,6 +5641,7 @@ add_wave -r /tb_async_fifo_uvm
         addr_width=4,
         coverage_threshold=None,
         coverage_percent=None,
+        coverage_thresholds=None,
         seed=None,
     ):
         project_dir = self.generate_rtl_project(
@@ -5555,6 +5679,7 @@ add_wave -r /tb_async_fifo_uvm
                 sim_result=sim_result,
                 coverage_threshold=coverage_threshold,
                 coverage_percent=coverage_percent,
+                coverage_thresholds=coverage_thresholds,
             )
             self.write_async_fifo_reports_index(project_dir)
             print(sim_result.stderr.strip() or sim_result.stdout.strip() or "async FIFO UVM coverage failed", file=sys.stderr)
@@ -5572,6 +5697,7 @@ add_wave -r /tb_async_fifo_uvm
             sim_result=sim_result,
             coverage_threshold=coverage_threshold,
             coverage_percent=auto_percent,
+            coverage_thresholds=coverage_thresholds,
         )
         self.write_async_fifo_reports_index(project_dir)
         if not report["passed"]:
@@ -5635,13 +5761,21 @@ add_wave -r /tb_async_fifo_uvm
             open_wave_gui=open_wave_gui,
         )
 
-    def run_uvm_coverage(self, target, output_dir="outputs", coverage_threshold=None, coverage_percent=None):
+    def run_uvm_coverage(
+        self,
+        target,
+        output_dir="outputs",
+        coverage_threshold=None,
+        coverage_percent=None,
+        coverage_thresholds=None,
+    ):
         return self.run_target_flow(
             target,
             "uvm-coverage",
             output_dir=output_dir,
             coverage_threshold=coverage_threshold,
             coverage_percent=coverage_percent,
+            coverage_thresholds=coverage_thresholds,
         )
 
     def run_uvm_random_regression(self, target, output_dir="outputs", seeds=None):
@@ -5897,11 +6031,23 @@ def main(argv=None):
 
     if args.uvm_coverage:
         try:
+            coverage_thresholds = {
+                metric: value
+                for metric, value in (
+                    ("statement", args.coverage_line_threshold),
+                    ("branch", args.coverage_branch_threshold),
+                    ("condition", args.coverage_condition_threshold),
+                    ("toggle", args.coverage_toggle_threshold),
+                    ("functional", args.coverage_functional_threshold),
+                )
+                if value is not None
+            }
             return 0 if agent.run_uvm_coverage(
                 args.uvm_coverage,
                 output_dir=args.output_dir,
                 coverage_threshold=args.coverage_threshold,
                 coverage_percent=args.coverage_percent,
+                coverage_thresholds=coverage_thresholds,
             ) else 1
         except (OSError, ValueError) as exc:
             print("UVM coverage failed: {}".format(exc), file=sys.stderr)

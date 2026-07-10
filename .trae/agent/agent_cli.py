@@ -117,6 +117,36 @@ def parse_args(argv=None):
         help="Measured UVM code coverage percentage for gate/reporting",
     )
     parser.add_argument(
+        "--coverage-line-threshold",
+        type=float,
+        default=None,
+        help="Minimum UVM statement/line coverage percentage gate",
+    )
+    parser.add_argument(
+        "--coverage-branch-threshold",
+        type=float,
+        default=None,
+        help="Minimum UVM branch coverage percentage gate",
+    )
+    parser.add_argument(
+        "--coverage-condition-threshold",
+        type=float,
+        default=None,
+        help="Minimum UVM condition coverage percentage gate",
+    )
+    parser.add_argument(
+        "--coverage-toggle-threshold",
+        type=float,
+        default=None,
+        help="Minimum UVM toggle coverage percentage gate",
+    )
+    parser.add_argument(
+        "--coverage-functional-threshold",
+        type=float,
+        default=None,
+        help="Minimum UVM functional coverage percentage gate",
+    )
+    parser.add_argument(
         "--coverage-target",
         type=float,
         default=80.0,

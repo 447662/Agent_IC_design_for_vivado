@@ -41,10 +41,12 @@ def build_target_handlers(agent):
                     lambda output_dir="outputs",
                     coverage_threshold=None,
                     coverage_percent=None,
+                    coverage_thresholds=None,
                     **_: agent.run_async_fifo_uvm_coverage(
                         output_dir=output_dir,
                         coverage_threshold=coverage_threshold,
                         coverage_percent=coverage_percent,
+                        coverage_thresholds=coverage_thresholds,
                     )
                 ),
                 "uvm-random-regress": (

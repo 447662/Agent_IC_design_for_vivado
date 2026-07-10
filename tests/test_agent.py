@@ -4914,6 +4914,7 @@ def test_extract_async_fifo_coverage_percent_parses_xcrg_scores(tmp_path):
         "Branch Coverage Score 23.5294\n"
         "Condition Coverage Score 22\n"
         "Toggle Coverage Score 4.84\n"
+        "Functional Coverage Score 88\n"
         "Vivado coverage export status : PASS\n",
         encoding="utf-8",
     )
@@ -4926,6 +4927,7 @@ def test_extract_async_fifo_coverage_percent_parses_xcrg_scores(tmp_path):
     assert summary["metrics"]["branch"] == 23.5294
     assert summary["metrics"]["condition"] == 22.0
     assert summary["metrics"]["toggle"] == 4.84
+    assert summary["metrics"]["functional"] == 88.0
 
 
 def test_generate_async_fifo_uvm_environment_includes_functional_coverage_and_sva(tmp_path):
