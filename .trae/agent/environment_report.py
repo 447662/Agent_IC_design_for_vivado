@@ -429,6 +429,9 @@ def write_environment_report(
         checks,
         [markdown_path, html_path],
     )
+    refresh_overview = getattr(self, "refresh_project_overview", None)
+    if callable(refresh_overview):
+        refresh_overview(output_dir)
     return {
         "status": status,
         "checks": checks,

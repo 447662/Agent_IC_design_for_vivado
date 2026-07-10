@@ -434,9 +434,24 @@ class DigitalICAgent:
     render_target_verification_plan = adapter_render_target_verification_plan
     write_target_verification_plan = adapter_write_target_verification_plan
     create_target_scaffold = build_target_scaffold
-    record_artifact_run = append_artifact_run
     write_environment_report = build_environment_report
     write_project_overview = build_project_overview
+
+    def refresh_project_overview(self, output_dir="outputs"):
+        try:
+            return self.write_project_overview(output_dir=output_dir)
+        except (OSError, ValueError) as exc:
+            print("项目总览自动刷新失败: {}".format(exc), file=sys.stderr)
+            return None
+
+    def record_artifact_run(self, *args, **kwargs):
+        manifest_path = append_artifact_run(self, *args, **kwargs)
+        output_dir = kwargs.get(
+            "output_dir",
+            args[2] if len(args) > 2 else "outputs",
+        )
+        self.refresh_project_overview(output_dir)
+        return manifest_path
 
     def resolve_vcd_analyzer_path(self):
         return get_vcd_analyzer_path(self.project_root)

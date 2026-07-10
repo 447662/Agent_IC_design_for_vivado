@@ -1390,6 +1390,37 @@ def test_p5_11_cli_reports_output_failure_without_traceback(tmp_path):
     assert "Traceback" not in result.stderr
 
 
+def test_p5_11_target_flow_refreshes_top_level_overview(tmp_path):
+    result = run_agent(
+        "--generate-rtl",
+        "sync-fifo",
+        "--output-dir",
+        str(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    overview_path = tmp_path / "index.md"
+    assert overview_path.exists()
+    overview = overview_path.read_text(encoding="utf-8")
+    assert "| sync-fifo | Synchronous FIFO | PASS | generate-rtl | PASS |" in overview
+    assert "| async-fifo | Asynchronous FIFO | NOT_RUN |" in overview
+
+
+def test_p5_11_environment_report_refreshes_top_level_overview(tmp_path):
+    result = run_agent(
+        "--environment-report",
+        "--output-dir",
+        str(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    overview_path = tmp_path / "index.md"
+    assert overview_path.exists()
+    overview = overview_path.read_text(encoding="utf-8")
+    assert "环境预检：WARN" in overview
+    assert "environment-report/environment_report.html" in overview
+
+
 def test_readmes_document_current_vivado_and_async_fifo_flow():
     root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
     agent_readme = (ROOT / ".trae" / "agent" / "README.md").read_text(encoding="utf-8")
