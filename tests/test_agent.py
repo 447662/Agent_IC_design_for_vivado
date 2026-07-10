@@ -185,8 +185,8 @@ def test_config_helpers_live_in_dedicated_module():
         module.normalize_configured_command
         is config_helpers.normalize_configured_command
     )
-    assert config_helpers.load_agent_config(AGENT_CONFIG_PATH)["name"] == (
-        "digital-ic-frontend-design-agent"
+    assert config_helpers.load_agent_config(AGENT_CONFIG_PATH) == json.loads(
+        AGENT_CONFIG_PATH.read_text(encoding="utf-8")
     )
     assert config_helpers.normalize_configured_command("uvx synthpilot") == [
         "uvx",

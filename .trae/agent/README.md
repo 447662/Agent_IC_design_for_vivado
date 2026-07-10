@@ -147,6 +147,15 @@ outputs/async-fifo/
 - P5.1 已完成目标配置文件化：`DigitalICAgent.load_target_registry()` 从 `.trae/agent/targets/*.json` 加载目标元信息，当前 async FIFO 配置为 `.trae/agent/targets/async_fifo.json`。
 - P5.2 已完成 `sync-fifo` 最小闭环：新增 `.trae/agent/targets/sync_fifo.json`、RTL/TB/Vivado Tcl 生成、真实 Vivado/xsim 仿真、`--analyze-rtl-vcd sync-fifo`、WDB GUI 打开和中文仿真报告。
 
+## 代码模块化状态
+
+- `agent.py` 保留 `DigitalICAgent` 编排、设计生成与当前报告实现，并继续作为兼容 CLI 入口。
+- `agent_runtime.py` 提供统一命令超时、UTF-8 子进程处理和 target flow handler。
+- `agent_config.py` 负责 Agent JSON 配置读取与外部命令规范化。
+- `target_registry.py` 负责目标 JSON 校验、排序和别名解析。
+- `agent_cli.py` 负责命令行参数、UVM seed 解析和自然语言需求拼装。
+- 后续模块化批次将继续迁移 waveform adapter、报告生成和各 target 的 RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
+
 ## 问题复盘
 
 Vivado/async FIFO 仿真过程中遇到的问题已沉淀到：
