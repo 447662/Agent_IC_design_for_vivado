@@ -1651,7 +1651,7 @@ def _write_p4_1_xcrg_fixture(project_dir):
     (functional_dir / "groups.html").write_text(
         """
 <table>
-<tr><td>Group Name</td><td>Score</td><td>Num Insts</td>
+<tr><td>Name</td><td>Score</td><td>Num Insts</td>
 <td>Avg Instances Score</td><td>Weight</td><td>Goal</td></tr>
 <tr>
 <td><a href="grp0.html">async_fifo_uvm_pkg::async_fifo_monitor::async_fifo_cg</a></td>
