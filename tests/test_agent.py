@@ -18,6 +18,7 @@ TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
 TARGET_SCAFFOLDER_PATH = ROOT / ".trae" / "agent" / "target_scaffolder.py"
 ARTIFACT_MANIFEST_PATH = ROOT / ".trae" / "agent" / "artifact_manifest.py"
 ENVIRONMENT_REPORT_PATH = ROOT / ".trae" / "agent" / "environment_report.py"
+PROJECT_OVERVIEW_PATH = ROOT / ".trae" / "agent" / "project_overview.py"
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
@@ -1144,6 +1145,248 @@ def test_p5_10_cli_reports_output_failure_without_traceback(tmp_path):
 
     assert result.returncode == 1
     assert "环境预检报告生成失败" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_p5_11_project_overview_aggregates_targets_environment_and_links(tmp_path):
+    module = load_local_module("project_overview_complete", PROJECT_OVERVIEW_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "sync-fifo",
+                    "display_name": "Synchronous FIFO",
+                    "design_family": "fifo",
+                },
+                {
+                    "name": "async-fifo",
+                    "display_name": "Asynchronous FIFO",
+                    "design_family": "fifo",
+                },
+            ]
+
+    async_dir = tmp_path / "async-fifo"
+    sync_dir = tmp_path / "sync-fifo"
+    environment_dir = tmp_path / "environment-report"
+    for report_path in [
+        async_dir / "reports" / "design_spec.html",
+        async_dir / "reports" / "sim_report.html",
+        async_dir / "reports" / "wave_visibility.html",
+        sync_dir / "reports" / "design_spec.html",
+        sync_dir / "reports" / "sim_report.html",
+        environment_dir / "environment_report.html",
+    ]:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text("<html lang=\"zh-CN\"></html>\n", encoding="utf-8")
+
+    (async_dir / "artifacts.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target": "async-fifo",
+                "updated_at": "2026-07-10T12:00:00.000Z",
+                "runs": [
+                    {
+                        "flow": "generate-spec",
+                        "status": "PASS",
+                        "recorded_at": "2026-07-10T10:00:00.000Z",
+                        "error": None,
+                    },
+                    {
+                        "flow": "sim-rtl",
+                        "status": "FAIL",
+                        "recorded_at": "2026-07-10T12:00:00.000Z",
+                        "error": "simulation failed",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (sync_dir / "artifacts.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target": "sync-fifo",
+                "updated_at": "2026-07-10T11:00:00.000Z",
+                "runs": [
+                    {
+                        "flow": "sim-rtl",
+                        "status": "PASS",
+                        "recorded_at": "2026-07-10T11:00:00.000Z",
+                        "error": None,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (environment_dir / "artifacts.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "scope": "environment",
+                "updated_at": "2026-07-10T09:00:00.000Z",
+                "runs": [
+                    {
+                        "flow": "environment-report",
+                        "status": "WARN",
+                        "recorded_at": "2026-07-10T09:00:00.000Z",
+                        "error": None,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = module.write_project_overview(FakeAgent(), output_dir=tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["target_count"] == 2
+    assert result["ready_target_count"] == 1
+    assert result["failed_target_count"] == 1
+    assert result["environment_status"] == "WARN"
+    assert [item["name"] for item in result["targets"]] == [
+        "async-fifo",
+        "sync-fifo",
+    ]
+
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    assert "# 数字 IC Agent 多目标项目总览" in markdown
+    assert "| async-fifo | Asynchronous FIFO | FAIL | sim-rtl | FAIL |" in markdown
+    assert "| sync-fifo | Synchronous FIFO | PASS | sim-rtl | PASS |" in markdown
+    assert "simulation failed" in markdown
+    assert "environment-report/environment_report.html" in markdown
+    assert 'href="async-fifo/reports/design_spec.html"' in html_text
+    assert 'href="async-fifo/reports/sim_report.html"' in html_text
+    assert 'href="async-fifo/reports/wave_visibility.html"' in html_text
+    assert 'href="sync-fifo/reports/design_spec.html"' in html_text
+    assert 'class="target-card fail"' in html_text
+    assert 'class="target-card pass"' in html_text
+    assert "乱码" not in html_text
+
+
+def test_p5_11_project_overview_handles_empty_output_as_not_run(tmp_path):
+    module = load_local_module("project_overview_empty", PROJECT_OVERVIEW_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "sync-fifo",
+                    "display_name": "Synchronous FIFO",
+                    "design_family": "fifo",
+                },
+                {
+                    "name": "async-fifo",
+                    "display_name": "Asynchronous FIFO",
+                    "design_family": "fifo",
+                },
+            ]
+
+    result = module.write_project_overview(FakeAgent(), output_dir=tmp_path)
+
+    assert result["status"] == "WARN"
+    assert result["target_count"] == 2
+    assert result["ready_target_count"] == 0
+    assert result["failed_target_count"] == 0
+    assert result["environment_status"] == "MISSING"
+    assert [item["status"] for item in result["targets"]] == [
+        "NOT_RUN",
+        "NOT_RUN",
+    ]
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    assert "尚无运行记录" in markdown
+    assert "NOT_RUN" in markdown
+    assert "environment-report/artifacts.json" in markdown
+
+
+def test_p5_11_project_overview_keeps_other_targets_when_manifest_is_invalid(tmp_path):
+    module = load_local_module("project_overview_invalid", PROJECT_OVERVIEW_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "async-fifo",
+                    "display_name": "Asynchronous FIFO",
+                    "design_family": "fifo",
+                },
+                {
+                    "name": "sync-fifo",
+                    "display_name": "Synchronous FIFO",
+                    "design_family": "fifo",
+                },
+            ]
+
+    async_dir = tmp_path / "async-fifo"
+    sync_dir = tmp_path / "sync-fifo"
+    async_dir.mkdir(parents=True)
+    sync_dir.mkdir(parents=True)
+    (async_dir / "artifacts.json").write_text("{broken", encoding="utf-8")
+    (sync_dir / "artifacts.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target": "sync-fifo",
+                "updated_at": "2026-07-10T11:00:00.000Z",
+                "runs": [
+                    {
+                        "flow": "generate-rtl",
+                        "status": "PASS",
+                        "recorded_at": "2026-07-10T11:00:00.000Z",
+                        "error": None,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = module.write_project_overview(FakeAgent(), output_dir=tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["targets"][0]["status"] == "INVALID"
+    assert result["targets"][1]["status"] == "PASS"
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    assert "artifacts.json" in markdown
+    assert "INVALID" in markdown
+    assert "manifest JSON 无效" in markdown
+    assert "sync-fifo" in markdown
+
+
+def test_p5_11_cli_generates_empty_project_overview(tmp_path):
+    result = run_agent(
+        "--generate-overview",
+        "--output-dir",
+        str(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "项目总览状态: WARN" in result.stdout
+    assert (tmp_path / "index.md").exists()
+    assert (tmp_path / "index.html").exists()
+    assert "NOT_RUN" in (tmp_path / "index.md").read_text(encoding="utf-8")
+
+
+def test_p5_11_cli_reports_output_failure_without_traceback(tmp_path):
+    output_file = tmp_path / "not-a-directory"
+    output_file.write_text("blocked", encoding="utf-8")
+
+    result = run_agent(
+        "--generate-overview",
+        "--output-dir",
+        str(output_file),
+    )
+
+    assert result.returncode == 1
+    assert "项目总览生成失败" in result.stderr
     assert "Traceback" not in result.stderr
 
 
