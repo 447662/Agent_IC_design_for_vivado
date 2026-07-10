@@ -1318,8 +1318,8 @@ def test_p5_11_project_overview_handles_empty_output_as_not_run(tmp_path):
     html_text = result["html_path"].read_text(encoding="utf-8")
     assert "尚无运行记录" in markdown
     assert "NOT_RUN" in markdown
-    assert "manifest 尚未生成" in markdown
-    assert "manifest 尚未生成" in html_text
+    assert markdown.count("manifest 尚未生成") == 3
+    assert html_text.count("manifest 尚未生成") == 3
     for missing_href in [
         "environment-report/artifacts.json",
         "async-fifo/artifacts.json",
