@@ -96,7 +96,7 @@ class SkillResultValidator:
             if (
                 tool_run.status is SkillExecutionStatus.SUCCEEDED
                 and (name in accepted_names or any(item in name for item in accepted_names))
-                and tool_run.returncode in (None, 0)
+                and tool_run.returncode == 0
             ):
                 return True
         return False
@@ -175,7 +175,7 @@ class SkillResultValidator:
             raise ValueError("RTL skill success requires a testbench artifact")
         if not self._successful_tool_run(tool_runs, self._RTL_CHECK_NAMES):
             raise ValueError(
-                "RTL skill success requires a successful syntax or RTL check"
+                "RTL skill success requires a successful RTL check or syntax check"
             )
 
     def _validate_verification_success(

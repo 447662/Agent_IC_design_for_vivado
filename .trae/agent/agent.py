@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 
 AGENT_MODULE_DIR = Path(__file__).resolve().parent
@@ -28,6 +29,10 @@ from agent_runtime import (
     CommandRunner,
     TargetHandler,
 )
+from agent_contracts import AgentRequest, AgentRun, AgentRunStatus
+from agent_execution import AgentExecutionEngine
+from agent_provider import ConfiguredAgentProvider
+from agent_skill_tool import SkillExecutionTool
 from agent_round_robin_arbiter import RoundRobinArbiterMixin
 from agent_sync_fifo import SyncFifoMixin
 from agent_cli import build_requirement, parse_args, parse_seed_list
@@ -130,6 +135,8 @@ class DigitalICAgent(
         command_runner: Any=None,
         skill_executor: Any=None,
         preflight: Any=None,
+        agent_provider: Any=None,
+        agent_tools: Any=None,
     ) -> None:
         self.base_dir = Path(__file__).resolve().parent
         self.trae_dir = self.base_dir.parent
@@ -147,6 +154,19 @@ class DigitalICAgent(
             self.build_skill_action_handlers(),
             validator=self.skill_result_validator,
         )
+        self.agent_provider = agent_provider or ConfiguredAgentProvider(
+            self.agent_config["skills"]
+        )
+        skill_tool = SkillExecutionTool(self)
+        default_agent_tools = {
+            "skill:{}".format(skill.action): skill_tool
+            for skill in self.loaded_skills.values()
+        }
+        self.agent_execution_engine = AgentExecutionEngine(
+            self.agent_provider,
+            default_agent_tools if agent_tools is None else agent_tools,
+        )
+        self.last_agent_run: AgentRun | None = None
         self.mcp_servers = self.agent_config["mcpServers"]
         self.cli_tools = self.agent_config["cliTools"]
         self.targets_dir = self.base_dir / "targets"
@@ -1453,49 +1473,30 @@ catch {package require ::tclapp::xilinx::xsim 2.520}
                     return False
             print(self.OK + " 当前技能动作所需能力已就绪")
 
-        print("\n【步骤3/4: 设计文档模板生成】")
-        try:
-            spec_path = self.generate_design_spec(user_input, matched_skills, output_dir)
-        except OSError as exc:
-            print("输出目录不可写或文件生成失败: {}".format(exc), file=sys.stderr)
-            return False
+        print("\n【步骤3/4: 执行计划】")
+        request = AgentRequest(
+            request_id=uuid4().hex,
+            user_input=str(user_input),
+            output_dir=Path(output_dir),
+            context={"selected_skills": tuple(matched_skills)},
+        )
+        print("计划请求: {}".format(request.request_id))
 
-        print("设计文档模板已生成: {}".format(spec_path))
-
-        print("\n【步骤4/4: 技能执行】")
-        for skill in loaded_skills:
-            request = SkillExecutionRequest(
-                skill=skill,
-                user_input=user_input,
-                output_dir=spec_path.parent,
-                context={"design_spec_path": str(spec_path)},
+        print("\n【步骤4/4: 工具执行与结果验证】")
+        self.last_agent_run = self.agent_execution_engine.run(request)
+        if self.last_agent_run.status is not AgentRunStatus.SUCCEEDED:
+            print(
+                "Agent 执行失败: {}".format(
+                    self.last_agent_run.failure_reason or "unknown failure"
+                ),
+                file=sys.stderr,
             )
-            try:
-                result = self.skill_result_validator.validate(
-                    request,
-                    self.skill_executor.execute(request),
-                )
-            except (OSError, ValueError, KeyError) as exc:
-                print(
-                    "技能执行失败 {}: {}".format(skill.name, exc),
-                    file=sys.stderr,
-                )
-                return False
-            if result.status is not SkillExecutionStatus.SUCCEEDED:
-                detail = result.failure_reason or result.message
-                print(
-                    "技能执行未完成 {} [{}]: {}".format(
-                        skill.name,
-                        result.status.value,
-                        detail,
-                    ),
-                    file=sys.stderr,
-                )
-                return False
+            return False
+        for result in self.last_agent_run.tool_results:
             print(
                 "{} {} -> {}".format(
                     self.OK,
-                    skill.name,
+                    result.tool_name,
                     ", ".join(str(path) for path in result.artifacts),
                 )
             )

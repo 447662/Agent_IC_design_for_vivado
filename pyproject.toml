@@ -39,6 +39,11 @@ select = ["E4", "E7", "E9", "F"]
 python_version = "3.11"
 files = [
     ".trae/agent/agent.py",
+    ".trae/agent/agent_contracts.py",
+    ".trae/agent/agent_execution.py",
+    ".trae/agent/agent_provider.py",
+    ".trae/agent/agent_skill_tool.py",
+    ".trae/agent/mcp_client.py",
     ".trae/agent/agent_runtime.py",
     ".trae/agent/agent_async_fifo_render.py",
     ".trae/agent/agent_async_fifo_reports.py",
