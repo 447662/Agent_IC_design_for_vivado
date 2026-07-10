@@ -1,0 +1,3 @@
+[submodule "OpenCLI"]
+	path = OpenCLI
+	url = https://github.com/jackwener/OpenCLI.git
