@@ -1383,6 +1383,44 @@ def test_p5_8_create_target_scaffold_writes_runtime_manifest(tmp_path):
     )
 
 
+def test_p5_8_manifest_rejects_invalid_status_external_path_and_corrupt_json(
+    tmp_path,
+):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    with pytest.raises(ValueError, match="invalid runtime flow status"):
+        agent.record_artifact_run(
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            status="BROKEN",
+        )
+
+    outside_path = tmp_path / "outside.log"
+    outside_path.write_text("outside", encoding="utf-8")
+    with pytest.raises(ValueError, match="inside project directory"):
+        agent.record_artifact_run(
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            status="PASS",
+            extra_artifacts=[
+                {"id": "outside", "path": outside_path, "status": "PASS"},
+            ],
+        )
+
+    manifest_path = tmp_path / "sync-fifo" / "artifacts.json"
+    manifest_path.write_text("{broken", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid runtime artifact manifest JSON"):
+        agent.record_artifact_run(
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            status="PASS",
+        )
+
+
 def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
     module = load_agent_module()
     targets_dir = tmp_path / "targets"
