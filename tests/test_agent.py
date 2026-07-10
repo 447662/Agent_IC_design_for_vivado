@@ -21,6 +21,7 @@ ENVIRONMENT_REPORT_PATH = ROOT / ".trae" / "agent" / "environment_report.py"
 PROJECT_OVERVIEW_PATH = ROOT / ".trae" / "agent" / "project_overview.py"
 WAVEFORM_SAMPLES_PATH = ROOT / ".trae" / "agent" / "waveform_samples.py"
 COVERAGE_CLOSURE_PATH = ROOT / ".trae" / "agent" / "coverage_closure.py"
+XCRG_COVERAGE_PATH = ROOT / ".trae" / "agent" / "xcrg_coverage.py"
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
@@ -1575,6 +1576,332 @@ def test_p5_12_waveform_samples_module_is_in_mypy_scope():
     assert '".trae/agent/waveform_samples.py"' in pyproject
 
 
+def _write_p4_1_xcrg_fixture(project_dir):
+    code_dir = (
+        project_dir
+        / "reports"
+        / "uvm_coverage_xcrg"
+        / "codeCoverageReport"
+    )
+    functional_dir = (
+        project_dir
+        / "reports"
+        / "uvm_coverage_xcrg"
+        / "functionalCoverageReport"
+    )
+    code_dir.mkdir(parents=True)
+    functional_dir.mkdir(parents=True)
+    project_path = project_dir.as_posix()
+
+    (code_dir / "files.html").write_text(
+        f"""
+<table class="fileInfosTable">
+<tr>
+<td>File ID</td><td>File Path</td><td>Modules Count</td>
+<td>Total Instances Count</td><td>Statement Coverage Score</td>
+<td>Lines Count</td><td>Statements Count</td>
+<td>Branch Coverage Score</td><td>Condition Coverage Score</td>
+<td>Toggle Coverage Score</td>
+</tr>
+<tr>
+<td>1</td><td><a href="file1.html">{project_path}/rtl/async_fifo.v</a></td>
+<td>1</td><td>1</td><td>100</td><td>30</td><td>30</td>
+<td>100</td><td>100</td><td>17.01</td>
+</tr>
+<tr>
+<td>2</td><td><a href="file2.html">{project_path}/uvm/async_fifo_uvm_pkg.sv</a></td>
+<td>1</td><td>1</td><td>54.7337</td><td>20</td><td>20</td>
+<td>18.1818</td><td>15.2174</td><td>0</td>
+</tr>
+<tr>
+<td>3</td><td><a href="file3.html">D:/Vivado/data/system_verilog/uvm_1.2/xlnx_uvm_package.sv</a></td>
+<td>1</td><td>1</td><td>0</td><td>20</td><td>20</td>
+<td>0</td><td>0</td><td>0</td>
+</tr>
+</table>
+""",
+        encoding="utf-8",
+    )
+    (code_dir / "modules.html").write_text(
+        f"""
+<table class="moduleInfosTable">
+<tr>
+<td>Module ID</td><td>Module Name</td><td>Instance[s] Count</td>
+<td>Hierarchical Instance[s]</td><td>Statement Score</td>
+<td>Branch Score</td><td>Condition Score</td><td>Toggle Score</td>
+<td>Module definition in File</td><td>File ID</td>
+</tr>
+<tr>
+<td>1</td><td><a href="mod1.html">async_fifo_default</a></td><td>1</td>
+<td>tb_async_fifo_uvm.dut</td><td>100</td><td>100</td><td>100</td>
+<td>17.01</td>
+<td><span class="tooltiptext">{project_path}/rtl/async_fifo.v</span></td><td>1</td>
+</tr>
+<tr>
+<td>2</td><td><a href="mod2.html">async_fifo_uvm_pkg</a></td><td>1</td>
+<td>async_fifo_uvm_pkg</td><td>54.7337</td><td>18.1818</td>
+<td>15.2174</td><td>0</td>
+<td><span class="tooltiptext">{project_path}/uvm/async_fifo_uvm_pkg.sv</span></td>
+<td>2</td>
+</tr>
+</table>
+""",
+        encoding="utf-8",
+    )
+    (functional_dir / "groups.html").write_text(
+        """
+<table>
+<tr><td>Group Name</td><td>Score</td><td>Num Insts</td>
+<td>Avg Instances Score</td><td>Weight</td><td>Goal</td></tr>
+<tr>
+<td><a href="grp0.html">async_fifo_uvm_pkg::async_fifo_monitor::async_fifo_cg</a></td>
+<td>57.1429</td><td>1</td><td>57.1429</td><td>1</td><td>100</td>
+</tr>
+</table>
+""",
+        encoding="utf-8",
+    )
+    (functional_dir / "grp0.html").write_text(
+        f"""
+<span>Source File(s) :</span>
+<a href="file:{project_path}/uvm/async_fifo_uvm_pkg.sv">
+{project_path}/uvm/async_fifo_uvm_pkg.sv
+</a>
+<table id="sortable0">
+<tr><td>Name</td><td>Score</td><td>Weight</td><td>Goal</td></tr>
+<tr><td><span class="tooltiptext1">this .async_fifo_cg</span></td>
+<td>57.1429</td><td>1</td><td>100</td></tr>
+</table>
+<table id="sortable1">
+<tr><td>Name</td><td>Expected</td><td>Uncovered</td>
+<td>Covered</td><td>Percent</td><td>Goal</td></tr>
+<tr><td>cp_write</td><td>1</td><td>0</td><td>1</td><td>100</td><td>100</td></tr>
+<tr><td>cp_full</td><td>1</td><td>1</td><td>0</td><td>0</td><td>100</td></tr>
+</table>
+<table id="sortable2">
+<tr><td>Name</td><td>Expected</td><td>Uncovered</td>
+<td>Covered</td><td>Percent</td><td>Goal</td></tr>
+<tr><td><span class="tooltiptext5">cross_write_full</span></td>
+<td>1</td><td>1</td><td>0</td><td>0</td><td>100</td></tr>
+</table>
+""",
+        encoding="utf-8",
+    )
+
+
+def test_p4_1_extracts_project_low_coverage_items_from_xcrg(tmp_path):
+    module = load_local_module("xcrg_coverage_items", XCRG_COVERAGE_PATH)
+    project_dir = tmp_path / "async-fifo"
+    _write_p4_1_xcrg_fixture(project_dir)
+
+    result = module.extract_low_coverage_items(
+        project_dir,
+        report_base=tmp_path / "coverage-closure",
+        target_threshold=80.0,
+    )
+
+    assert result["diagnostics"] == []
+    assert len(result["items"]) == 13
+    assert [item["score"] for item in result["items"]] == sorted(
+        item["score"] for item in result["items"]
+    )
+    assert all(
+        set(item) == {
+            "source_file",
+            "instance",
+            "metric",
+            "score",
+            "details",
+            "source_report",
+        }
+        for item in result["items"]
+    )
+    assert all(item["score"] < 80.0 for item in result["items"])
+    assert not any(
+        "xlnx_uvm_package.sv" in item["source_file"]
+        for item in result["items"]
+    )
+    assert any(
+        item["source_file"] == "uvm/async_fifo_uvm_pkg.sv"
+        and item["instance"] == "async_fifo_uvm_pkg"
+        and item["metric"] == "branch"
+        and item["score"] == 18.2
+        and item["details"]["scope"] == "module"
+        for item in result["items"]
+    )
+    assert any(
+        item["metric"] == "cover_point"
+        and item["instance"] == "this .async_fifo_cg"
+        and item["score"] == 0.0
+        and item["details"]["name"] == "cp_full"
+        and item["details"]["uncovered"] == 1
+        for item in result["items"]
+    )
+    assert any(
+        item["metric"] == "cross"
+        and item["details"]["name"] == "cross_write_full"
+        and item["source_report"].endswith(
+            "functionalCoverageReport/grp0.html"
+        )
+        for item in result["items"]
+    )
+
+
+def test_p4_1_reports_missing_and_invalid_xcrg_pages_without_zero_defaults(
+    tmp_path,
+):
+    module = load_local_module("xcrg_coverage_diagnostics", XCRG_COVERAGE_PATH)
+    project_dir = tmp_path / "broken-target"
+    code_dir = (
+        project_dir
+        / "reports"
+        / "uvm_coverage_xcrg"
+        / "codeCoverageReport"
+    )
+    code_dir.mkdir(parents=True)
+    (code_dir / "files.html").write_text(
+        "<html><body>unsupported xcrg layout</body></html>",
+        encoding="utf-8",
+    )
+
+    result = module.extract_low_coverage_items(
+        project_dir,
+        report_base=tmp_path / "coverage-closure",
+        target_threshold=80.0,
+    )
+
+    assert result["items"] == []
+    assert {diagnostic["status"] for diagnostic in result["diagnostics"]} == {
+        "INVALID",
+        "MISSING",
+    }
+    assert any(
+        diagnostic["status"] == "INVALID"
+        and diagnostic["source_report"].endswith(
+            "codeCoverageReport/files.html"
+        )
+        for diagnostic in result["diagnostics"]
+    )
+    assert any(
+        diagnostic["status"] == "MISSING"
+        and diagnostic["source_report"].endswith(
+            "functionalCoverageReport/groups.html"
+        )
+        for diagnostic in result["diagnostics"]
+    )
+    assert not any(
+        item["score"] == 0.0
+        for item in result["items"]
+    )
+
+
+def test_p4_1_dashboard_renders_concrete_items_and_writes_json(tmp_path):
+    module = load_local_module(
+        "coverage_closure_p4_1_dashboard",
+        COVERAGE_CLOSURE_PATH,
+    )
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "async-fifo",
+                    "display_name": "Asynchronous FIFO",
+                    "design_family": "fifo",
+                    "flows": ["uvm-coverage"],
+                    "scenario_catalog": [],
+                    "coverage_metrics": [
+                        {
+                            "id": "statement",
+                            "label": "Statement coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "branch",
+                            "label": "Branch coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "condition",
+                            "label": "Condition coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "toggle",
+                            "label": "Toggle coverage",
+                            "source": "Vivado xcrg",
+                            "status": "PASS",
+                        },
+                        {
+                            "id": "functional",
+                            "label": "Functional coverage",
+                            "source": "UVM covergroup",
+                            "status": "PASS",
+                        },
+                    ],
+                }
+            ]
+
+    async_dir = tmp_path / "async-fifo"
+    reports_dir = async_dir / "reports"
+    reports_dir.mkdir(parents=True)
+    (reports_dir / "uvm_coverage_percent.txt").write_text(
+        "\n".join(
+            [
+                "Line Coverage Score 60.2041",
+                "Branch Coverage Score 23.5294",
+                "Condition Coverage Score 22",
+                "Toggle Coverage Score 4.84",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (reports_dir / "uvm_coverage_summary.md").write_text(
+        "- Total Coverage: 27.6%\n- Coverage threshold: 1.0%\n",
+        encoding="utf-8",
+    )
+    _write_p4_1_xcrg_fixture(async_dir)
+
+    result = module.write_coverage_closure_report(
+        FakeAgent(),
+        output_dir=tmp_path,
+        target_threshold=80.0,
+    )
+
+    target = result["targets"][0]
+    assert target["coverage_gaps"]
+    assert len(target["low_coverage_items"]) == 13
+    assert target["low_coverage_diagnostics"] == []
+    assert target["recommended_scenarios"] == []
+    assert result["low_coverage_items_path"] == (
+        tmp_path / "coverage-closure" / "low_coverage_items.json"
+    )
+    payload = json.loads(
+        result["low_coverage_items_path"].read_text(encoding="utf-8")
+    )
+    assert payload["targets"][0]["name"] == "async-fifo"
+    assert len(payload["targets"][0]["low_coverage_items"]) == 13
+
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    assert "### 低覆盖项" in markdown
+    assert "uvm/async_fifo_uvm_pkg.sv" in markdown
+    assert "this .async_fifo_cg" in markdown
+    assert "cp_full" in markdown
+    assert "functionalCoverageReport/grp0.html" in markdown
+    assert "低覆盖项" in html_text
+    assert "cross_write_full" in html_text
+
+
+def test_p4_1_xcrg_coverage_module_is_in_mypy_scope():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '".trae/agent/xcrg_coverage.py"' in pyproject
+
+
 def test_p4_0_parses_xcrg_scores_and_existing_gate_threshold():
     module = load_local_module("coverage_closure_parser", COVERAGE_CLOSURE_PATH)
     score_text = """
@@ -1748,7 +2075,7 @@ def test_p4_0_coverage_dashboard_aggregates_gaps_and_skipped_targets(tmp_path):
     assert async_target["current_threshold"] == 1.0
     assert async_target["target_threshold"] == 80.0
     assert async_target["gap"] == 52.4
-    assert [item["id"] for item in async_target["low_coverage_items"]] == [
+    assert [item["id"] for item in async_target["coverage_gaps"]] == [
         "total",
         "statement",
         "branch",
@@ -1756,6 +2083,8 @@ def test_p4_0_coverage_dashboard_aggregates_gaps_and_skipped_targets(tmp_path):
         "toggle",
         "functional",
     ]
+    assert async_target["low_coverage_items"] == []
+    assert async_target["low_coverage_diagnostics"]
     assert async_target["recommended_scenarios"] == []
     assert "P4.1" in async_target["next_action"]
 
