@@ -177,7 +177,7 @@ outputs/async-fifo/
 
 ## P4-P5 路线
 
-- P4.0-P4.2 已完成 coverage closure 看板、xcrg 低覆盖项提取和 `scenario_catalog` 补测建议；下一步进入 P4.3 分项 gate。
+- P4.0-P4.3 已完成 coverage closure 看板、xcrg 低覆盖项提取、`scenario_catalog` 补测建议和 Total/Statement/Branch/Condition/Toggle/Functional 分项 gate；下一步进入 P4.4 coverage 趋势记录。
 - P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
 - P5 系列执行记录已落地到 `docs/roadmap/p5_series_execution_record.md`，用于跟踪 P5.0-P5.12 的状态和验收口径。
 - P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理目标元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。
@@ -197,6 +197,7 @@ outputs/async-fifo/
 - `agent_waveform.py` 负责 VCD_ANALYZER 和 RWaveAnalyzer 的路径、源码目录与可执行文件解析。
 - `environment_report.py` 负责环境探测、中文 Markdown/HTML 和项目级 environment manifest。
 - `project_overview.py` 负责注册目标发现、manifest 状态聚合、统一报告 surface 和顶层 Markdown/HTML。
+- `coverage_gates.py` 负责目标无关的分项 coverage gate 计算，统一输出 `PASS/FAIL/MISSING/SKIP`、gap 和诊断。
 - `target_flows.py` 负责 target flow handler 注册和参数转发。
 - `target_checks.py` 负责通用 RTL/TB/Vivado/VCD/WDB 产物检查。
 - 后续模块化批次将继续迁移 waveform 执行 adapter、各类详细报告生成和 target RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
@@ -210,7 +211,7 @@ python -m mypy
 python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov-fail-under=68 --basetemp .tmp-pytest
 ```
 
-当前质量基线为 `139 passed`，分支覆盖率 `74.39%`，CI 覆盖率门槛 `68%`。Mypy 当前覆盖 15 个已拆分模块。
+当前全量回归为 `168 passed`；既有 CI 分支覆盖率基线为 `74.39%`，门槛为 `68%`。Mypy 当前覆盖 20 个源文件。
 
 ## 问题复盘
 
