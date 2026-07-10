@@ -1,5 +1,6 @@
 import importlib
 import importlib.util
+import gzip
 import json
 import pytest
 import subprocess
@@ -1059,6 +1060,55 @@ def test_p5_10_environment_report_writes_chinese_markdown_html_and_manifest(tmp_
         item["path"]
         for item in manifest["runs"][-1]["artifacts"]
     } == {"environment_report.md", "environment_report.html"}
+
+
+def test_history_rotation_archives_environment_manifest_runs(tmp_path):
+    module = load_local_module(
+        "environment_report_rotation",
+        ENVIRONMENT_REPORT_PATH,
+    )
+    report_dir = tmp_path / "environment-report"
+    report_dir.mkdir()
+    report_paths = [
+        report_dir / "environment_report.md",
+        report_dir / "environment_report.html",
+    ]
+    for path in report_paths:
+        path.write_text(path.name, encoding="utf-8")
+
+    manifest_path = report_dir / "artifacts.json"
+    for index in range(4):
+        module.write_environment_manifest(
+            manifest_path,
+            tmp_path,
+            "PASS",
+            "2026-07-11T00:0{}:00.000Z".format(index),
+            [{"name": "sequence", "status": "PASS", "detail": index}],
+            report_paths,
+            max_active_runs=2,
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert [
+        run["checks"][0]["detail"]
+        for run in manifest["runs"]
+    ] == [2, 3]
+    assert manifest["history"] == {
+        "active_limit": 2,
+        "archive_path": "artifacts.archive.jsonl.gz",
+        "archived_runs": 2,
+    }
+
+    archive_path = report_dir / "artifacts.archive.jsonl.gz"
+    with gzip.open(archive_path, "rt", encoding="utf-8") as stream:
+        archived = [
+            json.loads(line)
+            for line in stream.read().splitlines()
+        ]
+    assert [
+        run["checks"][0]["detail"]
+        for run in archived
+    ] == [0, 1]
 
 
 def test_p5_10_environment_report_warns_for_missing_optional_tools(tmp_path):
@@ -3070,6 +3120,86 @@ def test_p5_8_report_generation_appends_manifest_history(tmp_path):
     }
     assert latest_artifacts["design_spec"]["status"] == "PASS"
     assert latest_artifacts["verification_plan"]["status"] == "PASS"
+
+
+def test_history_rotation_archives_target_manifest_runs_and_can_be_disabled(
+    tmp_path,
+):
+    module = load_local_module(
+        "artifact_manifest_rotation",
+        ARTIFACT_MANIFEST_PATH,
+    )
+
+    class FakeAgent:
+        def get_target(self, target):
+            return {
+                "name": target,
+                "artifact_manifest": [],
+            }
+
+    agent = FakeAgent()
+    project_dir = tmp_path / "sync-fifo"
+    for index in range(4):
+        module.record_artifact_run(
+            agent,
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            project_dir=project_dir,
+            options={"sequence": index},
+            max_active_runs=2,
+        )
+
+    manifest_path = project_dir / "artifacts.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert [
+        run["options"]["sequence"]
+        for run in manifest["runs"]
+    ] == [2, 3]
+    assert manifest["history"] == {
+        "active_limit": 2,
+        "archive_path": "artifacts.archive.jsonl.gz",
+        "archived_runs": 2,
+    }
+
+    archive_path = project_dir / "artifacts.archive.jsonl.gz"
+    with gzip.open(archive_path, "rt", encoding="utf-8") as stream:
+        archived = [
+            json.loads(line)
+            for line in stream.read().splitlines()
+        ]
+    assert [
+        run["options"]["sequence"]
+        for run in archived
+    ] == [0, 1]
+
+    unbounded_dir = tmp_path / "unbounded"
+    for index in range(3):
+        module.record_artifact_run(
+            agent,
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            project_dir=unbounded_dir,
+            options={"sequence": index},
+            max_active_runs=None,
+        )
+    unbounded = json.loads(
+        (unbounded_dir / "artifacts.json").read_text(encoding="utf-8")
+    )
+    assert len(unbounded["runs"]) == 3
+    assert "history" not in unbounded
+    assert not (unbounded_dir / "artifacts.archive.jsonl.gz").exists()
+
+    with pytest.raises(ValueError, match="active record limit"):
+        module.record_artifact_run(
+            agent,
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            project_dir=tmp_path / "invalid-limit",
+            max_active_runs=0,
+        )
 
 
 def test_p5_8_failed_target_flow_records_failure(tmp_path):
@@ -5085,6 +5215,66 @@ def test_p4_4_appends_coverage_history_and_renders_trend_deltas(tmp_path):
     assert 'data-target="async-fifo"' in html_text
     assert 'class="delta trend-up"' in html_text
     assert 'class="delta trend-down"' in html_text
+
+
+def test_history_rotation_archives_coverage_records_and_keeps_latest_deltas(
+    tmp_path,
+):
+    module = load_local_module(
+        "coverage_history_rotation",
+        COVERAGE_HISTORY_PATH,
+    )
+    reports_dir = tmp_path / "reports"
+    result = None
+    for index in range(4):
+        result = module.append_coverage_history(
+            reports_dir,
+            target_name="async-fifo",
+            flow_name="uvm-coverage",
+            toolchain={"vivado": {"version": "2025.2"}},
+            seed_set=[index],
+            coverage_metrics={
+                "total": 80.0 + index,
+                "statement": 90.0,
+                "branch": 75.0,
+                "condition": 78.0,
+                "toggle": 66.0,
+                "functional": 95.0,
+            },
+            coverage_gates={},
+            status="PASS",
+            recorded_at="2026-07-11T01:0{}:00.000Z".format(index),
+            max_active_records=2,
+        )
+
+    assert result is not None
+    active_records = module.load_coverage_history(
+        reports_dir / "coverage_history.jsonl"
+    )
+    assert [
+        record["seed_set"]
+        for record in active_records
+    ] == [[2], [3]]
+    assert result["metric_deltas"]["total"] == 1.0
+
+    archive_path = reports_dir / "coverage_history.archive.jsonl.gz"
+    with gzip.open(archive_path, "rt", encoding="utf-8") as stream:
+        archived = [
+            json.loads(line)
+            for line in stream.read().splitlines()
+        ]
+    assert [
+        record["seed_set"]
+        for record in archived
+    ] == [[0], [1]]
+    assert result["archive_path"] == archive_path
+    assert result["archived_records"] == 2
+
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    assert "活动记录数量：2" in markdown
+    assert "coverage_history.archive.jsonl.gz" in markdown
+    assert "coverage_history.archive.jsonl.gz" in html_text
 
 
 def test_p4_4_history_reports_invalid_jsonl_line(tmp_path):
