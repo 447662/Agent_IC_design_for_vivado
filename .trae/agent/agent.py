@@ -21,6 +21,18 @@ import sys
 from pathlib import Path
 
 
+AGENT_MODULE_DIR = Path(__file__).resolve().parent
+if str(AGENT_MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(AGENT_MODULE_DIR))
+
+from agent_runtime import CommandRunner, TargetHandler
+from target_registry import (
+    get_target as get_registered_target,
+    list_targets as list_registered_targets,
+    load_target_registry as load_registered_targets,
+)
+
+
 def _configure_text_stream(stream):
     try:
         stream.reconfigure(encoding="utf-8", errors="replace", write_through=True)
@@ -30,60 +42,6 @@ def _configure_text_stream(stream):
 
 _configure_text_stream(sys.stdout)
 _configure_text_stream(sys.stderr)
-
-
-class CommandRunner:
-    def __init__(self, default_timeout=120):
-        self.default_timeout = int(default_timeout)
-
-    @staticmethod
-    def _coerce_text(value):
-        if value is None:
-            return ""
-        if isinstance(value, bytes):
-            return value.decode("utf-8", errors="replace")
-        return str(value)
-
-    def run(self, command, timeout=None, **kwargs):
-        effective_timeout = self.default_timeout if timeout is None else int(timeout)
-        kwargs["timeout"] = effective_timeout
-        if kwargs.get("text") or kwargs.get("universal_newlines"):
-            kwargs.setdefault("encoding", "utf-8")
-            kwargs.setdefault("errors", "replace")
-        try:
-            return subprocess.run(command, **kwargs)
-        except subprocess.TimeoutExpired as exc:
-            stdout = self._coerce_text(exc.stdout or exc.output)
-            timeout_message = "Command timed out after {} seconds: {}".format(
-                effective_timeout,
-                " ".join(str(part) for part in command),
-            )
-            stderr = self._coerce_text(exc.stderr)
-            if stderr:
-                timeout_message = "{}\n{}".format(timeout_message, stderr)
-            return subprocess.CompletedProcess(
-                command,
-                124,
-                stdout=stdout,
-                stderr=timeout_message,
-            )
-
-    def launch(self, command, **kwargs):
-        return subprocess.Popen(command, **kwargs)
-
-
-class TargetHandler:
-    def __init__(self, target_name, flows):
-        self.target_name = target_name
-        self.flows = dict(flows)
-
-    def run(self, flow, **kwargs):
-        handler = self.flows.get(flow)
-        if handler is None:
-            raise ValueError(
-                "Target {} does not support flow: {}".format(self.target_name, flow)
-            )
-        return handler(**kwargs)
 
 
 class DigitalICAgent:
@@ -182,45 +140,13 @@ class DigitalICAgent:
 
     def load_target_registry(self, targets_dir=None):
         targets_dir = Path(targets_dir) if targets_dir else self.targets_dir
-        if not targets_dir.exists():
-            raise FileNotFoundError("Target registry directory not found: {}".format(targets_dir))
-
-        targets = {}
-        required_fields = ["name", "display_name", "design_family", "aliases", "flows", "description"]
-        for config_path in sorted(targets_dir.glob("*.json")):
-            with config_path.open("r", encoding="utf-8") as f:
-                target = json.load(f)
-
-            for field in required_fields:
-                if field not in target:
-                    raise ValueError("{} missing required field: {}".format(config_path, field))
-
-            target_name = str(target["name"]).strip().lower()
-            if not target_name:
-                raise ValueError("{} has empty target name".format(config_path))
-            if target_name in targets:
-                raise ValueError("Duplicate RTL target: {}".format(target_name))
-
-            target["name"] = target_name
-            target["aliases"] = [str(alias).strip() for alias in target.get("aliases", []) if str(alias).strip()]
-            target["flows"] = [str(flow).strip() for flow in target.get("flows", []) if str(flow).strip()]
-            targets[target_name] = target
-
-        if not targets:
-            raise ValueError("No RTL target configs found in {}".format(targets_dir))
-        return targets
+        return load_registered_targets(targets_dir)
 
     def list_targets(self):
-        return [self.targets[name] for name in sorted(self.targets)]
+        return list_registered_targets(self.targets)
 
     def get_target(self, target):
-        target_name = str(target).strip().lower().replace("_", "-")
-        for registered in self.list_targets():
-            candidate_names = [registered["name"], *registered.get("aliases", [])]
-            normalized_names = {str(name).strip().lower().replace("_", "-") for name in candidate_names}
-            if target_name in normalized_names:
-                return registered
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return get_registered_target(self.targets, target)
 
     def print_targets(self):
         print("Digital IC Agent registered targets")
