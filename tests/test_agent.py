@@ -8,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
 AGENT_RUNTIME_PATH = ROOT / ".trae" / "agent" / "agent_runtime.py"
+AGENT_CLI_PATH = ROOT / ".trae" / "agent" / "agent_cli.py"
+AGENT_CONFIG_HELPERS_PATH = ROOT / ".trae" / "agent" / "agent_config.py"
 TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
 AGENT_CONFIG_PATH = ROOT / ".trae" / "agent" / "agent.json"
 AGENT_TARGETS_DIR = ROOT / ".trae" / "agent" / "targets"
@@ -152,6 +154,48 @@ def test_runtime_components_live_in_dedicated_module():
 
     assert module.CommandRunner is runtime.CommandRunner
     assert module.TargetHandler is runtime.TargetHandler
+
+
+def test_cli_helpers_live_in_dedicated_module():
+    assert AGENT_CLI_PATH.exists()
+
+    cli = load_local_module("agent_cli", AGENT_CLI_PATH)
+    module = load_agent_module()
+
+    assert module.parse_args is cli.parse_args
+    assert module.parse_seed_list is cli.parse_seed_list
+    assert module.build_requirement is cli.build_requirement
+
+    args = cli.parse_args(["--list-targets"])
+    assert args.list_targets is True
+    assert cli.parse_seed_list("1, 2,3") == [1, 2, 3]
+
+
+def test_config_helpers_live_in_dedicated_module():
+    assert AGENT_CONFIG_HELPERS_PATH.exists()
+
+    config_helpers = load_local_module(
+        "agent_config",
+        AGENT_CONFIG_HELPERS_PATH,
+    )
+    module = load_agent_module()
+
+    assert module.load_agent_config is config_helpers.load_agent_config
+    assert (
+        module.normalize_configured_command
+        is config_helpers.normalize_configured_command
+    )
+    assert config_helpers.load_agent_config(AGENT_CONFIG_PATH)["name"] == (
+        "digital-ic-frontend-design-agent"
+    )
+    assert config_helpers.normalize_configured_command("uvx synthpilot") == [
+        "uvx",
+        "synthpilot",
+    ]
+    assert config_helpers.normalize_configured_command(["uvx", "synthpilot"]) == [
+        "uvx",
+        "synthpilot",
+    ]
 
 
 def test_project_owned_text_files_are_valid_utf8():
