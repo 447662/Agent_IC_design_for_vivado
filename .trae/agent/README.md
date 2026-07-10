@@ -10,6 +10,9 @@ python .trae/agent/agent.py --environment-report --output-dir outputs
 python .trae/agent/agent.py --generate-overview --output-dir outputs
 python .trae/agent/agent.py --list-skills
 python .trae/agent/agent.py --list-targets
+python .trae/agent/agent.py --analyze-waveform tests/fixtures/waveforms/handshake_trace.fst
+python .trae/agent/agent.py --analyze-waveform tests/fixtures/waveforms/time_test.ghw
+python .trae/agent/agent.py --verify-waveform-samples --output-dir outputs
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend rwave
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend vcd-analyzer
@@ -36,7 +39,9 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 | `--generate-overview` | 聚合所有 target 与环境 manifest，生成顶层 `index.md/html` 项目总览 |
 | `--list-skills` | 列出当前 Agent 技能配置 |
 | `--list-targets` | 列出当前可用 RTL 设计目标、别名和支持 flow |
+| `--analyze-waveform <file>` | 分析 VCD/FST/GHW，可配合条件、观察信号、行数和后端参数 |
 | `--analyze-vcd <file>` | 分析 VCD，可配合 `--vcd-condition`、`--vcd-show`、`--vcd-limit` |
+| `--verify-waveform-samples` | 强制用 RWaveAnalyzer 验证仓库内 VCD/FST/GHW 样例并生成格式矩阵 |
 | `--smoke-loop` | 生成内置握手 VCD 并运行 VCD 分析 |
 | `--sim-smoke` | 使用可用仿真器运行握手 RTL smoke，优先 Vivado |
 | `--no-wave-gui` | Vivado/xsim 仿真后不打开 GUI 波形 |
@@ -81,11 +86,13 @@ outputs/environment-report/
 
 ## RWaveAnalyzer / VCD_ANALYZER
 
-- 默认 `--wave-backend auto`：优先使用 RWaveAnalyzer 的 `rwave`，不可用或运行失败时降级到 `VCD_ANALYZER-main`。
+- 默认 `--wave-backend auto`：优先使用 RWaveAnalyzer 的 `rwave`。
 - `RWAVE_BIN` 可指定本机 `rwave.exe` 绝对路径；如果未设置，Agent 会查找 PATH 和已构建的 RWaveAnalyzer `target/release/rwave.exe`。
-- `--wave-backend rwave` 用于强制验证 RWaveAnalyzer；`--wave-backend vcd-analyzer` 用于强制旧 Python 分析器兼容路径。
+- VCD 在 `auto` 模式下可降级到 `VCD_ANALYZER-main`；FST/GHW 禁止降级，RWave 缺失或失败时会明确报错。
+- `--wave-backend rwave` 用于强制验证 RWaveAnalyzer；`--wave-backend vcd-analyzer` 仅用于 VCD 兼容路径。
+- `--verify-waveform-samples` 生成 `outputs/waveform-samples/format_matrix.md/html`，矩阵记录格式、状态、后端、信号数、timescale 和时间范围。
 - `--analyze-rtl-vcd async-fifo` 在 RWaveAnalyzer 可用时优先走 batch 模式：一次加载 `async_fifo_trace.vcd`，连续执行 `info`、写计数变化搜索、读计数变化搜索，减少重复解析 VCD 的开销。
-- 当前已经用最新 `RWaveAnalyzer-main.zip` 临时解压并 `cargo build --release` 验证，`rwave 0.1.4` 可以读取现有 `handshake_trace.vcd`。
+- 当前已用 `rwave 0.1.4` 真实验证 VCD/FST/GHW：两个握手样例均为 3 信号、`1ns`、`0s - 30ns`，GHW 时间样例为 3 信号、`1fs`、`0s - 10ns`。
 
 如果只需要批处理结果：
 

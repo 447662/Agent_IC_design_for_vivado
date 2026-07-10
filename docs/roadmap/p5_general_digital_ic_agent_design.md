@@ -68,7 +68,7 @@ regress-rtl
 uvm-smoke
 uvm-coverage
 uvm-random-regress
-analyze-vcd
+analyze-waveform
 open-wave
 check-target
 ```
@@ -259,6 +259,28 @@ reports/verification_plan.html
 - async FIFO 可继续使用现有 xcrg 数据。
 - sync FIFO/arbiter 即使暂时没有 coverage，也能显示 SKIP/N/A，而不是误报失败。
 
+### P5.12：RWave FST/GHW 统一波形样例
+
+目标：用非 VCD 真实样例证明 RWaveAnalyzer 是 VCD/FST/GHW 的统一波形后端，而不是仅作为旧 VCD 分析器的替代入口。
+
+交付：
+
+- 新增通用 `--analyze-waveform <file>`，支持 VCD/FST/GHW。
+- 保留 `--analyze-vcd` 和 `DigitalICAgent.analyze_vcd()` 兼容入口。
+- VCD 的 `auto` 模式保留 RWave -> VCD_ANALYZER 降级。
+- FST/GHW 的 `auto` 模式禁止降级；RWave 缺失或失败时明确报错。
+- 跟踪 VCD/FST/GHW 最小真实夹具及来源说明。
+- 新增 `--verify-waveform-samples`，输出中文 `format_matrix.md/html`。
+
+验收：
+
+- 三种格式均由 `rwave` 返回 `_waveform_backend: rwave`。
+- FST/GHW 不会调用仅支持 VCD 的旧分析器。
+- 格式矩阵记录信号数、timescale、时间范围、后端和 PASS/FAIL。
+- 旧 `--analyze-vcd`、条件搜索和 target VCD 流程保持兼容。
+
+当前状态：已完成。真实验收结果为 VCD/FST 各 3 个信号、`1ns`、`0s - 30ns`，GHW 为 3 个信号、`1fs`、`0s - 10ns`；三种格式矩阵状态为 `PASS`。
+
 ## 优先支持目标建议
 
 | 优先级 | Target | 价值 | 难度 |
@@ -282,10 +304,8 @@ P4 不取消，只降级为后续升级池。P5 需要预留 P4 接口：
 
 ## 下一步建议
 
-建议直接进入 P5.0：
+P5.0-P5.12 的通用主流程已经形成，建议下一步转入 P4 coverage closure：
 
-- 新增 target registry。
-- 保持 async FIFO 现有行为不变。
-- 增加 `--list-targets`。
-- 把 async FIFO 的基础元信息搬进 registry。
-- 用单元测试证明 registry 不影响现有 P0-P3.14 主流程。
+- P4.0：建立多 target coverage closure 看板。
+- P4.1：从 xcrg HTML/log 提取低覆盖文件、实例、指标和来源。
+- P4.2：把低覆盖项映射到 target `scenario_catalog`，生成可执行补测建议。

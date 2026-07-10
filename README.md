@@ -168,7 +168,8 @@ python .trae/agent/agent.py --open-wave round-robin-arbiter --output-dir outputs
 - Target 脚手架：`--create-target` 生成候选配置、RTL/TB、报告占位、README 和 TODO 清单，且默认禁止覆盖。
 - 运行时 manifest：每个 target 的 `artifacts.json` 追加 flow 状态、命令、工具信息、产物存在性和失败证据。
 - Adapter 边界：报告、波形和 Vivado 外部工具逻辑位于 `.trae/agent/adapters/`，主类保留兼容方法绑定。
-- VCD/波形分析：`--analyze-vcd` 支持条件搜索与信号观察，默认 `--wave-backend auto` 会优先使用 RWaveAnalyzer 的 `rwave`，不可用时自动降级到 `VCD_ANALYZER-main`。
+- 统一波形分析：`--analyze-waveform` 支持 VCD/FST/GHW；VCD 的 `auto` 模式可降级到 `VCD_ANALYZER-main`，FST/GHW 必须使用 RWaveAnalyzer。
+- 波形样例矩阵：`--verify-waveform-samples` 用真实 VCD/FST/GHW 夹具生成中文 `format_matrix.md/html`。
 - 内置闭环：`--smoke-loop` 生成握手示例 VCD 并调用分析器。
 - Vivado smoke 仿真：`--sim-smoke` 调用 Vivado/xsim，生成 `handshake_trace.vcd` 和 `handshake_smoke.wdb`。
 - async FIFO RTL：`--generate-rtl async-fifo` 生成 RTL/TB/Vivado 脚本工程。
@@ -191,6 +192,9 @@ python .trae/agent/agent.py --generate-overview --output-dir outputs
 python .trae/agent/agent.py --list-skills
 python .trae/agent/agent.py --list-targets
 python .trae/agent/agent.py --create-target packet_router --output-dir outputs "Configurable packet router target"
+python .trae/agent/agent.py --analyze-waveform tests/fixtures/waveforms/handshake_trace.fst
+python .trae/agent/agent.py --analyze-waveform tests/fixtures/waveforms/time_test.ghw
+python .trae/agent/agent.py --verify-waveform-samples --output-dir outputs
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --vcd-condition "tb.valid=1,tb.ready=1" --vcd-show "tb.data"
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend rwave
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd --wave-backend vcd-analyzer
@@ -326,15 +330,18 @@ python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov
 Get-Content -Encoding UTF8 README.md
 ```
 
-当前完整回归：`139 passed`；整体覆盖率为 `74.39%`，CI 门槛为 `68%`。
+当前完整回归：`148 passed`；整体覆盖率为 `74.91%`，CI 门槛为 `68%`。
 
 GitHub Actions 会在 Python 3.11 和 3.13 上运行 Ruff、Mypy、完整 pytest 与覆盖率门槛，配置见 `.github/workflows/python-quality.yml`。
 
 ## RWaveAnalyzer / VCD_ANALYZER 整合
 
-- `--wave-backend auto` 是默认模式：优先调用 `RWAVE_BIN`、PATH 中的 `rwave`，或已构建的 RWaveAnalyzer `target/release/rwave.exe`；不可用时降级到 `VCD_ANALYZER-main/VCD_ANALYZER-main/vcd_analyzer.py`。
+- `--wave-backend auto` 是默认模式：优先调用 `RWAVE_BIN`、PATH 中的 `rwave`，或已构建的 RWaveAnalyzer `target/release/rwave.exe`。
+- 对 VCD，`auto` 在 RWave 不可用或失败时可降级到 `VCD_ANALYZER-main/VCD_ANALYZER-main/vcd_analyzer.py`，保留旧流程兼容性。
+- 对 FST/GHW，`auto` 不允许降级到旧 VCD 分析器；RWave 缺失或解析失败时会明确报错。
 - `--wave-backend rwave` 强制使用 RWaveAnalyzer，适合验证 VCD/FST/GHW 统一分析路径；如果找不到 `rwave` 会直接失败。
-- `--wave-backend vcd-analyzer` 强制使用旧版 Python VCD_ANALYZER，适合做兼容性对照。
+- `--wave-backend vcd-analyzer` 仅支持 VCD，适合做旧版 Python 分析器兼容性对照。
+- `--verify-waveform-samples` 强制使用 `rwave` 解析仓库内三个最小真实样例，并生成 `outputs/waveform-samples/format_matrix.md/html`。
 - async FIFO 的 `--analyze-rtl-vcd async-fifo` 在 RWaveAnalyzer 可用时会优先使用 `rwave --batch --json`，一次加载 VCD 并完成 `info`、写 handshake、读 handshake 三类查询；`auto` 模式下 batch 不可用时仍保留旧后端降级路径。
 - 最新 `RWaveAnalyzer-main.zip` 是本地下载包，不提交到仓库；需要验证时可临时解压并运行 `cargo build --release`，再设置 `RWAVE_BIN=<rwave.exe 路径>`。
 
@@ -345,6 +352,7 @@ GitHub Actions 会在 Python 3.11 和 3.13 上运行 Ruff、Mypy、完整 pytest
 .trae/agent/artifact_manifest.py # 运行时 artifacts.json 记录与校验
 .trae/agent/environment_report.py # 中文环境预检、修复建议与项目级 manifest
 .trae/agent/project_overview.py # 多 target 状态聚合与顶层 index.md/html
+.trae/agent/waveform_samples.py # VCD/FST/GHW 真实样例矩阵报告
 .trae/agent/target_registry.py # Target schema 加载与严格校验
 .trae/agent/target_scaffolder.py # 候选 target 配置与工程占位生成器
 .trae/agent/adapters/         # Report、Waveform、Vivado adapter
