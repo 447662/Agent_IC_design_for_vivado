@@ -1374,6 +1374,167 @@ def test_p5_11_project_overview_keeps_other_targets_when_manifest_is_invalid(tmp
     assert "sync-fifo" in markdown
 
 
+def test_p4_7_target_dashboard_groups_stages_recent_run_and_failure_entry(tmp_path):
+    module = load_local_module("project_overview_p4_7", PROJECT_OVERVIEW_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "async-fifo",
+                    "display_name": "Asynchronous FIFO",
+                    "design_family": "fifo",
+                },
+                {
+                    "name": "sync-fifo",
+                    "display_name": "Synchronous FIFO",
+                    "design_family": "fifo",
+                },
+            ]
+
+    project_dir = tmp_path / "async-fifo"
+    reports_dir = project_dir / "reports"
+    (project_dir / "rtl").mkdir(parents=True)
+    (project_dir / "uvm").mkdir()
+    reports_dir.mkdir()
+    (project_dir / "rtl" / "async_fifo.v").write_text(
+        "module async_fifo; endmodule\n",
+        encoding="utf-8",
+    )
+    (project_dir / "uvm" / "tb_async_fifo_uvm.sv").write_text(
+        "module tb_async_fifo_uvm; endmodule\n",
+        encoding="utf-8",
+    )
+    (project_dir / "README.md").write_text("# async-fifo\n", encoding="utf-8")
+    for relative_path in [
+        "design_spec.html",
+        "sim_summary.html",
+        "uvm_coverage_summary.html",
+        "wave_visibility.html",
+        "coverage_trend.html",
+    ]:
+        (reports_dir / relative_path).write_text(
+            "<html></html>\n",
+            encoding="utf-8",
+        )
+    (project_dir / "artifacts.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target": "async-fifo",
+                "updated_at": "2026-07-10T12:03:00Z",
+                "runs": [
+                    {
+                        "flow": "sim-rtl",
+                        "status": "PASS",
+                        "recorded_at": "2026-07-10T12:00:00Z",
+                        "command": ["python", "agent.py", "--sim-rtl", "async-fifo"],
+                        "error": None,
+                    },
+                    {
+                        "flow": "uvm-coverage",
+                        "status": "FAIL",
+                        "recorded_at": "2026-07-10T12:01:00Z",
+                        "command": ["python", "agent.py", "--uvm-coverage", "async-fifo"],
+                        "error": "coverage gate failed",
+                    },
+                    {
+                        "flow": "check-rtl",
+                        "status": "PASS",
+                        "recorded_at": "2026-07-10T12:03:00Z",
+                        "command": ["python", "agent.py", "--check-rtl", "async-fifo"],
+                        "error": None,
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    failure_manifest = (
+        project_dir
+        / "failure_archives"
+        / "uvm-coverage"
+        / "seed_22"
+        / "failure_archive.json"
+    )
+    failure_manifest.parent.mkdir(parents=True)
+    failure_manifest.write_text("{}\n", encoding="utf-8")
+    (tmp_path / "sync-fifo" / "reports").mkdir(parents=True)
+
+    result = module.write_target_dashboard(FakeAgent(), project_dir)
+
+    assert result["target_count"] == 2
+    assert result["stage_count"] == 7
+    assert result["ready_stage_count"] == 7
+    assert result["latest_run"]["flow"] == "check-rtl"
+    assert result["latest_run"]["status"] == "PASS"
+    assert result["last_failure"]["flow"] == "uvm-coverage"
+    assert result["failure_href"] == (
+        "../failure_archives/uvm-coverage/seed_22/failure_archive.json"
+    )
+
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    assert "## 阶段状态" in markdown
+    assert "## 最近运行" in markdown
+    assert "## 最近失败" in markdown
+    assert "coverage gate failed" in markdown
+    assert "coverage_trend.html" in markdown
+    assert 'class="target-selector"' in html_text
+    assert 'aria-current="page">async-fifo</a>' in html_text
+    assert 'href="../../sync-fifo/reports/index.html"' in html_text
+    for stage in [
+        "Spec",
+        "RTL",
+        "Simulation",
+        "UVM",
+        "Coverage",
+        "Wave",
+        "Lessons",
+    ]:
+        assert 'data-stage="{}"'.format(stage) in html_text
+    assert 'class="failure-entry fail"' in html_text
+    assert "coverage gate failed" in html_text
+    assert "failure_archive.json" in html_text
+    assert "乱码" not in html_text
+
+
+def test_p4_7_target_dashboard_handles_not_run_without_failure_archive(tmp_path):
+    module = load_local_module("project_overview_p4_7_empty", PROJECT_OVERVIEW_PATH)
+
+    class FakeAgent:
+        def list_targets(self):
+            return [
+                {
+                    "name": "sync-fifo",
+                    "display_name": "Synchronous FIFO",
+                    "design_family": "fifo",
+                }
+            ]
+
+    project_dir = tmp_path / "sync-fifo"
+    (project_dir / "rtl").mkdir(parents=True)
+    (project_dir / "rtl" / "sync_fifo.v").write_text(
+        "module sync_fifo; endmodule\n",
+        encoding="utf-8",
+    )
+
+    result = module.write_target_dashboard(FakeAgent(), project_dir)
+
+    assert result["status"] == "NOT_RUN"
+    assert result["latest_run"] is None
+    assert result["last_failure"] is None
+    assert result["failure_href"] == "../artifacts.json"
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    assert "尚无运行记录" in markdown
+    assert "尚无失败运行" in markdown
+    assert 'class="failure-entry clear"' in html_text
+    assert 'data-stage="RTL"' in html_text
+    assert "NOT_RUN" in html_text
+
+
 def test_p5_11_cli_generates_empty_project_overview(tmp_path):
     result = run_agent(
         "--generate-overview",
@@ -4247,6 +4408,11 @@ def test_async_fifo_reports_index_links_core_reports_and_lessons(tmp_path):
     assert "uvm_coverage_xcrg/codeCoverageReport/dashboard.html" in html_text
     assert "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html" in html_text
     assert "xcrg_coverage.log" in html_text
+    assert 'class="target-selector"' in html_text
+    assert 'href="../../index.html"' in html_text
+    assert 'data-stage="Simulation"' in html_text
+    assert 'data-stage="Coverage"' in html_text
+    assert "最近运行" in html_text
 
 
 def test_async_fifo_summary_report_includes_wcfg_scenarios_and_commands(monkeypatch, tmp_path):
