@@ -1,3 +1,4 @@
+from typing import Any
 import json
 import re
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 TARGET_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 
 
-def normalize_target_name(target_name):
+def normalize_target_name(target_name: Any) -> Any:
     raw_name = str(target_name).strip().lower()
     normalized = raw_name.replace("_", "-")
     if not TARGET_NAME_PATTERN.fullmatch(normalized):
@@ -18,7 +19,7 @@ def normalize_target_name(target_name):
     return normalized
 
 
-def build_target_config(target_name, description=None):
+def build_target_config(target_name: Any, description: Any=None) -> Any:
     target_slug = normalize_target_name(target_name)
     module_name = target_slug.replace("-", "_")
     display_name = " ".join(part.capitalize() for part in target_slug.split("-"))
@@ -31,6 +32,7 @@ def build_target_config(target_name, description=None):
         "name": target_slug,
         "display_name": display_name,
         "design_family": "custom",
+        "handler": target_slug,
         "aliases": aliases,
         "flows": [],
         "description": target_description,
@@ -136,7 +138,7 @@ def build_target_config(target_name, description=None):
     }
 
 
-def render_rtl_placeholder(target_slug):
+def render_rtl_placeholder(target_slug: Any) -> Any:
     module_name = target_slug.replace("-", "_")
     return """`timescale 1ns/1ps
 
@@ -153,7 +155,7 @@ endmodule
 """.format(module_name=module_name, target_slug=target_slug)
 
 
-def render_tb_placeholder(target_slug):
+def render_tb_placeholder(target_slug: Any) -> Any:
     module_name = target_slug.replace("-", "_")
     return """`timescale 1ns/1ps
 
@@ -179,7 +181,7 @@ endmodule
 """.format(module_name=module_name)
 
 
-def render_report_placeholder(title, target_slug, purpose):
+def render_report_placeholder(title: Any, target_slug: Any, purpose: Any) -> Any:
     return """# {title}
 
 - Target: `{target_slug}`
@@ -193,7 +195,7 @@ def render_report_placeholder(title, target_slug, purpose):
 """.format(title=title, target_slug=target_slug, purpose=purpose)
 
 
-def render_todo(target_slug, module_name):
+def render_todo(target_slug: Any, module_name: Any) -> Any:
     return """# {target_slug} Target TODO
 
 - [ ] Refine `target/{module_name}.json` parameters, interfaces, checks, and scenarios.
@@ -207,7 +209,7 @@ def render_todo(target_slug, module_name):
 """.format(target_slug=target_slug, module_name=module_name)
 
 
-def render_readme(target_slug, module_name):
+def render_readme(target_slug: Any, module_name: Any) -> Any:
     return """# {target_slug} Target Scaffold
 
 This directory is a candidate target scaffold. It is intentionally not installed
@@ -227,12 +229,12 @@ have a matching `TargetHandler`.
 1. Complete the RTL, testbench, metadata, and target handler.
 2. Copy `target/{module_name}.json` to
    `.trae/agent/targets/{module_name}.json`.
-3. Add the handler to `.trae/agent/target_flows.py`.
+3. Add the handler module under `.trae/agent/target_handlers/`.
 4. Run `--list-targets`, target tests, Ruff, Mypy, and coverage gates.
 """.format(target_slug=target_slug, module_name=module_name)
 
 
-def create_target_scaffold(self, target_name, output_dir="outputs", description=None):
+def create_target_scaffold(self: Any, target_name: Any, output_dir: Any="outputs", description: Any=None) -> Any:
     target_slug = normalize_target_name(target_name)
     try:
         self.get_target(target_slug)

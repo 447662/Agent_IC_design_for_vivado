@@ -1,14 +1,21 @@
+from typing import Any
 import html
 import json
 import os
 from pathlib import Path
 
-from artifact_manifest import utc_timestamp
+from artifact_manifest import (
+    build_run_input_digest,
+    collect_tools,
+    file_digest,
+    snapshot_project_inputs,
+    utc_timestamp,
+)
 
 
 SCHEMA_VERSION = 1
 FAILURE_STATUSES = {"FAIL", "INVALID"}
-WARNING_STATUSES = {"WARN", "MISSING", "NOT_RUN"}
+WARNING_STATUSES = {"WARN", "MISSING", "NOT_RUN", "STALE"}
 REPORT_SURFACES = (
     (
         "Spec",
@@ -79,19 +86,19 @@ RESOURCE_SUFFIXES = {
 }
 
 
-def _clean_text(value):
+def _clean_text(value: Any) -> Any:
     return " ".join(str(value or "").split())
 
 
-def _markdown_text(value):
+def _markdown_text(value: Any) -> Any:
     return _clean_text(value).replace("|", "\\|")
 
 
-def _relative_href(output_dir, path):
+def _relative_href(output_dir: Any, path: Any) -> Any:
     return Path(path).resolve().relative_to(Path(output_dir).resolve()).as_posix()
 
 
-def _relative_from(base_dir, path):
+def _relative_from(base_dir: Any, path: Any) -> Any:
     return Path(
         os.path.relpath(
             Path(path).resolve(),
@@ -100,7 +107,7 @@ def _relative_from(base_dir, path):
     ).as_posix()
 
 
-def _load_json_object(path):
+def _load_json_object(path: Any) -> Any:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -110,7 +117,7 @@ def _load_json_object(path):
     return value
 
 
-def _validate_target_manifest(manifest, target_name):
+def _validate_target_manifest(manifest: Any, target_name: Any) -> Any:
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("manifest schema_version 不受支持")
     if manifest.get("target") != target_name:
@@ -128,7 +135,7 @@ def _validate_target_manifest(manifest, target_name):
     return runs
 
 
-def _target_surface_path(project_dir, surface_id, candidates):
+def _target_surface_path(project_dir: Any, surface_id: Any, candidates: Any) -> Any:
     for relative_path in candidates:
         candidate = project_dir / relative_path
         if candidate.is_file():
@@ -161,7 +168,56 @@ def _target_surface_path(project_dir, surface_id, candidates):
     return None
 
 
-def _collect_surfaces(output_dir, project_dir):
+def _latest_artifact_map(runs: Any) -> Any:
+    if not runs:
+        return {}
+    return {
+        str(item.get("path", "")).replace("\\", "/"): item
+        for item in runs[-1].get("artifacts", [])
+        if item.get("path")
+    }
+
+
+def _artifact_file_status(project_dir: Any, path: Any, artifact_map: Any) -> Any:
+    if path is None:
+        return "MISSING"
+    if not artifact_map:
+        return "READY"
+    relative_path = path.resolve().relative_to(project_dir.resolve()).as_posix()
+    artifact = artifact_map.get(relative_path)
+    if artifact is None:
+        return "INVALID"
+    recorded_status = str(artifact.get("status", "INVALID"))
+    if recorded_status == "CURRENT":
+        recorded_digest = artifact.get("sha256")
+        if not recorded_digest:
+            return "INVALID"
+        try:
+            return (
+                "CURRENT"
+                if file_digest(path) == recorded_digest
+                else "INVALID"
+            )
+        except OSError:
+            return "INVALID"
+    if recorded_status in {"STALE", "MISSING", "INVALID", "N/A"}:
+        return recorded_status
+    return "INVALID"
+
+
+def _apply_input_state(status: Any, input_state: Any) -> Any:
+    if input_state == "STALE" and status in {"CURRENT", "READY"}:
+        return "STALE"
+    return status
+
+
+def _collect_surfaces(
+    output_dir: Any,
+    project_dir: Any,
+    artifact_map: Any=None,
+    input_state: Any=None,
+) -> Any:
+    artifact_map = dict(artifact_map or {})
     surfaces = []
     for surface_id, label, candidates in REPORT_SURFACES:
         path = _target_surface_path(project_dir, surface_id, candidates)
@@ -169,21 +225,50 @@ def _collect_surfaces(output_dir, project_dir):
             {
                 "id": surface_id,
                 "label": label,
-                "status": "READY" if path else "MISSING",
+                "status": _apply_input_state(
+                    _artifact_file_status(
+                        project_dir,
+                        path,
+                        artifact_map,
+                    ),
+                    input_state,
+                ),
                 "href": _relative_href(output_dir, path) if path else None,
             }
         )
     return surfaces
 
 
-def _latest_flow_statuses(runs):
+def _latest_flow_statuses(runs: Any) -> Any:
     statuses = {}
     for run in runs:
         statuses[str(run["flow"])] = str(run["status"])
     return statuses
 
 
-def _collect_target(output_dir, target_info):
+def _run_input_state(agent: Any, project_dir: Any, run: Any) -> Any:
+    if agent is None:
+        return None
+    recorded_digest = run.get("input_digest")
+    recorded_files = run.get("input_files")
+    if not recorded_digest or not isinstance(recorded_files, dict):
+        return None
+    try:
+        options = dict(run.get("options") or {})
+        command = list(run.get("command") or [])
+        tools = collect_tools(agent, str(run["flow"]), options=options)
+        current_digest = build_run_input_digest(
+            options,
+            command,
+            tools,
+            snapshot_project_inputs(project_dir),
+        )
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
+        return "INVALID"
+    return "CURRENT" if current_digest == recorded_digest else "STALE"
+
+
+def _collect_target(output_dir: Any, target_info: Any, agent: Any=None) -> Any:
     target_name = target_info["name"]
     project_dir = output_dir / target_name
     manifest_path = project_dir / "artifacts.json"
@@ -224,14 +309,24 @@ def _collect_target(output_dir, target_info):
         return result
 
     latest_run = runs[-1]
+    input_state = _run_input_state(agent, project_dir, latest_run)
+    result["surfaces"] = _collect_surfaces(
+        output_dir,
+        project_dir,
+        _latest_artifact_map(runs),
+        input_state=input_state,
+    )
     flow_statuses = _latest_flow_statuses(runs)
+    target_status = (
+        "FAIL"
+        if any(status == "FAIL" for status in flow_statuses.values())
+        else "PASS"
+    )
+    if target_status == "PASS" and input_state in {"STALE", "INVALID"}:
+        target_status = input_state
     result.update(
         {
-            "status": (
-                "FAIL"
-                if any(status == "FAIL" for status in flow_statuses.values())
-                else "PASS"
-            ),
+            "status": target_status,
             "latest_flow": str(latest_run["flow"]),
             "latest_status": str(latest_run["status"]),
             "recorded_at": str(
@@ -242,12 +337,13 @@ def _collect_target(output_dir, target_info):
             "error": _clean_text(latest_run.get("error")) or "-",
             "replay_command": _format_command(latest_run.get("command")),
             "flow_statuses": flow_statuses,
+            "input_state": input_state,
         }
     )
     return result
 
 
-def _format_command(command):
+def _format_command(command: Any) -> Any:
     if isinstance(command, list):
         return " ".join(str(part) for part in command)
     if command:
@@ -255,14 +351,14 @@ def _format_command(command):
     return "-"
 
 
-def _registered_target_map(agent):
+def _registered_target_map(agent: Any) -> Any:
     return {
         str(item["name"]): dict(item)
         for item in agent.list_targets()
     }
 
 
-def _discover_target_names(output_dir):
+def _discover_target_names(output_dir: Any) -> Any:
     names: set[str] = set()
     if not output_dir.is_dir():
         return names
@@ -272,7 +368,7 @@ def _discover_target_names(output_dir):
     return names
 
 
-def collect_targets(agent, output_dir):
+def collect_targets(agent: Any, output_dir: Any) -> Any:
     registered = _registered_target_map(agent)
     target_names = set(registered) | _discover_target_names(output_dir)
     targets = []
@@ -285,11 +381,11 @@ def collect_targets(agent, output_dir):
                 "design_family": "unregistered",
             },
         )
-        targets.append(_collect_target(output_dir, target_info))
+        targets.append(_collect_target(output_dir, target_info, agent=agent))
     return targets
 
 
-def collect_environment(output_dir):
+def collect_environment(output_dir: Any) -> Any:
     report_dir = output_dir / "environment-report"
     manifest_path = report_dir / "artifacts.json"
     report_path = report_dir / "environment_report.html"
@@ -346,7 +442,7 @@ def collect_environment(output_dir):
     return result
 
 
-def project_status(targets, environment):
+def project_status(targets: Any, environment: Any) -> Any:
     statuses = [target["status"] for target in targets]
     statuses.append(environment["status"])
     if any(status in FAILURE_STATUSES for status in statuses):
@@ -357,12 +453,12 @@ def project_status(targets, environment):
 
 
 def render_project_overview_markdown(
-    output_dir,
-    targets,
-    environment,
-    status,
-    generated_at,
-):
+    output_dir: Any,
+    targets: Any,
+    environment: Any,
+    status: Any,
+    generated_at: Any,
+) -> Any:
     ready_count = sum(target["status"] == "PASS" for target in targets)
     failed_count = sum(
         target["status"] in FAILURE_STATUSES
@@ -454,7 +550,7 @@ def render_project_overview_markdown(
     return "\n".join(lines)
 
 
-def _status_class(status):
+def _status_class(status: Any) -> Any:
     if status in FAILURE_STATUSES:
         return "fail"
     if status == "PASS":
@@ -462,7 +558,7 @@ def _status_class(status):
     return "warn"
 
 
-def _surface_html(surface):
+def _surface_html(surface: Any) -> Any:
     if surface["href"]:
         content = '<a href="{href}">{label}</a>'.format(
             href=html.escape(surface["href"], quote=True),
@@ -472,14 +568,18 @@ def _surface_html(surface):
         content = "<span>{}</span>".format(html.escape(surface["label"]))
     return (
         '<li class="{klass}">{content}<strong>{status}</strong></li>'.format(
-            klass="ready" if surface["status"] == "READY" else "missing",
+            klass=(
+                "ready"
+                if surface["status"] in {"CURRENT", "READY"}
+                else "missing"
+            ),
             content=content,
             status=surface["status"],
         )
     )
 
 
-def render_project_overview_html(targets, environment, status, generated_at):
+def render_project_overview_html(targets: Any, environment: Any, status: Any, generated_at: Any) -> Any:
     nav_links = []
     target_cards = []
     for target in targets:
@@ -639,7 +739,22 @@ dd {{ margin:2px 0 0; font-weight:700; word-break:break-word; }}
     )
 
 
-def _dashboard_surfaces(project_dir, reports_dir):
+def _surface_status(statuses: Any) -> Any:
+    if not statuses:
+        return "MISSING"
+    for status in ("INVALID", "STALE", "CURRENT", "READY", "N/A"):
+        if status in statuses:
+            return status
+    return "MISSING"
+
+
+def _dashboard_surfaces(
+    project_dir: Any,
+    reports_dir: Any,
+    runs: Any=None,
+    input_state: Any=None,
+) -> Any:
+    artifact_map = _latest_artifact_map(runs or [])
     surfaces = []
     for surface_id, label, candidates in REPORT_SURFACES:
         paths = []
@@ -658,6 +773,14 @@ def _dashboard_surfaces(project_dir, reports_dir):
             {
                 "label": path.name,
                 "href": _relative_from(reports_dir, path),
+                "status": _apply_input_state(
+                    _artifact_file_status(
+                        project_dir,
+                        path,
+                        artifact_map,
+                    ),
+                    input_state,
+                ),
             }
             for path in paths
         ]
@@ -665,14 +788,16 @@ def _dashboard_surfaces(project_dir, reports_dir):
             {
                 "id": surface_id,
                 "label": label,
-                "status": "READY" if links else "MISSING",
+                "status": _surface_status(
+                    {link["status"] for link in links}
+                ),
                 "links": links,
             }
         )
     return surfaces
 
 
-def _dashboard_target_selector(agent, output_dir, current_target):
+def _dashboard_target_selector(agent: Any, output_dir: Any, current_target: Any) -> Any:
     registered = _registered_target_map(agent)
     target_names = (
         set(registered)
@@ -709,7 +834,7 @@ def _dashboard_target_selector(agent, output_dir, current_target):
     return selectors
 
 
-def _dashboard_runs(project_dir, target_name):
+def _dashboard_runs(project_dir: Any, target_name: Any) -> Any:
     manifest_path = project_dir / "artifacts.json"
     if not manifest_path.is_file():
         return []
@@ -717,7 +842,7 @@ def _dashboard_runs(project_dir, target_name):
     return _validate_target_manifest(manifest, target_name)
 
 
-def _dashboard_failure_href(project_dir, reports_dir):
+def _dashboard_failure_href(project_dir: Any, reports_dir: Any) -> Any:
     failure_manifests = sorted(
         project_dir.glob(
             "failure_archives/*/*/failure_archive.json"
@@ -730,7 +855,7 @@ def _dashboard_failure_href(project_dir, reports_dir):
     return "../artifacts.json"
 
 
-def _dashboard_resources(reports_dir, extra_resources=None):
+def _dashboard_resources(reports_dir: Any, extra_resources: Any=None) -> Any:
     resources = []
     seen_hrefs = set()
     if reports_dir.is_dir():
@@ -778,16 +903,16 @@ def _dashboard_resources(reports_dir, extra_resources=None):
 
 
 def _dashboard_markdown(
-    target,
-    selectors,
-    surfaces,
-    latest_run,
-    last_failure,
-    failure_href,
-    resources,
-):
+    target: Any,
+    selectors: Any,
+    surfaces: Any,
+    latest_run: Any,
+    last_failure: Any,
+    failure_href: Any,
+    resources: Any,
+) -> Any:
     ready_stage_count = sum(
-        surface["status"] == "READY"
+        surface["status"] in {"CURRENT", "READY"}
         for surface in surfaces
     )
     lines = [
@@ -894,7 +1019,7 @@ def _dashboard_markdown(
     return "\n".join(lines)
 
 
-def _dashboard_stage_html(surface):
+def _dashboard_stage_html(surface: Any) -> Any:
     links = "".join(
         '<a href="{href}">{label}</a>'.format(
             href=html.escape(link["href"], quote=True),
@@ -914,7 +1039,7 @@ def _dashboard_stage_html(surface):
 </article>""".format(
         klass=(
             "ready"
-            if surface["status"] == "READY"
+            if surface["status"] in {"CURRENT", "READY"}
             else "missing"
         ),
         stage=html.escape(surface["id"], quote=True),
@@ -925,16 +1050,16 @@ def _dashboard_stage_html(surface):
 
 
 def _dashboard_html(
-    target,
-    selectors,
-    surfaces,
-    latest_run,
-    last_failure,
-    failure_href,
-    resources,
-):
+    target: Any,
+    selectors: Any,
+    surfaces: Any,
+    latest_run: Any,
+    last_failure: Any,
+    failure_href: Any,
+    resources: Any,
+) -> Any:
     ready_stage_count = sum(
-        surface["status"] == "READY"
+        surface["status"] in {"CURRENT", "READY"}
         for surface in surfaces
     )
     selector_links = [
@@ -1112,10 +1237,10 @@ th {{ color:var(--muted); font-size:12px; }}
 
 
 def write_target_dashboard(
-    self,
-    project_dir,
-    extra_resources=None,
-):
+    self: Any,
+    project_dir: Any,
+    extra_resources: Any=None,
+) -> Any:
     project_dir = Path(project_dir)
     output_dir = project_dir.parent
     reports_dir = project_dir / "reports"
@@ -1130,7 +1255,7 @@ def write_target_dashboard(
             "design_family": "unregistered",
         },
     )
-    target = _collect_target(output_dir, target_info)
+    target = _collect_target(output_dir, target_info, agent=self)
     try:
         runs = _dashboard_runs(project_dir, target_name)
     except (OSError, ValueError):
@@ -1144,7 +1269,12 @@ def write_target_dashboard(
         ),
         None,
     )
-    surfaces = _dashboard_surfaces(project_dir, reports_dir)
+    surfaces = _dashboard_surfaces(
+        project_dir,
+        reports_dir,
+        runs=runs,
+        input_state=target.get("input_state"),
+    )
     selectors = _dashboard_target_selector(
         self,
         output_dir,
@@ -1185,7 +1315,7 @@ def write_target_dashboard(
         encoding="utf-8",
     )
     ready_stage_count = sum(
-        surface["status"] == "READY"
+        surface["status"] in {"CURRENT", "READY"}
         for surface in surfaces
     )
     return {
@@ -1204,7 +1334,7 @@ def write_target_dashboard(
     }
 
 
-def write_project_overview(self, output_dir="outputs"):
+def write_project_overview(self: Any, output_dir: Any="outputs") -> Any:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     targets = collect_targets(self, output_dir)

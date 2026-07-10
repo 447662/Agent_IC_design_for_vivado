@@ -1,7 +1,8 @@
+from typing import Any
 from pathlib import Path
 
 
-def target_spec_catalog(self, target):
+def target_spec_catalog(self: Any, target: Any) -> Any:
     target_info = self.get_target(target)
     return {
         "target": target_info,
@@ -15,11 +16,11 @@ def target_spec_catalog(self, target):
     }
 
 
-def target_scenario_catalog(self, target):
+def target_scenario_catalog(self: Any, target: Any) -> Any:
     return [dict(item) for item in self.target_spec_catalog(target)["scenarios"]]
 
 
-def render_target_design_spec(self, target, requirement=None):
+def render_target_design_spec(self: Any, target: Any, requirement: Any=None) -> Any:
     catalog = self.target_spec_catalog(target)
     target_info = catalog["target"]
     requirement_text = (
@@ -137,7 +138,7 @@ def render_target_design_spec(self, target, requirement=None):
     return "\n".join(lines) + "\n"
 
 
-def write_target_design_spec(self, target, output_dir="outputs", requirement=None):
+def write_target_design_spec(self: Any, target: Any, output_dir: Any="outputs", requirement: Any=None) -> Any:
     target_info = self.get_target(target)
     reports_dir = Path(output_dir) / target_info["name"] / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -168,7 +169,7 @@ def write_target_design_spec(self, target, output_dir="outputs", requirement=Non
     return {"md_path": md_path, "html_path": html_path}
 
 
-def render_target_verification_plan(self, target):
+def render_target_verification_plan(self: Any, target: Any) -> Any:
     catalog = self.target_spec_catalog(target)
     target_info = catalog["target"]
     lines = [
@@ -249,7 +250,7 @@ def render_target_verification_plan(self, target):
     return "\n".join(lines) + "\n"
 
 
-def write_target_verification_plan(self, target, output_dir="outputs"):
+def write_target_verification_plan(self: Any, target: Any, output_dir: Any="outputs") -> Any:
     target_info = self.get_target(target)
     reports_dir = Path(output_dir) / target_info["name"] / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)

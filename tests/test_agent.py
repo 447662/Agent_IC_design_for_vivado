@@ -62,6 +62,10 @@ def load_agent_module():
     return module
 
 
+def async_fifo_plugin(agent):
+    return agent.target_plugins["async-fifo"]
+
+
 def load_local_module(module_name, module_path):
     module_dir = str(module_path.parent)
     if module_dir not in sys.path:
@@ -82,6 +86,15 @@ def run_agent(*args):
         text=True,
         encoding="utf-8",
     )
+
+
+class FakeRunningGuiProcess:
+    pid = 4321
+    returncode = None
+
+    @staticmethod
+    def poll():
+        return None
 
 
 def write_round_robin_vcd_fixture(path):
@@ -224,7 +237,11 @@ def test_cli_entrypoint_and_composition_live_in_dedicated_modules(monkeypatch):
     monkeypatch.setattr(module, "run_cli", fake_run_cli)
 
     assert module.main(["--list-targets"]) == 7
-    assert calls == [(["--list-targets"], module.create_agent)]
+    assert len(calls) == 1
+    argv, agent_factory = calls[0]
+    assert argv == ["--list-targets"]
+    assert callable(agent_factory)
+    assert agent_factory() is not None
 
 
 def test_config_helpers_live_in_dedicated_module():
@@ -640,7 +657,9 @@ def test_cli_rejects_conflicting_modes():
     assert "not allowed with argument" in result.stderr or "不能" in result.stderr or "conflict" in result.stderr.lower()
 
 
-def test_cli_no_tool_check_generates_design_spec(tmp_path):
+def test_cli_no_tool_check_generates_design_spec_but_fails_without_rtl_execution(
+    tmp_path,
+):
     result = run_agent(
         "--no-tool-check",
         "--output-dir",
@@ -648,7 +667,9 @@ def test_cli_no_tool_check_generates_design_spec(tmp_path):
         "设计一个UART控制器",
     )
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "blocked" in result.stderr
+    assert "No RTL generator" in result.stderr
     spec_files = list(tmp_path.glob("*/design_spec.md"))
     assert len(spec_files) == 1
 
@@ -1015,7 +1036,14 @@ def test_open_vivado_wave_gui_uses_wdb_database(monkeypatch, tmp_path):
 
     (tmp_path / "handshake_smoke.wdb").write_text("wdb placeholder", encoding="utf-8")
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: r"D:\vivado\2025.2\Vivado\bin\vivado.bat")
-    monkeypatch.setattr(module.subprocess, "Popen", lambda command, cwd=None: calls.append((command, Path(cwd))) or None)
+    monkeypatch.setattr(
+        module.subprocess,
+        "Popen",
+        lambda command, cwd=None: (
+            calls.append((command, Path(cwd))),
+            FakeRunningGuiProcess(),
+        )[1],
+    )
 
     assert agent.open_vivado_wave_gui(tmp_path, tmp_path / "handshake_trace.vcd") is True
 
@@ -1042,6 +1070,29 @@ def test_diagnostic_uses_resolved_vivado_command(monkeypatch):
 
     assert agent.check_cli_tool("vivado", ["vivado", "-version"]) is True
     assert seen == [[vivado_path, "-version"]]
+
+
+def test_capability_preflight_accepts_vivado_banner_on_nonzero_exit(monkeypatch):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vivado_path = r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
+
+    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
+    monkeypatch.setattr(
+        agent.command_runner,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="vivado v2025.2 (64-bit) SW Build 6299465",
+            stderr="",
+        ),
+    )
+
+    report = agent.run_preflight("sim-rtl")
+
+    assert report.ok is True
+    assert report.status_for("vivado").value == "available"
 
 
 def test_p5_10_environment_report_writes_chinese_markdown_html_and_manifest(tmp_path):
@@ -3133,10 +3184,13 @@ def test_p5_8_generate_rtl_writes_runtime_artifact_manifest(tmp_path):
     artifacts = {item["id"]: item for item in run["artifacts"]}
     assert artifacts["rtl"]["path"] == "rtl/sync_fifo.v"
     assert artifacts["rtl"]["exists"] is True
-    assert artifacts["rtl"]["status"] == "PASS"
+    assert artifacts["rtl"]["status"] == "CURRENT"
     assert artifacts["rtl"]["size_bytes"] > 0
+    assert len(artifacts["rtl"]["sha256"]) == 64
+    assert artifacts["rtl"]["produced_by_run_id"] == run["run_id"]
+    assert artifacts["rtl"]["observed_at"] == run["recorded_at"]
     assert artifacts["wave_vcd"]["exists"] is False
-    assert artifacts["wave_vcd"]["status"] == "SKIP"
+    assert artifacts["wave_vcd"]["status"] == "MISSING"
     assert artifacts["coverage_summary"]["status"] == "N/A"
 
 
@@ -3161,8 +3215,182 @@ def test_p5_8_report_generation_appends_manifest_history(tmp_path):
     latest_artifacts = {
         item["id"]: item for item in manifest["runs"][-1]["artifacts"]
     }
-    assert latest_artifacts["design_spec"]["status"] == "PASS"
-    assert latest_artifacts["verification_plan"]["status"] == "PASS"
+    assert latest_artifacts["design_spec"]["status"] == "STALE"
+    assert latest_artifacts["verification_plan"]["status"] == "CURRENT"
+
+
+def test_artifact_manifest_marks_unchanged_preexisting_file_stale_on_failure(
+    tmp_path,
+):
+    module = load_local_module("artifact_manifest_stale", ARTIFACT_MANIFEST_PATH)
+
+    class FakeAgent:
+        def get_target(self, target):
+            return {
+                "name": target,
+                "artifact_manifest": [
+                    {
+                        "id": "wave_wdb",
+                        "path": "sim/example.wdb",
+                        "status": "PASS",
+                    }
+                ],
+            }
+
+    project_dir = tmp_path / "sample-target"
+    wave_path = project_dir / "sim" / "example.wdb"
+    wave_path.parent.mkdir(parents=True)
+    wave_path.write_text("old-wave", encoding="utf-8")
+    before = module.snapshot_project_artifacts(project_dir)
+
+    module.record_artifact_run(
+        FakeAgent(),
+        "sample-target",
+        "sim-rtl",
+        output_dir=tmp_path,
+        project_dir=project_dir,
+        status="FAIL",
+        artifact_snapshot=before,
+        error="simulation failed before producing a new wave",
+    )
+
+    manifest = json.loads(
+        (project_dir / "artifacts.json").read_text(encoding="utf-8")
+    )
+    run = manifest["runs"][-1]
+    artifact = run["artifacts"][0]
+    assert artifact["status"] == "STALE"
+    assert artifact["produced_by_run_id"] is None
+    assert len(artifact["sha256"]) == 64
+
+
+def test_artifact_manifest_marks_changed_file_current_and_links_run(tmp_path):
+    module = load_local_module("artifact_manifest_current", ARTIFACT_MANIFEST_PATH)
+
+    class FakeAgent:
+        def get_target(self, target):
+            return {
+                "name": target,
+                "artifact_manifest": [
+                    {
+                        "id": "rtl",
+                        "path": "rtl/example.v",
+                        "status": "PASS",
+                    }
+                ],
+            }
+
+    project_dir = tmp_path / "sample-target"
+    rtl_path = project_dir / "rtl" / "example.v"
+    rtl_path.parent.mkdir(parents=True)
+    rtl_path.write_text("module example; endmodule\n", encoding="utf-8")
+    before = module.snapshot_project_artifacts(project_dir)
+    rtl_path.write_text("module example; wire changed; endmodule\n", encoding="utf-8")
+
+    module.record_artifact_run(
+        FakeAgent(),
+        "sample-target",
+        "generate-rtl",
+        output_dir=tmp_path,
+        project_dir=project_dir,
+        status="PASS",
+        artifact_snapshot=before,
+        options={"width": 8},
+    )
+
+    manifest = json.loads(
+        (project_dir / "artifacts.json").read_text(encoding="utf-8")
+    )
+    run = manifest["runs"][-1]
+    artifact = run["artifacts"][0]
+    assert artifact["status"] == "CURRENT"
+    assert artifact["produced_by_run_id"] == run["run_id"]
+    assert run["input_digest"]
+    assert run["command_digest"]
+
+
+def test_artifact_manifest_unchanged_file_is_stale_on_later_run(tmp_path):
+    module = load_local_module("artifact_manifest_reuse", ARTIFACT_MANIFEST_PATH)
+
+    class FakeAgent:
+        def get_target(self, target):
+            return {
+                "name": target,
+                "artifact_manifest": [
+                    {
+                        "id": "rtl",
+                        "path": "rtl/example.v",
+                        "status": "PASS",
+                    }
+                ],
+            }
+
+    project_dir = tmp_path / "sample-target"
+    rtl_path = project_dir / "rtl" / "example.v"
+    rtl_path.parent.mkdir(parents=True)
+    rtl_path.write_text("module example; endmodule\n", encoding="utf-8")
+
+    module.record_artifact_run(
+        FakeAgent(),
+        "sample-target",
+        "generate-rtl",
+        output_dir=tmp_path,
+        project_dir=project_dir,
+        options={"width": 8},
+    )
+    module.record_artifact_run(
+        FakeAgent(),
+        "sample-target",
+        "generate-rtl",
+        output_dir=tmp_path,
+        project_dir=project_dir,
+        options={"width": 16},
+    )
+
+    manifest = json.loads(
+        (project_dir / "artifacts.json").read_text(encoding="utf-8")
+    )
+    first, second = manifest["runs"]
+    assert first["artifacts"][0]["status"] == "CURRENT"
+    assert second["artifacts"][0]["status"] == "STALE"
+    assert first["input_digest"] != second["input_digest"]
+
+
+def test_artifact_manifest_atomic_write_preserves_previous_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_local_module("artifact_manifest_atomic", ARTIFACT_MANIFEST_PATH)
+
+    class FakeAgent:
+        def get_target(self, target):
+            return {"name": target, "artifact_manifest": []}
+
+    project_dir = tmp_path / "sample-target"
+    module.record_artifact_run(
+        FakeAgent(),
+        "sample-target",
+        "generate-rtl",
+        output_dir=tmp_path,
+        project_dir=project_dir,
+    )
+    manifest_path = project_dir / "artifacts.json"
+    original = manifest_path.read_text(encoding="utf-8")
+
+    def fail_replace(_source, _destination):
+        raise OSError("simulated atomic replace failure")
+
+    monkeypatch.setattr(module.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="atomic replace failure"):
+        module.record_artifact_run(
+            FakeAgent(),
+            "sample-target",
+            "generate-spec",
+            output_dir=tmp_path,
+            project_dir=project_dir,
+        )
+
+    assert manifest_path.read_text(encoding="utf-8") == original
 
 
 def test_history_rotation_archives_target_manifest_runs_and_can_be_disabled(
@@ -3272,6 +3500,34 @@ def test_p5_8_failed_target_flow_records_failure(tmp_path):
     assert "--generate-rtl" in run["command"]
 
 
+def test_failed_target_flow_marks_preexisting_artifact_stale(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = tmp_path / "sync-fifo"
+    rtl_path = project_dir / "rtl" / "sync_fifo.v"
+    rtl_path.parent.mkdir(parents=True)
+    rtl_path.write_text("module sync_fifo; endmodule\n", encoding="utf-8")
+    agent.target_handlers["sync-fifo"].flows["generate-rtl"] = (
+        lambda **_kwargs: False
+    )
+
+    assert agent.run_target_flow(
+        "sync-fifo",
+        "generate-rtl",
+        output_dir=tmp_path,
+    ) is False
+
+    manifest = json.loads(
+        (project_dir / "artifacts.json").read_text(encoding="utf-8")
+    )
+    artifacts = {
+        item["id"]: item
+        for item in manifest["runs"][-1]["artifacts"]
+    }
+    assert artifacts["rtl"]["status"] == "STALE"
+    assert artifacts["rtl"]["produced_by_run_id"] is None
+
+
 def test_p5_8_create_target_scaffold_writes_runtime_manifest(tmp_path):
     module = load_agent_module()
     agent = module.DigitalICAgent()
@@ -3289,7 +3545,8 @@ def test_p5_8_create_target_scaffold_writes_runtime_manifest(tmp_path):
     assert any(
         item["path"] == "target/packet_router.json"
         and item["exists"] is True
-        and item["status"] == "PASS"
+        and item["status"] == "CURRENT"
+        and item["produced_by_run_id"] == run["run_id"]
         for item in run["artifacts"]
     )
 
@@ -3362,6 +3619,132 @@ def test_artifact_manifest_rejects_relative_path_escape(tmp_path):
             status="PASS",
             target_info=target_info,
         )
+
+
+def test_target_dashboard_uses_manifest_freshness_and_detects_modified_artifact(
+    tmp_path,
+):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = agent.generate_rtl_project("sync-fifo", tmp_path)
+
+    initial = agent.write_target_dashboard(project_dir)
+    initial_surfaces = {
+        surface["id"]: surface
+        for surface in initial["surfaces"]
+    }
+    assert initial_surfaces["RTL"]["status"] == "CURRENT"
+
+    rtl_path = project_dir / "rtl" / "sync_fifo.v"
+    rtl_path.write_text(
+        rtl_path.read_text(encoding="utf-8") + "\n// modified after run\n",
+        encoding="utf-8",
+    )
+
+    modified = agent.write_target_dashboard(project_dir)
+    modified_surfaces = {
+        surface["id"]: surface
+        for surface in modified["surfaces"]
+    }
+    assert modified_surfaces["RTL"]["status"] == "INVALID"
+
+
+def test_target_dashboard_marks_outputs_stale_when_source_input_changes(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = agent.generate_rtl_project("sync-fifo", tmp_path)
+    wave_path = project_dir / "sim" / "sync_fifo_smoke.wdb"
+    wave_path.write_text("fresh-wave\n", encoding="utf-8")
+    agent.record_artifact_run(
+        "sync-fifo",
+        "sim-rtl",
+        output_dir=tmp_path,
+        status="PASS",
+    )
+
+    initial = agent.write_target_dashboard(project_dir)
+    initial_surfaces = {
+        surface["id"]: surface
+        for surface in initial["surfaces"]
+    }
+    assert initial_surfaces["Wave"]["status"] == "CURRENT"
+
+    rtl_path = project_dir / "rtl" / "sync_fifo.v"
+    rtl_path.write_text(
+        rtl_path.read_text(encoding="utf-8") + "\n// changed input\n",
+        encoding="utf-8",
+    )
+
+    modified = agent.write_target_dashboard(project_dir)
+    modified_surfaces = {
+        surface["id"]: surface
+        for surface in modified["surfaces"]
+    }
+    assert modified["status"] == "STALE"
+    assert modified_surfaces["Wave"]["status"] == "STALE"
+
+
+def test_artifact_manifest_records_input_file_lineage(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = agent.generate_rtl_project("sync-fifo", tmp_path)
+    wave_path = project_dir / "sim" / "sync_fifo_smoke.wdb"
+    wave_path.write_text("fresh-wave\n", encoding="utf-8")
+
+    agent.record_artifact_run(
+        "sync-fifo",
+        "sim-rtl",
+        output_dir=tmp_path,
+        status="PASS",
+    )
+
+    manifest = json.loads(
+        (project_dir / "artifacts.json").read_text(encoding="utf-8")
+    )
+    run = manifest["runs"][-1]
+    assert run["input_digest"]
+    assert run["input_files"]["rtl/sync_fifo.v"]["sha256"]
+    assert run["input_files"]["tb/tb_sync_fifo.v"]["size_bytes"] > 0
+    assert "sim/sync_fifo_smoke.wdb" not in run["input_files"]
+    assert "reports/index.html" not in run["input_files"]
+
+
+def test_target_dashboard_marks_outputs_stale_when_tool_version_changes(
+    monkeypatch,
+    tmp_path,
+):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = agent.generate_rtl_project("sync-fifo", tmp_path)
+    wave_path = project_dir / "sim" / "sync_fifo_smoke.wdb"
+    wave_path.write_text("fresh-wave\n", encoding="utf-8")
+    monkeypatch.setattr(
+        agent,
+        "resolve_vivado_command",
+        lambda: r"D:\vivado\2025.2\Vivado\bin\vivado.bat",
+    )
+    agent.record_artifact_run(
+        "sync-fifo",
+        "sim-rtl",
+        output_dir=tmp_path,
+        status="PASS",
+    )
+
+    initial = agent.write_target_dashboard(project_dir)
+    assert initial["status"] == "PASS"
+
+    monkeypatch.setattr(
+        agent,
+        "resolve_vivado_command",
+        lambda: r"D:\vivado\2026.1\Vivado\bin\vivado.bat",
+    )
+    modified = agent.write_target_dashboard(project_dir)
+    modified_surfaces = {
+        surface["id"]: surface
+        for surface in modified["surfaces"]
+    }
+    assert modified["status"] == "STALE"
+    assert modified_surfaces["Wave"]["status"] == "STALE"
 
 
 def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
@@ -3834,10 +4217,8 @@ def test_run_async_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypatch,
         return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
-    monkeypatch.setattr(agent, "open_async_fifo_project_gui", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("GUI should be skipped")))
-    monkeypatch.setattr(
-        agent,
-        "collect_async_fifo_vcd_analysis",
+    monkeypatch.setattr(async_fifo_plugin(agent), "open_async_fifo_project_gui", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("GUI should be skipped")))
+    monkeypatch.setattr(async_fifo_plugin(agent), "collect_async_fifo_vcd_analysis",
         lambda output_dir="outputs", limit=20: {
             "info": {"signal_count": 3, "time_min_h": "0 ns", "time_max_h": "10 ns", "duration_h": "10 ns", "timescale": "1 ns"},
             "write_events": {"total": 1, "events": [{"time_h": "1 ns", "values": {"wr_data": "0x11"}}]},
@@ -3845,7 +4226,7 @@ def test_run_async_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypatch,
         },
     )
 
-    assert agent.run_async_fifo_vivado_sim(output_dir=tmp_path, open_wave_gui=False) is True
+    assert async_fifo_plugin(agent).run_async_fifo_vivado_sim(output_dir=tmp_path, open_wave_gui=False) is True
     report_text = (tmp_path / "async-fifo" / "reports" / "sim_report.md").read_text(encoding="utf-8")
     assert "full_boundary" in report_text
     assert "empty_boundary" in report_text
@@ -4132,7 +4513,7 @@ def test_async_fifo_wcfg_validation_detects_required_wave_objects(tmp_path):
         encoding="utf-8",
     )
 
-    summary = agent.parse_async_fifo_wcfg_summary(project_dir)
+    summary = async_fifo_plugin(agent).parse_async_fifo_wcfg_summary(project_dir)
 
     assert summary["exists"] is True
     assert summary["object_count"] == 31
@@ -4151,7 +4532,7 @@ def test_async_fifo_wcfg_validation_rejects_empty_wave_config(tmp_path):
         encoding="utf-8",
     )
 
-    summary = agent.parse_async_fifo_wcfg_summary(project_dir)
+    summary = async_fifo_plugin(agent).parse_async_fifo_wcfg_summary(project_dir)
 
     assert summary["exists"] is True
     assert summary["object_count"] == 0
@@ -4164,7 +4545,7 @@ def test_async_fifo_regression_matrix_report_documents_parameter_sweeps(tmp_path
     agent = module.DigitalICAgent()
     project_dir = agent.generate_rtl_project("async-fifo", tmp_path)
 
-    report_path = agent.write_async_fifo_regression_matrix(project_dir)
+    report_path = async_fifo_plugin(agent).write_async_fifo_regression_matrix(project_dir)
     text = report_path.read_text(encoding="utf-8")
 
     assert report_path.name == "regression_matrix.md"
@@ -4194,9 +4575,7 @@ def test_async_fifo_regression_runs_parameter_matrix_and_writes_summary(monkeypa
         return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        agent,
-        "collect_async_fifo_vcd_analysis",
+    monkeypatch.setattr(async_fifo_plugin(agent), "collect_async_fifo_vcd_analysis",
         lambda output_dir="outputs", limit=20: {
             "info": {"signal_count": 4, "time_min_h": "0 ns", "time_max_h": "100 ns", "duration_h": "100 ns", "timescale": "1 ns"},
             "write_events": {"total": 2, "events": []},
@@ -4204,7 +4583,7 @@ def test_async_fifo_regression_runs_parameter_matrix_and_writes_summary(monkeypa
         },
     )
 
-    assert agent.run_async_fifo_regression(output_dir=tmp_path, open_wave_gui=False) is True
+    assert async_fifo_plugin(agent).run_async_fifo_regression(output_dir=tmp_path, open_wave_gui=False) is True
 
     summary_md = tmp_path / "async-fifo" / "reports" / "regression_summary.md"
     summary_html = tmp_path / "async-fifo" / "reports" / "regression_summary.html"
@@ -4285,7 +4664,7 @@ def test_async_fifo_wave_visibility_report_validates_gui_preflight(tmp_path):
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_wave_visibility_report(project_dir)
+    report = async_fifo_plugin(agent).write_async_fifo_wave_visibility_report(project_dir)
     text = report["markdown_path"].read_text(encoding="utf-8")
     html_text = report["html_path"].read_text(encoding="utf-8")
 
@@ -4527,7 +4906,7 @@ def test_p4_6_async_fifo_gui_script_ignores_stale_latest_wdb_pointer():
     module = load_agent_module()
     agent = module.DigitalICAgent()
 
-    script = agent.render_async_fifo_open_project_gui_script()
+    script = async_fifo_plugin(agent).render_async_fifo_open_project_gui_script()
 
     assert "set latest_candidate [file normalize [file join $script_dir $latest_wdb]]" in script
     assert (
@@ -4561,7 +4940,7 @@ def test_async_fifo_wave_screenshot_report_embeds_png_and_capture_script(tmp_pat
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_wave_screenshot_report(project_dir)
+    report = async_fifo_plugin(agent).write_async_fifo_wave_screenshot_report(project_dir)
     text = report["markdown_path"].read_text(encoding="utf-8")
     html_text = report["html_path"].read_text(encoding="utf-8")
     script_text = report["capture_script_path"].read_text(encoding="utf-8")
@@ -4609,7 +4988,7 @@ def test_async_fifo_reports_index_links_core_reports_and_lessons(tmp_path):
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_reports_index(project_dir)
+    report = async_fifo_plugin(agent).write_async_fifo_reports_index(project_dir)
     text = report["markdown_path"].read_text(encoding="utf-8")
     html_text = report["html_path"].read_text(encoding="utf-8")
 
@@ -4664,9 +5043,7 @@ def test_async_fifo_summary_report_includes_wcfg_scenarios_and_commands(monkeypa
         ]),
         encoding="utf-8",
     )
-    monkeypatch.setattr(
-        agent,
-        "collect_async_fifo_vcd_analysis",
+    monkeypatch.setattr(async_fifo_plugin(agent), "collect_async_fifo_vcd_analysis",
         lambda output_dir="outputs", limit=20: {
             "info": {"signal_count": 48, "time_min_h": "0 ns", "time_max_h": "1200 ns", "duration_h": "1200 ns", "timescale": "1 ns"},
             "write_events": {"total": 70, "events": []},
@@ -4674,7 +5051,7 @@ def test_async_fifo_summary_report_includes_wcfg_scenarios_and_commands(monkeypa
         },
     )
 
-    report_path = agent.write_async_fifo_sim_report(project_dir, vcd_path, wdb_path)
+    report_path = async_fifo_plugin(agent).write_async_fifo_sim_report(project_dir, vcd_path, wdb_path)
     summary_path = project_dir / "reports" / "sim_summary.md"
     html_path = project_dir / "reports" / "sim_summary.html"
     summary_text = summary_path.read_text(encoding="utf-8")
@@ -4740,7 +5117,11 @@ def test_analyze_async_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, t
     vcd_path.write_text("$date\nasync fifo\n$end\n", encoding="utf-8")
     calls = []
 
-    monkeypatch.setattr(agent, "resolve_rwave_command", lambda: "rwave")
+    monkeypatch.setattr(
+        async_fifo_plugin(agent),
+        "resolve_rwave_command",
+        lambda: "rwave",
+    )
 
     def fake_run_rwave_batch_json(path, command_lines):
         calls.append((path, command_lines))
@@ -4769,9 +5150,13 @@ def test_analyze_async_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, t
             },
         }
 
-    monkeypatch.setattr(agent, "run_rwave_batch_json", fake_run_rwave_batch_json)
+    monkeypatch.setattr(
+        async_fifo_plugin(agent),
+        "run_rwave_batch_json",
+        fake_run_rwave_batch_json,
+    )
 
-    assert agent.analyze_async_fifo_vcd(output_dir=tmp_path, limit=4) is True
+    assert async_fifo_plugin(agent).analyze_async_fifo_vcd(output_dir=tmp_path, limit=4) is True
 
     captured = capsys.readouterr()
     assert "Async FIFO VCD analysis" in captured.out
@@ -4789,14 +5174,23 @@ def test_analyze_async_fifo_vcd_reports_write_and_read_handshakes(monkeypatch, t
 def test_cli_analyze_rtl_vcd_async_fifo_invokes_analyzer(monkeypatch, tmp_path):
     module = load_agent_module()
     calls = []
+    agent = module.DigitalICAgent()
 
-    monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
+    monkeypatch.setattr(module, "create_agent", lambda: agent)
 
-    def fake_analyze_async_fifo_vcd(self, output_dir="outputs", limit=20, waveform_backend="auto"):
+    def fake_analyze_async_fifo_vcd(
+        output_dir="outputs",
+        limit=20,
+        waveform_backend="auto",
+    ):
         calls.append((output_dir, limit, waveform_backend))
         return True
 
-    monkeypatch.setattr(module.DigitalICAgent, "analyze_async_fifo_vcd", fake_analyze_async_fifo_vcd)
+    monkeypatch.setattr(
+        async_fifo_plugin(agent),
+        "analyze_async_fifo_vcd",
+        fake_analyze_async_fifo_vcd,
+    )
 
     assert module.main([
         "--analyze-rtl-vcd",
@@ -4824,7 +5218,7 @@ def test_check_async_fifo_rtl_reports_complete_project(monkeypatch, tmp_path, ca
     xpr.write_text("<Project />\n", encoding="utf-8")
     report = project_dir / "reports" / "sim_report.md"
     report.write_text("# report\n", encoding="utf-8")
-    agent.write_async_fifo_regression_summary(
+    async_fifo_plugin(agent).write_async_fifo_regression_summary(
         project_dir,
         [
             {"name": "dw8_aw4", "data_width": 8, "addr_width": 4, "status": "PASS", "output_dir": project_dir},
@@ -4833,7 +5227,7 @@ def test_check_async_fifo_rtl_reports_complete_project(monkeypatch, tmp_path, ca
         ],
     )
 
-    assert agent.check_async_fifo_rtl(output_dir=tmp_path) is True
+    assert async_fifo_plugin(agent).check_async_fifo_rtl(output_dir=tmp_path) is True
     captured = capsys.readouterr()
     assert "Async FIFO RTL check" in captured.out
     assert "[OK] WDB exists" in captured.out
@@ -4858,7 +5252,7 @@ def test_generate_async_fifo_uvm_smoke_creates_minimal_environment(tmp_path):
     agent = module.DigitalICAgent()
     project_dir = agent.generate_rtl_project("async-fifo", tmp_path)
 
-    uvm_dir = agent.write_async_fifo_uvm_smoke_project(project_dir)
+    uvm_dir = async_fifo_plugin(agent).write_async_fifo_uvm_smoke_project(project_dir)
 
     expected_files = [
         uvm_dir / "async_fifo_if.sv",
@@ -4912,9 +5306,9 @@ def test_run_async_fifo_uvm_smoke_writes_report_and_can_skip_gui(monkeypatch, tm
         return subprocess.CompletedProcess(command, 0, stdout="ASYNC_FIFO_UVM_SCOREBOARD_PASS\nASYNC_FIFO_UVM_TEST_DONE\n", stderr="")
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
-    monkeypatch.setattr(agent, "open_async_fifo_project_gui", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("GUI should be skipped")))
+    monkeypatch.setattr(async_fifo_plugin(agent), "open_async_fifo_project_gui", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("GUI should be skipped")))
 
-    assert agent.run_async_fifo_uvm_smoke(output_dir=tmp_path, open_wave_gui=False) is True
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_smoke(output_dir=tmp_path, open_wave_gui=False) is True
 
     project_dir = tmp_path / "async-fifo"
     report = project_dir / "reports" / "uvm_smoke_report.md"
@@ -4951,7 +5345,7 @@ def test_generate_async_fifo_uvm_coverage_script_enables_xsim_code_coverage(tmp_
     agent = module.DigitalICAgent()
     project_dir = agent.generate_rtl_project("async-fifo", tmp_path)
 
-    agent.write_async_fifo_uvm_coverage_project(project_dir)
+    async_fifo_plugin(agent).write_async_fifo_uvm_coverage_project(project_dir)
 
     script = (project_dir / "sim" / "run_vivado_async_fifo_uvm_coverage.tcl").read_text(encoding="utf-8")
     assert "async_fifo_uvm_coverage" in script
@@ -4992,7 +5386,7 @@ def test_run_async_fifo_uvm_coverage_writes_report(monkeypatch, tmp_path):
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
 
-    assert agent.run_async_fifo_uvm_coverage(output_dir=tmp_path) is True
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_coverage(output_dir=tmp_path) is True
 
     project_dir = tmp_path / "async-fifo"
     report = project_dir / "reports" / "uvm_coverage_report.md"
@@ -5020,7 +5414,7 @@ def test_parse_async_fifo_coverage_summary_extracts_xsim_metadata(tmp_path):
         b"wr_en && !full\x00rd_en && !empty\x00"
     )
 
-    summary = agent.parse_async_fifo_coverage_summary(ccinfo)
+    summary = async_fifo_plugin(agent).parse_async_fifo_coverage_summary(ccinfo)
 
     assert summary["available"] is True
     assert summary["coverage_types"] == ["statement", "branch", "condition", "toggle"]
@@ -5066,7 +5460,7 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_threshold(tmp_path):
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_uvm_coverage_summary_report(
+    report = async_fifo_plugin(agent).write_async_fifo_uvm_coverage_summary_report(
         project_dir,
         coverage_threshold=80.0,
         coverage_percent=75.5,
@@ -5143,7 +5537,7 @@ def test_write_async_fifo_uvm_coverage_summary_report_gates_component_thresholds
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_uvm_coverage_summary_report(
+    report = async_fifo_plugin(agent).write_async_fifo_uvm_coverage_summary_report(
         project_dir,
         coverage_threshold=70.0,
         coverage_percent=73.4,
@@ -5197,7 +5591,7 @@ def test_write_async_fifo_uvm_coverage_summary_report_marks_missing_component_da
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_uvm_coverage_summary_report(
+    report = async_fifo_plugin(agent).write_async_fifo_uvm_coverage_summary_report(
         project_dir,
         coverage_thresholds={"functional": 90.0},
     )
@@ -5422,12 +5816,12 @@ def test_p4_4_runner_appends_pass_and_fail_history_and_refreshes_index(
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
 
-    assert agent.run_async_fifo_uvm_coverage(
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_coverage(
         output_dir=tmp_path,
         coverage_thresholds={"branch": 50.0},
         seed=11,
     ) is True
-    assert agent.run_async_fifo_uvm_coverage(
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_coverage(
         output_dir=tmp_path,
         coverage_thresholds={"branch": 50.0},
         seed=22,
@@ -5470,7 +5864,7 @@ def test_write_async_fifo_uvm_coverage_summary_report_requires_percent_when_thre
     )
     (cov_dir / "xsim.CCInfo").write_bytes(b"xsim.codeCov\x00async_fifo_uvm_cov\x00sbct\x00")
 
-    report = agent.write_async_fifo_uvm_coverage_summary_report(
+    report = async_fifo_plugin(agent).write_async_fifo_uvm_coverage_summary_report(
         project_dir,
         coverage_threshold=90.0,
         coverage_percent=None,
@@ -5505,7 +5899,7 @@ def test_run_async_fifo_uvm_coverage_fails_when_threshold_not_met(monkeypatch, t
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
 
-    assert agent.run_async_fifo_uvm_coverage(
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_coverage(
         output_dir=tmp_path,
         coverage_threshold=80.0,
         coverage_percent=75.5,
@@ -5555,7 +5949,7 @@ def test_run_async_fifo_uvm_coverage_uses_auto_percent_report(monkeypatch, tmp_p
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
 
-    assert agent.run_async_fifo_uvm_coverage(
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_coverage(
         output_dir=tmp_path,
         coverage_threshold=80.0,
         coverage_percent=None,
@@ -5608,7 +6002,7 @@ def test_run_async_fifo_uvm_coverage_fails_when_component_gate_not_met(monkeypat
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
 
-    assert agent.run_async_fifo_uvm_coverage(
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_coverage(
         output_dir=tmp_path,
         coverage_thresholds={"branch": 50.0},
     ) is False
@@ -5794,7 +6188,7 @@ def test_run_async_fifo_uvm_coverage_refreshes_reports_index(monkeypatch, tmp_pa
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: "vivado")
     monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: FakeResult())
 
-    assert agent.run_async_fifo_uvm_coverage(output_dir=tmp_path, coverage_threshold=1) is True
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_coverage(output_dir=tmp_path, coverage_threshold=1) is True
 
     index = reports_dir / "index.md"
     html_index = reports_dir / "index.html"
@@ -5825,7 +6219,7 @@ def test_extract_async_fifo_coverage_percent_parses_text_report(tmp_path):
         encoding="utf-8",
     )
 
-    summary = agent.extract_async_fifo_coverage_percent(report)
+    summary = async_fifo_plugin(agent).extract_async_fifo_coverage_percent(report)
 
     assert summary["available"] is True
     assert summary["total_percent"] == 80.25
@@ -5850,7 +6244,7 @@ def test_extract_async_fifo_coverage_percent_parses_xcrg_scores(tmp_path):
         encoding="utf-8",
     )
 
-    summary = agent.extract_async_fifo_coverage_percent(report)
+    summary = async_fifo_plugin(agent).extract_async_fifo_coverage_percent(report)
 
     assert summary["available"] is True
     assert summary["total_percent"] == 27.64
@@ -5866,7 +6260,7 @@ def test_generate_async_fifo_uvm_environment_includes_functional_coverage_and_sv
     agent = module.DigitalICAgent()
     project_dir = agent.generate_rtl_project("async-fifo", tmp_path)
 
-    agent.write_async_fifo_uvm_coverage_project(project_dir)
+    async_fifo_plugin(agent).write_async_fifo_uvm_coverage_project(project_dir)
 
     pkg = (project_dir / "uvm" / "async_fifo_uvm_pkg.sv").read_text(encoding="utf-8")
     sva = (project_dir / "uvm" / "async_fifo_sva.sv").read_text(encoding="utf-8")
@@ -5898,7 +6292,7 @@ def test_write_async_fifo_uvm_functional_coverage_report(tmp_path):
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_uvm_functional_coverage_report(project_dir)
+    report = async_fifo_plugin(agent).write_async_fifo_uvm_functional_coverage_report(project_dir)
 
     assert report["passed"] is True
     assert report["markdown_path"].name == "uvm_functional_coverage.md"
@@ -5932,9 +6326,9 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(monkeypatch, tm
         (sim_dir / "async_fifo_uvm_coverage.wdb").write_text("wdb", encoding="utf-8")
         return True
 
-    monkeypatch.setattr(agent, "run_async_fifo_uvm_coverage", fake_run)
+    monkeypatch.setattr(async_fifo_plugin(agent), "run_async_fifo_uvm_coverage", fake_run)
 
-    assert agent.run_async_fifo_uvm_random_regression(output_dir=tmp_path, seeds=[11, 22, 33]) is True
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_random_regression(output_dir=tmp_path, seeds=[11, 22, 33]) is True
 
     report = tmp_path / "async-fifo" / "reports" / "uvm_random_regression.md"
     html_report = tmp_path / "async-fifo" / "reports" / "uvm_random_regression.html"
@@ -6058,9 +6452,9 @@ def test_p4_5_random_regression_archives_only_failed_seed_and_links_report(
         )
         return seed == 11
 
-    monkeypatch.setattr(agent, "run_async_fifo_uvm_coverage", fake_run)
+    monkeypatch.setattr(async_fifo_plugin(agent), "run_async_fifo_uvm_coverage", fake_run)
 
-    assert agent.run_async_fifo_uvm_random_regression(
+    assert async_fifo_plugin(agent).run_async_fifo_uvm_random_regression(
         output_dir=tmp_path,
         seeds=[11, 22],
     ) is False
@@ -6114,9 +6508,16 @@ def test_open_async_fifo_uvm_wave_gui_uses_uvm_wdb(monkeypatch, tmp_path):
     calls = []
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
-    monkeypatch.setattr(module.subprocess, "Popen", lambda command, cwd=None: calls.append(([str(part) for part in command], Path(cwd))))
+    monkeypatch.setattr(
+        module.subprocess,
+        "Popen",
+        lambda command, cwd=None: (
+            calls.append(([str(part) for part in command], Path(cwd))),
+            FakeRunningGuiProcess(),
+        )[1],
+    )
 
-    assert agent.open_async_fifo_uvm_wave_gui(project_dir, wave_kind="coverage") is True
+    assert async_fifo_plugin(agent).open_async_fifo_uvm_wave_gui(project_dir, wave_kind="coverage") is True
 
     script = sim_dir / "open_async_fifo_uvm_coverage_wave.tcl"
     script_text = script.read_text(encoding="utf-8")
@@ -6173,7 +6574,7 @@ def test_async_fifo_uvm_wave_screenshot_report_embeds_png_and_capture_script(tmp
         encoding="utf-8",
     )
 
-    report = agent.write_async_fifo_uvm_wave_screenshot_report(project_dir, wave_kind="coverage")
+    report = async_fifo_plugin(agent).write_async_fifo_uvm_wave_screenshot_report(project_dir, wave_kind="coverage")
 
     assert report["captured"] is True
     assert report["runtime_status"] == "PASS"
@@ -6229,14 +6630,19 @@ def test_cli_uvm_random_regress_and_open_uvm_wave(monkeypatch, tmp_path):
 def test_cli_check_rtl_async_fifo_invokes_checker(monkeypatch, tmp_path):
     module = load_agent_module()
     calls = []
+    agent = module.DigitalICAgent()
 
-    monkeypatch.setattr(module, "create_agent", lambda: module.DigitalICAgent())
+    monkeypatch.setattr(module, "create_agent", lambda: agent)
 
-    def fake_check_async_fifo_rtl(self, output_dir="outputs"):
+    def fake_check_async_fifo_rtl(output_dir="outputs"):
         calls.append(output_dir)
         return True
 
-    monkeypatch.setattr(module.DigitalICAgent, "check_async_fifo_rtl", fake_check_async_fifo_rtl)
+    monkeypatch.setattr(
+        async_fifo_plugin(agent),
+        "check_async_fifo_rtl",
+        fake_check_async_fifo_rtl,
+    )
 
     assert module.main(["--check-rtl", "async-fifo", "--output-dir", str(tmp_path)]) == 0
     assert calls == [str(tmp_path)]

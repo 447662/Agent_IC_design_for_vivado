@@ -1,7 +1,8 @@
+from typing import Any
 import argparse
 
 
-def parse_args(argv=None):
+def parse_args(argv: Any=None) -> Any:
     parser = argparse.ArgumentParser(description="数字IC前端设计Agent")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
@@ -260,7 +261,7 @@ def parse_args(argv=None):
     return args
 
 
-def parse_seed_list(seed_text):
+def parse_seed_list(seed_text: Any) -> Any:
     seeds = []
     for part in str(seed_text).split(","):
         part = part.strip()
@@ -269,7 +270,7 @@ def parse_seed_list(seed_text):
     return seeds
 
 
-def build_requirement(args):
+def build_requirement(args: Any) -> Any:
     requirement = " ".join(args.requirement).strip()
     if requirement:
         return requirement

@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = ROOT / "pyproject.toml"
 DEV_REQUIREMENTS_PATH = ROOT / "requirements-dev.txt"
+UV_LOCK_PATH = ROOT / "uv.lock"
 QUALITY_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "python-quality.yml"
 GITIGNORE_PATH = ROOT / ".gitignore"
 
@@ -20,23 +21,36 @@ def test_pyproject_defines_python_quality_gates():
     assert tools["ruff"]["target-version"] == "py311"
     assert tools["mypy"]["python_version"] == "3.11"
     assert tools["mypy"]["check_untyped_defs"] is True
+    assert tools["mypy"]["disallow_untyped_defs"] is True
+    assert tools["mypy"]["strict_equality"] is True
+    assert tools["mypy"]["warn_return_any"] is True
     assert {
         ".trae/agent/adapters/report.py",
         ".trae/agent/adapters/vivado.py",
         ".trae/agent/adapters/waveform.py",
     } <= set(tools["mypy"]["files"])
-    assert tools["coverage"]["report"]["fail_under"] >= 65
+    assert tools["coverage"]["report"]["fail_under"] == 68
     assert tools["coverage"]["report"]["show_missing"] is True
+    assert not any(
+        override.get("ignore_errors") is True
+        for override in tools["mypy"].get("overrides", [])
+    )
 
 
 def test_development_requirements_include_quality_tools():
-    requirements = {
-        re.split(r"[<>=!~]", line.split(";", 1)[0].strip(), maxsplit=1)[0].lower()
+    requirement_lines = [
+        line.split(";", 1)[0].strip()
         for line in DEV_REQUIREMENTS_PATH.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
+    ]
+    requirements = {
+        re.split(r"[<>=!~]", line, maxsplit=1)[0].lower()
+        for line in requirement_lines
     }
 
     assert {"pytest", "pytest-cov", "ruff", "mypy"} <= requirements
+    assert all("==" in line for line in requirement_lines)
+    assert UV_LOCK_PATH.is_file()
 
 
 def test_github_actions_runs_all_python_quality_gates():
@@ -45,12 +59,13 @@ def test_github_actions_runs_all_python_quality_gates():
     workflow = QUALITY_WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "actions/checkout@v4" in workflow
     assert "actions/setup-python@v5" in workflow
-    assert "python -m pip install -r requirements-dev.txt" in workflow
-    assert "python -m ruff check .trae/agent tests" in workflow
-    assert "python -m mypy" in workflow
-    assert "python -m pytest" in workflow
+    assert "astral-sh/setup-uv@v6" in workflow
+    assert "uv sync --frozen --group dev" in workflow
+    assert "uv run --frozen ruff check .trae/agent tests" in workflow
+    assert "uv run --frozen mypy" in workflow
+    assert "uv run --frozen pytest tests" in workflow
     assert "--cov=.trae/agent" in workflow
-    assert "--cov-fail-under=68" in workflow
+    assert "--cov-fail-under" not in workflow
 
 
 def test_python_quality_artifacts_are_gitignored():

@@ -1,20 +1,21 @@
+from typing import Any
 from pathlib import Path
 
 
 def check_rtl_project(
-    target_name,
-    output_dir,
-    rtl_name,
-    tb_name,
-    sim_script_name,
-    project_script_name,
-    gui_script_name,
-    xpr_name,
-    vcd_name,
-    wave_db_resolver,
-    rtl_markers,
-    tb_markers,
-):
+    target_name: Any,
+    output_dir: Any,
+    rtl_name: Any,
+    tb_name: Any,
+    sim_script_name: Any,
+    project_script_name: Any,
+    gui_script_name: Any,
+    xpr_name: Any,
+    vcd_name: Any,
+    wave_db_resolver: Any,
+    rtl_markers: Any,
+    tb_markers: Any,
+) -> Any:
     project_dir = Path(output_dir) / target_name
     rtl_path = project_dir / "rtl" / rtl_name
     tb_path = project_dir / "tb" / tb_name

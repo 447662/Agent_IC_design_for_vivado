@@ -1,4 +1,7 @@
+from typing import Any
+import hashlib
 import json
+import os
 import platform
 import re
 import sys
@@ -25,16 +28,32 @@ VIVADO_FLOWS = {
     "open-uvm-wave",
 }
 WAVEFORM_FLOWS = {"analyze-rtl-vcd"}
+INPUT_FILE_SUFFIXES = {
+    ".json",
+    ".sv",
+    ".tcl",
+    ".v",
+    ".vhd",
+    ".vhdl",
+    ".xdc",
+}
+INPUT_EXCLUDED_DIRECTORIES = {
+    ".git",
+    ".xil",
+    "__pycache__",
+    "reports",
+    "xsim.dir",
+}
 
 
-def utc_timestamp():
+def utc_timestamp() -> Any:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
         "+00:00",
         "Z",
     )
 
 
-def normalize_json_value(value):
+def normalize_json_value(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -49,7 +68,7 @@ def normalize_json_value(value):
     return str(value)
 
 
-def build_replay_command(flow, target_name, output_dir, options=None):
+def build_replay_command(flow: Any, target_name: Any, output_dir: Any, options: Any=None) -> Any:
     options = dict(options or {})
     command = [
         sys.executable,
@@ -87,14 +106,14 @@ def build_replay_command(flow, target_name, output_dir, options=None):
     return command
 
 
-def extract_tool_version(command):
+def extract_tool_version(command: Any) -> Any:
     if not command:
         return None
     match = re.search(r"(?<!\d)(20\d{2}\.\d+)(?!\d)", str(command))
     return match.group(1) if match else None
 
 
-def collect_tools(agent, flow, options=None):
+def collect_tools(agent: Any, flow: Any, options: Any=None) -> Any:
     tools = {
         "python": {
             "version": platform.python_version(),
@@ -104,7 +123,7 @@ def collect_tools(agent, flow, options=None):
     if flow in VIVADO_FLOWS:
         try:
             command = agent.resolve_vivado_command()
-        except (OSError, ValueError):
+        except (AttributeError, OSError, ValueError):
             command = None
         tools["vivado"] = {
             "version": extract_tool_version(command),
@@ -118,15 +137,113 @@ def collect_tools(agent, flow, options=None):
     return tools
 
 
-def artifact_status(declared_status, exists):
-    if exists:
-        return "PASS"
+def json_digest(value: Any) -> Any:
+    encoded = json.dumps(
+        normalize_json_value(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def file_digest(path: Any) -> Any:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _timestamp_from_epoch(value: Any) -> Any:
+    return datetime.fromtimestamp(value, timezone.utc).isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
+
+
+def file_fingerprint(path: Any) -> Any:
+    path = Path(path)
+    stat = path.stat()
+    return {
+        "sha256": file_digest(path),
+        "size_bytes": stat.st_size,
+        "created_at": _timestamp_from_epoch(stat.st_ctime),
+        "modified_at": _timestamp_from_epoch(stat.st_mtime),
+    }
+
+
+def snapshot_project_artifacts(project_dir: Any) -> Any:
+    project_root = Path(project_dir).resolve()
+    if not project_root.is_dir():
+        return {}
+    snapshot = {}
+    for path in project_root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative_path = path.relative_to(project_root).as_posix()
+        if (
+            relative_path == "artifacts.json"
+            or relative_path == "artifacts.archive.jsonl.gz"
+            or relative_path.startswith(".artifacts.json.")
+        ):
+            continue
+        snapshot[relative_path] = file_fingerprint(path)
+    return snapshot
+
+
+def snapshot_project_inputs(project_dir: Any) -> Any:
+    project_root = Path(project_dir).resolve()
+    if not project_root.is_dir():
+        return {}
+    snapshot = {}
+    for path in project_root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative_path = path.relative_to(project_root)
+        relative_text = relative_path.as_posix()
+        if any(
+            part.lower() in INPUT_EXCLUDED_DIRECTORIES
+            for part in relative_path.parts[:-1]
+        ):
+            continue
+        if relative_text == "artifacts.json":
+            continue
+        if path.suffix.lower() not in INPUT_FILE_SUFFIXES:
+            continue
+        snapshot[relative_text] = file_fingerprint(path)
+    return snapshot
+
+
+def input_file_digest_payload(input_files: Any) -> Any:
+    return {
+        str(path).replace("\\", "/"): {
+            "sha256": fingerprint.get("sha256"),
+            "size_bytes": fingerprint.get("size_bytes"),
+        }
+        for path, fingerprint in sorted(dict(input_files or {}).items())
+    }
+
+
+def build_run_input_digest(options: Any, command: Any, tools: Any, input_files: Any) -> Any:
+    return json_digest(
+        {
+            "options": normalize_json_value(dict(options or {})),
+            "command": normalize_json_value(list(command or [])),
+            "tools": normalize_json_value(dict(tools or {})),
+            "input_files": input_file_digest_payload(input_files),
+        }
+    )
+
+
+def artifact_status(declared_status: Any, exists: Any, is_current: Any=False) -> Any:
     if declared_status == "N/A":
         return "N/A"
-    return "SKIP"
+    if not exists:
+        return "MISSING"
+    return "CURRENT" if is_current else "STALE"
 
 
-def normalize_artifact_path(project_dir, artifact_path):
+def normalize_artifact_path(project_dir: Any, artifact_path: Any) -> Any:
     project_root = Path(project_dir).resolve()
     artifact_path = Path(artifact_path)
     resolved_path = (
@@ -144,24 +261,54 @@ def normalize_artifact_path(project_dir, artifact_path):
         ) from exc
 
 
-def build_artifact_entry(project_dir, artifact_id, relative_path, declared_status):
+def build_artifact_entry(
+    project_dir: Any,
+    artifact_id: Any,
+    relative_path: Any,
+    declared_status: Any,
+    run_id: Any,
+    observed_at: Any,
+    baseline: Any=None,
+    run_status: Any="PASS",
+) -> Any:
     project_dir = Path(project_dir).resolve()
     relative_path = normalize_artifact_path(project_dir, relative_path)
     artifact_path = project_dir / relative_path
-    exists = artifact_path.exists()
+    exists = artifact_path.is_file()
+    fingerprint = file_fingerprint(artifact_path) if exists else None
+    baseline = dict(baseline or {})
+    baseline_digest = baseline.get("sha256")
+    if fingerprint is None:
+        is_current = False
+    else:
+        is_current = bool(
+            (baseline_digest is None and not baseline)
+            or (
+                baseline_digest is not None
+                and fingerprint["sha256"] != baseline_digest
+            )
+        )
+    if run_status != "PASS" and not baseline:
+        is_current = False
     entry = {
         "id": str(artifact_id),
         "path": str(relative_path).replace("\\", "/"),
         "declared_status": str(declared_status),
-        "status": artifact_status(str(declared_status), exists),
+        "status": artifact_status(
+            str(declared_status),
+            exists,
+            is_current=is_current,
+        ),
         "exists": exists,
+        "observed_at": observed_at,
+        "produced_by_run_id": run_id if is_current else None,
     }
-    if exists and artifact_path.is_file():
-        entry["size_bytes"] = artifact_path.stat().st_size
+    if fingerprint is not None:
+        entry.update(fingerprint)
     return entry
 
 
-def normalize_extra_artifact(project_dir, item):
+def normalize_extra_artifact(project_dir: Any, item: Any) -> Any:
     artifact_path = Path(item["path"])
     relative_path = normalize_artifact_path(project_dir, artifact_path)
     return {
@@ -171,16 +318,30 @@ def normalize_extra_artifact(project_dir, item):
     }
 
 
-def collect_artifacts(target_info, project_dir, extra_artifacts=None):
+def collect_artifacts(
+    target_info: Any,
+    project_dir: Any,
+    run_id: Any,
+    observed_at: Any,
+    run_status: Any,
+    baseline: Any=None,
+    extra_artifacts: Any=None,
+) -> Any:
     artifacts = []
     seen_paths = set()
+    baseline = dict(baseline or {})
     for item in target_info.get("artifact_manifest", []):
         relative_path = Path(item["path"])
+        relative_text = relative_path.as_posix()
         entry = build_artifact_entry(
             project_dir,
             item["id"],
             relative_path,
             item["status"],
+            run_id,
+            observed_at,
+            baseline=baseline.get(relative_text),
+            run_status=run_status,
         )
         artifacts.append(entry)
         seen_paths.add(entry["path"])
@@ -196,13 +357,55 @@ def collect_artifacts(target_info, project_dir, extra_artifacts=None):
                 item["id"],
                 item["path"],
                 item["status"],
+                run_id,
+                observed_at,
+                baseline=baseline.get(relative_text),
+                run_status=run_status,
             )
         )
         seen_paths.add(relative_text)
     return artifacts
 
 
-def load_runtime_manifest(manifest_path, target_name):
+def _latest_artifact_snapshot(manifest: Any) -> Any:
+    runs = manifest.get("runs", [])
+    if not runs:
+        return {}
+    snapshot = {}
+    for item in runs[-1].get("artifacts", []):
+        if not item.get("exists"):
+            continue
+        path = str(item.get("path", "")).replace("\\", "/")
+        if not path:
+            continue
+        snapshot[path] = {
+            "sha256": item.get("sha256"),
+            "size_bytes": item.get("size_bytes"),
+            "created_at": item.get("created_at"),
+            "modified_at": item.get("modified_at"),
+            "produced_by_run_id": item.get("produced_by_run_id"),
+        }
+    return snapshot
+
+
+def atomic_write_json(path: Any, value: Any) -> Any:
+    path = Path(path)
+    temporary_path = path.with_name(
+        ".{}.{}.tmp".format(path.name, uuid.uuid4().hex)
+    )
+    temporary_path.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        os.replace(temporary_path, path)
+    except OSError:
+        if temporary_path.exists():
+            temporary_path.unlink()
+        raise
+
+
+def load_runtime_manifest(manifest_path: Any, target_name: Any) -> Any:
     if not manifest_path.exists():
         return {
             "schema_version": SCHEMA_VERSION,
@@ -229,19 +432,20 @@ def load_runtime_manifest(manifest_path, target_name):
 
 
 def record_artifact_run(
-    self,
-    target,
-    flow,
-    output_dir="outputs",
-    status="PASS",
-    error=None,
-    options=None,
-    target_info=None,
-    project_dir=None,
-    extra_artifacts=None,
-    command=None,
-    max_active_runs=DEFAULT_ACTIVE_RECORD_LIMIT,
-):
+    self: Any,
+    target: Any,
+    flow: Any,
+    output_dir: Any="outputs",
+    status: Any="PASS",
+    error: Any=None,
+    options: Any=None,
+    target_info: Any=None,
+    project_dir: Any=None,
+    extra_artifacts: Any=None,
+    command: Any=None,
+    artifact_snapshot: Any=None,
+    max_active_runs: Any=DEFAULT_ACTIVE_RECORD_LIMIT,
+) -> Any:
     status = str(status).upper()
     if status not in RUN_STATUSES:
         raise ValueError("invalid runtime flow status: {}".format(status))
@@ -255,26 +459,47 @@ def record_artifact_run(
     manifest = load_runtime_manifest(manifest_path, target_name)
     recorded_at = utc_timestamp()
     normalized_options = normalize_json_value(dict(options or {}))
+    run_id = uuid.uuid4().hex
+    replay_command = list(
+        command
+        or build_replay_command(
+            str(flow),
+            target_name,
+            output_dir,
+            options=normalized_options,
+        )
+    )
+    tools = collect_tools(self, str(flow), options=normalized_options)
+    input_files = snapshot_project_inputs(project_dir)
+    baseline = (
+        dict(artifact_snapshot)
+        if artifact_snapshot is not None
+        else _latest_artifact_snapshot(manifest)
+    )
 
     run = {
-        "run_id": uuid.uuid4().hex,
+        "run_id": run_id,
         "flow": str(flow),
         "status": status,
         "recorded_at": recorded_at,
-        "command": list(
-            command
-            or build_replay_command(
-                str(flow),
-                target_name,
-                output_dir,
-                options=normalized_options,
-            )
-        ),
+        "command": replay_command,
+        "command_digest": json_digest(replay_command),
         "options": normalized_options,
-        "tools": collect_tools(self, str(flow), options=normalized_options),
+        "tools": tools,
+        "input_files": input_files,
+        "input_digest": build_run_input_digest(
+            normalized_options,
+            replay_command,
+            tools,
+            input_files,
+        ),
         "artifacts": collect_artifacts(
             target_info,
             project_dir,
+            run_id,
+            recorded_at,
+            status,
+            baseline=baseline,
             extra_artifacts=extra_artifacts,
         ),
         "error": str(error) if error else None,
@@ -298,8 +523,5 @@ def record_artifact_run(
     else:
         manifest["history"] = history
     manifest["updated_at"] = recorded_at
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(manifest_path, manifest)
     return manifest_path

@@ -1,3 +1,4 @@
+from typing import Any
 import json
 import sys
 from pathlib import Path
@@ -6,13 +7,13 @@ from pathlib import Path
 RWAVE_ONLY_FORMATS = {".fst", ".ghw"}
 
 
-def _waveform_suffix(args):
+def _waveform_suffix(args: Any) -> Any:
     if len(args) < 2:
         return ""
     return Path(str(args[1])).suffix.lower()
 
 
-def _raise_rwave_required(waveform_suffix, error):
+def _raise_rwave_required(waveform_suffix: Any, error: Any) -> Any:
     format_name = waveform_suffix.lstrip(".").upper() or "This"
     message = "{} waveform requires RWaveAnalyzer: {}".format(format_name, error)
     if isinstance(error, FileNotFoundError):
@@ -20,7 +21,7 @@ def _raise_rwave_required(waveform_suffix, error):
     raise RuntimeError(message) from error
 
 
-def run_rwave_json(self, *args):
+def run_rwave_json(self: Any, *args: Any) -> Any:
     rwave_command = self.resolve_rwave_command()
     if not rwave_command:
         raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
@@ -44,7 +45,7 @@ def run_rwave_json(self, *args):
     return data
 
 
-def run_rwave_batch_json(self, waveform_path, command_lines):
+def run_rwave_batch_json(self: Any, waveform_path: Any, command_lines: Any) -> Any:
     rwave_command = self.resolve_rwave_command()
     if not rwave_command:
         raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
@@ -91,7 +92,7 @@ def run_rwave_batch_json(self, waveform_path, command_lines):
     return parsed
 
 
-def run_vcd_analyzer_json(self, *args):
+def run_vcd_analyzer_json(self: Any, *args: Any) -> Any:
     analyzer_path = self.resolve_vcd_analyzer_path()
     if not analyzer_path.exists():
         raise FileNotFoundError("VCD analyzer not found: {}".format(analyzer_path))
@@ -124,7 +125,7 @@ def run_vcd_analyzer_json(self, *args):
     return data
 
 
-def run_waveform_analyzer_json(self, *args, backend="auto"):
+def run_waveform_analyzer_json(self: Any, *args: Any, backend: Any="auto") -> Any:
     backend = str(backend or "auto").strip().lower()
     waveform_suffix = _waveform_suffix(args)
     if backend in ("vcd", "vcd_analyzer", "vcd-analyzer"):

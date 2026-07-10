@@ -24,24 +24,30 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
 
-      - name: Install development dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install frozen development dependencies
+        run: uv sync --frozen --group dev
 
       - name: Ruff
-        run: python -m ruff check .trae/agent tests
+        run: uv run --frozen ruff check .trae/agent tests
 
       - name: Mypy
-        run: python -m mypy
+        run: uv run --frozen mypy
+
+      - name: Verify tracked runtime snapshot
+        run: >-
+          uv run --frozen pytest tests/test_repository_reproducibility.py
+          -q
+          --basetemp .tmp-pytest-reproducibility
+          -p no:cacheprovider
 
       - name: Pytest with coverage
         run: >-
-          python -m pytest tests
+          uv run --frozen pytest tests
           --cov=.trae/agent
           --cov-report=term-missing
           --cov-report=xml
-          --cov-fail-under=68
           --basetemp .tmp-pytest

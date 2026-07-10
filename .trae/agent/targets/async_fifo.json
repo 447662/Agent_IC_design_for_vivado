@@ -2,6 +2,7 @@
   "name": "async-fifo",
   "display_name": "Asynchronous FIFO",
   "design_family": "fifo",
+  "handler": "async-fifo",
   "aliases": [
     "async_fifo",
     "asyncfifo"

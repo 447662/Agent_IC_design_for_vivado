@@ -1,9 +1,10 @@
+from typing import Any
 import os
 import shutil
 from pathlib import Path
 
 
-def resolve_vcd_analyzer_path(project_root):
+def resolve_vcd_analyzer_path(project_root: Any) -> Any:
     return (
         Path(project_root)
         / "VCD_ANALYZER-main"
@@ -12,7 +13,7 @@ def resolve_vcd_analyzer_path(project_root):
     )
 
 
-def resolve_rwave_source_dir(project_root):
+def resolve_rwave_source_dir(project_root: Any) -> Any:
     project_root = Path(project_root)
     candidates = [
         project_root / "RWaveAnalyzer-main" / "RWaveAnalyzer-main",
@@ -34,11 +35,11 @@ def resolve_rwave_source_dir(project_root):
 
 
 def resolve_rwave_command(
-    project_root,
-    env=None,
-    which=None,
-    source_dir_resolver=None,
-):
+    project_root: Any,
+    env: Any=None,
+    which: Any=None,
+    source_dir_resolver: Any=None,
+) -> Any:
     env = os.environ if env is None else env
     which = shutil.which if which is None else which
 

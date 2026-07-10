@@ -2,6 +2,7 @@
   "name": "round-robin-arbiter",
   "display_name": "Round-Robin Arbiter",
   "design_family": "arbiter",
+  "handler": "round-robin-arbiter",
   "aliases": [
     "round_robin_arbiter",
     "roundrobinarbiter",

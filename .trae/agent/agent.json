@@ -9,6 +9,8 @@
       "name": "digital-ic-designer",
       "path": "./skills/digital-ic-designer/SKILL.md",
       "description": "数字IC设计架构师：生成设计文档",
+      "action": "design-document",
+      "requiredCapabilities": [],
       "triggerKeywords": ["设计文档", "架构设计", "需求分析", "方案文档", "IEEE标准"],
       "priority": 1
     },
@@ -16,6 +18,8 @@
       "name": "digital-ic-rtl-designer",
       "path": "./skills/digital-ic-rtl-designer/SKILL.md",
       "description": "数字IC设计师：RTL代码实现与常规验证",
+      "action": "rtl-implementation",
+      "requiredCapabilities": [],
       "triggerKeywords": ["RTL", "Verilog", "代码实现", "仿真", "波形", "Testbench"],
       "priority": 2
     },
@@ -23,6 +27,8 @@
       "name": "digital-ic-verifier",
       "path": "./skills/digital-ic-verifier/SKILL.md",
       "description": "数字IC验证师：UVM验证与前仿",
+      "action": "verification-plan",
+      "requiredCapabilities": [],
       "triggerKeywords": ["UVM", "SystemVerilog", "前仿", "功能验证", "覆盖率"],
       "priority": 3
     }

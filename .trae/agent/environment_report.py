@@ -1,3 +1,4 @@
+from typing import Any
 import json
 import os
 import platform
@@ -23,15 +24,15 @@ MINIMUM_PYTHON = (3, 11)
 STATUS_PRIORITY = {"PASS": 0, "WARN": 1, "FAIL": 2}
 
 
-def _clean_text(value):
+def _clean_text(value: Any) -> Any:
     return " ".join(str(value or "").split())
 
 
-def _table_text(value):
+def _table_text(value: Any) -> Any:
     return _clean_text(value).replace("|", "\\|")
 
 
-def _run_version_command(agent, command):
+def _run_version_command(agent: Any, command: Any) -> Any:
     try:
         result = agent.command_runner.run(
             command,
@@ -53,7 +54,7 @@ def _run_version_command(agent, command):
     return result.returncode == 0, output
 
 
-def _check_python(version_info, python_executable):
+def _check_python(version_info: Any, python_executable: Any) -> Any:
     version = tuple(int(part) for part in version_info[:3])
     version_text = ".".join(str(part) for part in version)
     if version >= MINIMUM_PYTHON:
@@ -74,7 +75,7 @@ def _check_python(version_info, python_executable):
     }
 
 
-def _check_git(agent, which):
+def _check_git(agent: Any, which: Any) -> Any:
     command = which("git")
     if not command:
         return {
@@ -103,7 +104,7 @@ def _check_git(agent, which):
     }
 
 
-def _check_vivado(agent):
+def _check_vivado(agent: Any) -> Any:
     try:
         command = agent.resolve_vivado_command()
     except (AttributeError, OSError, ValueError) as exc:
@@ -151,7 +152,7 @@ def _check_vivado(agent):
     }
 
 
-def _check_waveform(agent):
+def _check_waveform(agent: Any) -> Any:
     try:
         rwave_command = agent.resolve_rwave_command()
     except (AttributeError, OSError, ValueError) as exc:
@@ -204,7 +205,7 @@ def _check_waveform(agent):
     }
 
 
-def _check_output_directory(report_dir):
+def _check_output_directory(report_dir: Any) -> Any:
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / "environment_report.md"
     with report_path.open("a", encoding="utf-8"):
@@ -217,7 +218,7 @@ def _check_output_directory(report_dir):
     }
 
 
-def _check_gui(env, system_name):
+def _check_gui(env: Any, system_name: Any) -> Any:
     if system_name == "Windows":
         session_name = env.get("SESSIONNAME") or env.get("WT_SESSION")
         available = bool(session_name and str(session_name).lower() != "services")
@@ -248,14 +249,14 @@ def _check_gui(env, system_name):
 
 
 def collect_environment_checks(
-    agent,
-    report_dir,
-    env=None,
-    which=None,
-    platform_system=None,
-    version_info=None,
-    python_executable=None,
-):
+    agent: Any,
+    report_dir: Any,
+    env: Any=None,
+    which: Any=None,
+    platform_system: Any=None,
+    version_info: Any=None,
+    python_executable: Any=None,
+) -> Any:
     env = os.environ if env is None else env
     which = shutil.which if which is None else which
     platform_system = platform.system if platform_system is None else platform_system
@@ -273,14 +274,14 @@ def collect_environment_checks(
     ]
 
 
-def overall_status(checks):
+def overall_status(checks: Any) -> Any:
     return max(
         (check["status"] for check in checks),
         key=lambda status: STATUS_PRIORITY[status],
     )
 
 
-def render_environment_markdown(checks, status, generated_at):
+def render_environment_markdown(checks: Any, status: Any, generated_at: Any) -> Any:
     if status == "PASS":
         summary = "全部环境前置条件均已满足。"
     elif status == "WARN":
@@ -323,7 +324,7 @@ def render_environment_markdown(checks, status, generated_at):
     return "\n".join(lines)
 
 
-def load_environment_manifest(manifest_path):
+def load_environment_manifest(manifest_path: Any) -> Any:
     if not manifest_path.exists():
         return {
             "schema_version": SCHEMA_VERSION,
@@ -345,14 +346,14 @@ def load_environment_manifest(manifest_path):
 
 
 def write_environment_manifest(
-    manifest_path,
-    output_dir,
-    status,
-    generated_at,
-    checks,
-    report_paths,
-    max_active_runs=DEFAULT_ACTIVE_RECORD_LIMIT,
-):
+    manifest_path: Any,
+    output_dir: Any,
+    status: Any,
+    generated_at: Any,
+    checks: Any,
+    report_paths: Any,
+    max_active_runs: Any=DEFAULT_ACTIVE_RECORD_LIMIT,
+) -> Any:
     manifest = load_environment_manifest(manifest_path)
     artifacts = []
     for path in report_paths:
@@ -410,15 +411,15 @@ def write_environment_manifest(
 
 
 def write_environment_report(
-    self,
-    output_dir="outputs",
-    env=None,
-    which=None,
-    platform_system=None,
-    version_info=None,
-    python_executable=None,
-    max_active_runs=DEFAULT_ACTIVE_RECORD_LIMIT,
-):
+    self: Any,
+    output_dir: Any="outputs",
+    env: Any=None,
+    which: Any=None,
+    platform_system: Any=None,
+    version_info: Any=None,
+    python_executable: Any=None,
+    max_active_runs: Any=DEFAULT_ACTIVE_RECORD_LIMIT,
+) -> Any:
     output_dir = Path(output_dir)
     report_dir = output_dir / REPORT_DIRECTORY
     checks = collect_environment_checks(

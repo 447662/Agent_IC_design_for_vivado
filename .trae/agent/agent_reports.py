@@ -1,12 +1,13 @@
+from typing import Any
 import html
 
 
-def render_markdown_document_html(title, markdown_text, variant="doc"):
+def render_markdown_document_html(title: Any, markdown_text: Any, variant: Any="doc") -> Any:
     body = []
     in_table = False
     table_rows = 0
 
-    def close_table():
+    def close_table() -> Any:
         nonlocal in_table, table_rows
         if in_table:
             body.append("</tbody></table>")

@@ -2,6 +2,7 @@
   "name": "sync-fifo",
   "display_name": "Synchronous FIFO",
   "design_family": "fifo",
+  "handler": "sync-fifo",
   "aliases": [
     "sync_fifo",
     "syncfifo"

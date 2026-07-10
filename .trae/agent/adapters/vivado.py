@@ -1,3 +1,4 @@
+from typing import Any
 import shutil
 from pathlib import Path
 
@@ -8,7 +9,7 @@ DEFAULT_VIVADO_CANDIDATES = (
 )
 
 
-def resolve_vivado_command(self):
+def resolve_vivado_command(self: Any) -> Any:
     vivado_on_path = shutil.which("vivado")
     if vivado_on_path:
         return vivado_on_path
@@ -20,14 +21,14 @@ def resolve_vivado_command(self):
 
 
 def run_vivado_batch(
-    self,
-    vivado_command,
-    script_name,
-    cwd,
-    extra_args=None,
-    timeout=None,
-    env=None,
-):
+    self: Any,
+    vivado_command: Any,
+    script_name: Any,
+    cwd: Any,
+    extra_args: Any=None,
+    timeout: Any=None,
+    env: Any=None,
+) -> Any:
     command = [vivado_command, "-mode", "batch"]
     command.extend(extra_args or [])
     command.extend(["-source", str(script_name)])
@@ -44,8 +45,14 @@ def run_vivado_batch(
     return self.command_runner.run(command, **run_kwargs)
 
 
-def launch_vivado_gui(self, vivado_command, script_name, cwd, extra_args=None):
+def launch_vivado_gui(self: Any, vivado_command: Any, script_name: Any, cwd: Any, extra_args: Any=None) -> Any:
     command = [vivado_command, "-mode", "gui"]
     command.extend(extra_args or [])
     command.extend(["-source", str(script_name)])
-    return self.command_runner.launch(command, cwd=cwd)
+    return self.command_runner.launch(
+        command,
+        cwd=cwd,
+        mode="interactive",
+        preserve=True,
+        startup_timeout=getattr(self, "gui_startup_timeout", 1.0),
+    )

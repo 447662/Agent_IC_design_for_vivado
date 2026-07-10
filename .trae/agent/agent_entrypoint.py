@@ -1,9 +1,10 @@
+from typing import Any
 import sys
 
 from agent_cli import build_requirement, parse_args, parse_seed_list
 
 
-def run_cli(argv, agent_factory):
+def run_cli(argv: Any, agent_factory: Any) -> Any:
     args = parse_args(argv)
     agent = agent_factory()
     if agent is None:
@@ -96,16 +97,20 @@ def run_cli(argv, agent_factory):
         )
 
     if args.sim_smoke:
-        return (
-            0
-            if agent.run_sim_smoke(
-                output_dir=args.output_dir,
-                limit=args.vcd_limit,
-                open_wave_gui=not args.no_wave_gui,
-                waveform_backend=args.wave_backend,
+        try:
+            return (
+                0
+                if agent.run_sim_smoke(
+                    output_dir=args.output_dir,
+                    limit=args.vcd_limit,
+                    open_wave_gui=not args.no_wave_gui,
+                    waveform_backend=args.wave_backend,
+                )
+                else 1
             )
-            else 1
-        )
+        except RuntimeError as exc:
+            print("Simulation smoke failed: {}".format(exc), file=sys.stderr)
+            return 1
 
     if args.generate_rtl:
         try:
@@ -164,7 +169,7 @@ def run_cli(argv, agent_factory):
                 )
                 else 1
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             print("RTL simulation failed: {}".format(exc), file=sys.stderr)
             return 1
 
@@ -194,7 +199,7 @@ def run_cli(argv, agent_factory):
                 )
                 else 1
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             print("UVM smoke failed: {}".format(exc), file=sys.stderr)
             return 1
 
@@ -283,7 +288,7 @@ def run_cli(argv, agent_factory):
                 )
                 else 1
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             print("RTL wave open failed: {}".format(exc), file=sys.stderr)
             return 1
 
@@ -298,7 +303,7 @@ def run_cli(argv, agent_factory):
                 )
                 else 1
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             print("UVM wave open failed: {}".format(exc), file=sys.stderr)
             return 1
 
