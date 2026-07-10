@@ -1092,6 +1092,33 @@ def test_p5_10_environment_report_warns_for_missing_optional_tools(tmp_path):
     assert "未检测到 RWave" in markdown
 
 
+def test_p5_10_environment_report_accepts_vivado_version_banner_on_nonzero_exit():
+    module = load_local_module(
+        "environment_report_vivado_banner",
+        ENVIRONMENT_REPORT_PATH,
+    )
+
+    class FakeRunner:
+        def run(self, command, **_kwargs):
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                stdout="Vivado v2025.2 (64-bit) SW Build 6299465",
+                stderr="",
+            )
+
+    class FakeAgent:
+        command_runner = FakeRunner()
+
+        def resolve_vivado_command(self):
+            return r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
+
+    check = module._check_vivado(FakeAgent())
+
+    assert check["status"] == "PASS"
+    assert "Vivado v2025.2" in check["detail"]
+
+
 def test_p5_10_environment_report_rejects_unwritable_output_path(tmp_path):
     module = load_local_module("environment_report_unwritable", ENVIRONMENT_REPORT_PATH)
     output_file = tmp_path / "not-a-directory"

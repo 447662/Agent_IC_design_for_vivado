@@ -35,6 +35,7 @@ from agent_waveform import (
     resolve_vcd_analyzer_path as get_vcd_analyzer_path,
 )
 from artifact_manifest import record_artifact_run as append_artifact_run
+from environment_report import write_environment_report as build_environment_report
 from adapters.report import (
     render_target_design_spec as adapter_render_target_design_spec,
     render_target_verification_plan as adapter_render_target_verification_plan,
@@ -433,6 +434,7 @@ class DigitalICAgent:
     write_target_verification_plan = adapter_write_target_verification_plan
     create_target_scaffold = build_target_scaffold
     record_artifact_run = append_artifact_run
+    write_environment_report = build_environment_report
 
     def resolve_vcd_analyzer_path(self):
         return get_vcd_analyzer_path(self.project_root)
@@ -5677,6 +5679,18 @@ def main(argv=None):
 
     if args.diagnostic:
         return 0 if agent.run_diagnostic() else 1
+
+    if args.environment_report:
+        try:
+            report = agent.write_environment_report(output_dir=args.output_dir)
+        except (OSError, ValueError) as exc:
+            print("环境预检报告生成失败: {}".format(exc), file=sys.stderr)
+            return 1
+        print("环境预检状态: {}".format(report["status"]))
+        print("Markdown: {}".format(report["markdown_path"]))
+        print("HTML: {}".format(report["html_path"]))
+        print("Artifact manifest: {}".format(report["manifest_path"]))
+        return 1 if report["status"] == "FAIL" else 0
 
     if args.smoke_loop:
         return 0 if agent.run_smoke_loop(

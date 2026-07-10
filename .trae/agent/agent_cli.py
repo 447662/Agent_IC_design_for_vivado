@@ -143,6 +143,11 @@ def parse_args(argv=None):
         help="只运行环境诊断",
     )
     mode_group.add_argument(
+        "--environment-report",
+        action="store_true",
+        help="生成中文环境预检 Markdown/HTML 报告",
+    )
+    mode_group.add_argument(
         "--list-skills",
         action="store_true",
         help="列出技能配置",
@@ -171,6 +176,7 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if args.no_tool_check and (
         args.diagnostic
+        or args.environment_report
         or args.list_skills
         or args.list_targets
         or args.analyze_vcd
