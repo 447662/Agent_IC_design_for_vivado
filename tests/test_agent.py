@@ -16,6 +16,7 @@ AGENT_REPORTS_PATH = ROOT / ".trae" / "agent" / "agent_reports.py"
 AGENT_WAVEFORM_PATH = ROOT / ".trae" / "agent" / "agent_waveform.py"
 TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
 TARGET_SCAFFOLDER_PATH = ROOT / ".trae" / "agent" / "target_scaffolder.py"
+ARTIFACT_MANIFEST_PATH = ROOT / ".trae" / "agent" / "artifact_manifest.py"
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
@@ -1273,6 +1274,113 @@ def test_p5_7_cli_create_target_generates_scaffold(tmp_path):
     assert "packet_router.json" in result.stdout
     assert (tmp_path / "packet-router" / "target" / "packet_router.json").exists()
     assert (tmp_path / "packet-router" / "TODO.md").exists()
+
+
+def test_p5_8_generate_rtl_writes_runtime_artifact_manifest(tmp_path):
+    assert ARTIFACT_MANIFEST_PATH.exists()
+
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = agent.generate_rtl_project("sync-fifo", tmp_path)
+
+    manifest_path = project_dir / "artifacts.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 1
+    assert manifest["target"] == "sync-fifo"
+    assert manifest["updated_at"].endswith("Z")
+    assert len(manifest["runs"]) == 1
+
+    run = manifest["runs"][0]
+    assert run["flow"] == "generate-rtl"
+    assert run["status"] == "PASS"
+    assert run["recorded_at"].endswith("Z")
+    assert "--generate-rtl" in run["command"]
+    assert "sync-fifo" in run["command"]
+    assert run["tools"]["python"]["version"]
+    assert run["tools"]["python"]["executable"]
+
+    artifacts = {item["id"]: item for item in run["artifacts"]}
+    assert artifacts["rtl"]["path"] == "rtl/sync_fifo.v"
+    assert artifacts["rtl"]["exists"] is True
+    assert artifacts["rtl"]["status"] == "PASS"
+    assert artifacts["rtl"]["size_bytes"] > 0
+    assert artifacts["wave_vcd"]["exists"] is False
+    assert artifacts["wave_vcd"]["status"] == "SKIP"
+    assert artifacts["coverage_summary"]["status"] == "N/A"
+
+
+def test_p5_8_report_generation_appends_manifest_history(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    agent.generate_rtl_project("sync-fifo", tmp_path)
+    agent.write_target_design_spec("sync-fifo", output_dir=tmp_path)
+    agent.write_target_verification_plan("sync-fifo", output_dir=tmp_path)
+
+    manifest = json.loads(
+        (tmp_path / "sync-fifo" / "artifacts.json").read_text(encoding="utf-8")
+    )
+    assert [run["flow"] for run in manifest["runs"]] == [
+        "generate-rtl",
+        "generate-spec",
+        "generate-verification-plan",
+    ]
+    assert all(run["status"] == "PASS" for run in manifest["runs"])
+
+    latest_artifacts = {
+        item["id"]: item for item in manifest["runs"][-1]["artifacts"]
+    }
+    assert latest_artifacts["design_spec"]["status"] == "PASS"
+    assert latest_artifacts["verification_plan"]["status"] == "PASS"
+
+
+def test_p5_8_failed_target_flow_records_failure(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    class FailingHandler:
+        def run(self, _flow, **_kwargs):
+            raise RuntimeError("simulated manifest failure path")
+
+    agent.target_handlers["sync-fifo"] = FailingHandler()
+
+    with pytest.raises(RuntimeError, match="simulated manifest failure path"):
+        agent.run_target_flow(
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+        )
+
+    manifest = json.loads(
+        (tmp_path / "sync-fifo" / "artifacts.json").read_text(encoding="utf-8")
+    )
+    run = manifest["runs"][-1]
+    assert run["flow"] == "generate-rtl"
+    assert run["status"] == "FAIL"
+    assert "simulated manifest failure path" in run["error"]
+    assert "--generate-rtl" in run["command"]
+
+
+def test_p5_8_create_target_scaffold_writes_runtime_manifest(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    scaffold = agent.create_target_scaffold("packet_router", output_dir=tmp_path)
+    manifest = json.loads(
+        (scaffold["project_dir"] / "artifacts.json").read_text(encoding="utf-8")
+    )
+    run = manifest["runs"][-1]
+
+    assert manifest["target"] == "packet-router"
+    assert run["flow"] == "create-target"
+    assert run["status"] == "PASS"
+    assert "--create-target" in run["command"]
+    assert any(
+        item["path"] == "target/packet_router.json"
+        and item["exists"] is True
+        and item["status"] == "PASS"
+        for item in run["artifacts"]
+    )
 
 
 def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
