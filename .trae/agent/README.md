@@ -6,6 +6,7 @@
 
 ```powershell
 python .trae/agent/agent.py --diagnostic
+python .trae/agent/agent.py --environment-report --output-dir outputs
 python .trae/agent/agent.py --list-skills
 python .trae/agent/agent.py --list-targets
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd
@@ -30,6 +31,7 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 | 参数 | 说明 |
 | --- | --- |
 | `--diagnostic` | 检查 Vivado、`uv`、SynthPilot MCP 和技能文件 |
+| `--environment-report` | 生成 Python、Git、Vivado、RWave fallback、权限和 GUI 条件的中文 Markdown/HTML 预检报告 |
 | `--list-skills` | 列出当前 Agent 技能配置 |
 | `--list-targets` | 列出当前可用 RTL 设计目标、别名和支持 flow |
 | `--analyze-vcd <file>` | 分析 VCD，可配合 `--vcd-condition`、`--vcd-show`、`--vcd-limit` |
@@ -47,6 +49,19 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 | `--wave-backend auto|rwave|vcd-analyzer` | 选择波形分析后端；默认 auto 优先 RWaveAnalyzer，失败时降级到 VCD_ANALYZER |
 | `--output-dir <path>` | 指定输出根目录 |
 | `--no-tool-check` | 普通需求文档流程中跳过外部工具检查 |
+
+## 环境预检报告
+
+`--environment-report --output-dir outputs` 生成：
+
+```text
+outputs/environment-report/
+  environment_report.md
+  environment_report.html
+  artifacts.json
+```
+
+报告按 `PASS/WARN/FAIL` 输出中文详情和修复建议。Vivado 或 GUI 不可用时通常为可降级 `WARN`；Python 版本不足、Git 缺失等基础条件为 `FAIL`。`artifacts.json` 使用项目级 `scope: environment`，记录每次预检的命令、检查结果和两个报告产物。
 
 ## Vivado 流程
 
@@ -146,6 +161,7 @@ outputs/async-fifo/
 - P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理目标元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。
 - P5.1 已完成目标配置文件化：`DigitalICAgent.load_target_registry()` 从 `.trae/agent/targets/*.json` 加载目标元信息，当前 async FIFO 配置为 `.trae/agent/targets/async_fifo.json`。
 - P5.2 已完成 `sync-fifo` 最小闭环：新增 `.trae/agent/targets/sync_fifo.json`、RTL/TB/Vivado Tcl 生成、真实 Vivado/xsim 仿真、`--analyze-rtl-vcd sync-fifo`、WDB GUI 打开和中文仿真报告。
+- P5.10 已完成中文环境预检：`--environment-report` 生成 Markdown/HTML、修复建议和项目级运行清单。
 
 ## 代码模块化状态
 
@@ -156,6 +172,7 @@ outputs/async-fifo/
 - `agent_cli.py` 负责命令行参数、UVM seed 解析和自然语言需求拼装。
 - `agent_reports.py` 提供通用 Markdown 到 HTML 文档渲染。
 - `agent_waveform.py` 负责 VCD_ANALYZER 和 RWaveAnalyzer 的路径、源码目录与可执行文件解析。
+- `environment_report.py` 负责环境探测、中文 Markdown/HTML 和项目级 environment manifest。
 - `target_flows.py` 负责 target flow handler 注册和参数转发。
 - `target_checks.py` 负责通用 RTL/TB/Vivado/VCD/WDB 产物检查。
 - 后续模块化批次将继续迁移 waveform 执行 adapter、各类详细报告生成和 target RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
@@ -169,7 +186,7 @@ python -m mypy
 python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov-fail-under=68 --basetemp .tmp-pytest
 ```
 
-当前质量基线为 `110 passed`，分支覆盖率 `70.8%`，CI 覆盖率门槛 `68%`。Mypy 当前覆盖 8 个已拆分模块，后续随 `DigitalICAgent` 继续拆分逐步扩大范围。
+当前质量基线为 `131 passed`，分支覆盖率 `73.61%`，CI 覆盖率门槛 `68%`。Mypy 当前覆盖 14 个已拆分模块。
 
 ## 问题复盘
 
