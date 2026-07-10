@@ -193,7 +193,7 @@ def _collect_target(output_dir, target_info):
         "design_family": target_info.get("design_family", "unknown"),
         "status": "NOT_RUN",
         "manifest_state": "MISSING",
-        "manifest_href": _relative_href(output_dir, manifest_path),
+        "manifest_href": None,
         "latest_flow": "-",
         "latest_status": "NOT_RUN",
         "recorded_at": "-",
@@ -204,6 +204,7 @@ def _collect_target(output_dir, target_info):
     if not manifest_path.is_file():
         return result
 
+    result["manifest_href"] = _relative_href(output_dir, manifest_path)
     try:
         manifest = _load_json_object(manifest_path)
         runs = _validate_target_manifest(manifest, target_name)
@@ -296,7 +297,7 @@ def collect_environment(output_dir):
         "status": "MISSING",
         "recorded_at": "-",
         "error": "尚未生成环境预检报告",
-        "manifest_href": _relative_href(output_dir, manifest_path),
+        "manifest_href": None,
         "report_href": (
             _relative_href(output_dir, report_path)
             if report_path.is_file()
@@ -306,6 +307,7 @@ def collect_environment(output_dir):
     if not manifest_path.is_file():
         return result
 
+    result["manifest_href"] = _relative_href(output_dir, manifest_path)
     try:
         manifest = _load_json_object(manifest_path)
         if manifest.get("schema_version") != SCHEMA_VERSION:
@@ -366,6 +368,16 @@ def render_project_overview_markdown(
         target["status"] in FAILURE_STATUSES
         for target in targets
     )
+    environment_report = (
+        "[报告]({})".format(environment["report_href"])
+        if environment["report_href"]
+        else "报告尚未生成"
+    )
+    environment_manifest = (
+        "[manifest]({})".format(environment["manifest_href"])
+        if environment["manifest_href"]
+        else "manifest 尚未生成"
+    )
     lines = [
         "# 数字 IC Agent 多目标项目总览",
         "",
@@ -375,10 +387,10 @@ def render_project_overview_markdown(
         "- 失败目标：{}".format(failed_count),
         "- 输出目录：`{}`".format(output_dir),
         "- 生成时间（UTC）：{}".format(generated_at),
-        "- 环境预检：{}（[报告]({}) / [manifest]({})）".format(
+        "- 环境预检：{}（{} / {}）".format(
             environment["status"],
-            environment["report_href"] or environment["manifest_href"],
-            environment["manifest_href"],
+            environment_report,
+            environment_manifest,
         ),
         "",
         "## 目标状态",
@@ -387,9 +399,14 @@ def render_project_overview_markdown(
         "|---|---|---|---|---|---|---|---|",
     ]
     for target in targets:
+        manifest_entry = (
+            "[artifacts.json]({})".format(target["manifest_href"])
+            if target["manifest_href"]
+            else "manifest 尚未生成"
+        )
         lines.append(
             "| {name} | {display_name} | {status} | {latest_flow} | "
-            "{latest_status} | {recorded_at} | [{manifest}]({manifest}) | "
+            "{latest_status} | {recorded_at} | {manifest} | "
             "{error} |".format(
                 name=_markdown_text(target["name"]),
                 display_name=_markdown_text(target["display_name"]),
@@ -477,6 +494,17 @@ def render_project_overview_html(targets, environment, status, generated_at):
             _surface_html(surface)
             for surface in target["surfaces"]
         )
+        manifest_entry = (
+            '<p class="manifest"><a href="{href}">'
+            "打开 artifacts.json</a></p>".format(
+                href=html.escape(
+                    target["manifest_href"],
+                    quote=True,
+                )
+            )
+            if target["manifest_href"]
+            else '<p class="manifest missing">manifest 尚未生成</p>'
+        )
         target_cards.append(
             """
 <article id="{anchor}" class="target-card {klass}">
@@ -490,7 +518,7 @@ def render_project_overview_html(targets, environment, status, generated_at):
     <div><dt>运行时间</dt><dd>{recorded_at}</dd></div>
   </dl>
   <p class="message">{message}</p>
-  <p class="manifest"><a href="{manifest_href}">打开 artifacts.json</a></p>
+  {manifest_entry}
   <ul class="surface-list">{surfaces}</ul>
 </article>""".format(
                 anchor=html.escape(anchor, quote=True),
@@ -503,17 +531,28 @@ def render_project_overview_html(targets, environment, status, generated_at):
                 latest_status=target["latest_status"],
                 recorded_at=html.escape(target["recorded_at"]),
                 message=html.escape(target["error"]),
-                manifest_href=html.escape(
-                    target["manifest_href"],
-                    quote=True,
-                ),
+                manifest_entry=manifest_entry,
                 surfaces=surfaces,
             )
         )
 
-    environment_link = (
-        environment["report_href"]
-        or environment["manifest_href"]
+    environment_report = (
+        '<a href="{href}">打开环境报告</a>'.format(
+            href=html.escape(environment["report_href"], quote=True)
+        )
+        if environment["report_href"]
+        else "报告尚未生成"
+    )
+    environment_manifest = (
+        '<a href="{href}">打开环境 manifest</a>'.format(
+            href=html.escape(environment["manifest_href"], quote=True)
+        )
+        if environment["manifest_href"]
+        else "manifest 尚未生成"
+    )
+    environment_entry = "{} / {}".format(
+        environment_report,
+        environment_manifest,
     )
     return """<!doctype html>
 <html lang="zh-CN">
@@ -575,7 +614,7 @@ dd {{ margin:2px 0 0; font-weight:700; word-break:break-word; }}
 <section class="environment-card {environment_class}">
   <h2>环境预检：{environment_status}</h2>
   <p>{environment_message}</p>
-  <a href="{environment_href}">打开环境报告或 manifest</a>
+  <p class="manifest">{environment_entry}</p>
 </section>
 <nav class="target-nav">{nav_links}</nav>
 <section class="target-grid">{target_cards}</section>
@@ -594,7 +633,7 @@ dd {{ margin:2px 0 0; font-weight:700; word-break:break-word; }}
         environment_class=_status_class(environment["status"]),
         environment_status=environment["status"],
         environment_message=html.escape(environment["error"]),
-        environment_href=html.escape(environment_link, quote=True),
+        environment_entry=environment_entry,
         nav_links="\n".join(nav_links),
         target_cards="\n".join(target_cards),
     )
