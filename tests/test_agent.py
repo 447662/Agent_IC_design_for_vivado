@@ -4024,6 +4024,91 @@ def test_p4_6_wave_open_check_rejects_empty_runtime_and_blank_screenshot(tmp_pat
     }
 
 
+def test_p4_6_wave_open_check_handles_missing_corrupt_and_invalid_values(tmp_path):
+    module = load_local_module("wave_visibility_edges_p4_6", WAVE_VISIBILITY_PATH)
+    probe_path = tmp_path / "wave_open_check.json"
+    metrics_path = tmp_path / "wave_screenshot_metrics.json"
+
+    pending = module.evaluate_wave_open_check(
+        probe_path,
+        screenshot_metrics_path=metrics_path,
+    )
+    assert pending["status"] == "PENDING"
+    assert pending["runtime_status"] == "PENDING"
+    assert pending["screenshot_status"] == "PENDING"
+    assert pending["visible"] is False
+
+    probe_path.write_text("{bad json", encoding="utf-8")
+    corrupt_probe = module.evaluate_wave_open_check(probe_path)
+    assert corrupt_probe["runtime_status"] == "FAIL"
+    assert "invalid wave probe JSON" in corrupt_probe["diagnostics"][0]
+
+    probe_path.write_text("[]", encoding="utf-8")
+    non_object_probe = module.evaluate_wave_open_check(probe_path)
+    assert "wave probe must be a JSON object" in non_object_probe["diagnostics"][0]
+
+    probe_path.write_text('{"schema_version": 2}', encoding="utf-8")
+    unsupported_probe = module.evaluate_wave_open_check(probe_path)
+    assert "unsupported wave probe schema" in unsupported_probe["diagnostics"][0]
+
+    probe_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "wdb_opened": False,
+                "scope_count": "invalid",
+                "object_count": None,
+                "wave_count": "invalid",
+                "wave_config_count": False,
+                "diagnostics": "not-a-list",
+            }
+        ),
+        encoding="utf-8",
+    )
+    metrics_path.write_text("{bad metrics", encoding="utf-8")
+    invalid_values = module.evaluate_wave_open_check(
+        probe_path,
+        screenshot_metrics_path=metrics_path,
+    )
+    assert invalid_values["runtime_status"] == "FAIL"
+    assert invalid_values["screenshot_status"] == "FAIL"
+    assert invalid_values["visible"] is False
+    assert any(
+        "invalid wave screenshot metrics JSON" in item
+        for item in invalid_values["diagnostics"]
+    )
+
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "width": "invalid",
+                "height": None,
+                "sampled_pixels": False,
+                "unique_colors": "invalid",
+                "non_uniform_ratio": "invalid",
+            }
+        ),
+        encoding="utf-8",
+    )
+    invalid_metrics = module.evaluate_wave_open_check(
+        probe_path,
+        screenshot_metrics_path=metrics_path,
+    )
+    assert invalid_metrics["screenshot_status"] == "FAIL"
+    assert {
+        "width",
+        "height",
+        "sampled_pixels",
+        "unique_colors",
+        "non_uniform_ratio",
+    } == {
+        item["id"]
+        for item in invalid_metrics["screenshot_checks"]
+        if item["status"] == "FAIL"
+    }
+
+
 def test_p4_6_wave_probe_and_capture_scripts_are_flow_agnostic():
     module = load_local_module("wave_visibility_scripts_p4_6", WAVE_VISIBILITY_PATH)
 

@@ -51,6 +51,11 @@ from environment_report import write_environment_report as build_environment_rep
 from failure_archive import archive_failed_run
 from project_overview import write_project_overview as build_project_overview
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
+from wave_visibility import (
+    evaluate_wave_open_check,
+    render_wave_open_probe_tcl,
+    render_window_capture_script,
+)
 from adapters.report import (
     render_target_design_spec as adapter_render_target_design_spec,
     render_target_verification_plan as adapter_render_target_verification_plan,
@@ -1060,6 +1065,14 @@ class DigitalICAgent:
         wave_db_path = self.resolve_async_fifo_wave_db(sim_dir)
         gui_script_path = sim_dir / "open_async_fifo_project_gui.tcl"
         wcfg = self.parse_async_fifo_wcfg_summary(project_dir)
+        probe_path = reports_dir / "wave_open_check.json"
+        screenshot_metrics_path = reports_dir / "wave_screenshot_metrics.json"
+        automated = evaluate_wave_open_check(
+            probe_path,
+            screenshot_metrics_path=screenshot_metrics_path,
+        )
+        probe = automated["probe"] or {}
+        screenshot_metrics = automated["screenshot_metrics"] or {}
 
         checks = [
             ("Vivado 工程存在", xpr_path.exists(), xpr_path),
@@ -1070,20 +1083,44 @@ class DigitalICAgent:
             ("WCFG 有波形对象", wcfg["object_count"] > 0, wcfg["path"]),
             ("WCFG 关键对象齐全", wcfg["valid"], wcfg["path"]),
         ]
-        visible = all(passed for _label, passed, _path in checks)
+        preflight_passed = all(passed for _label, passed, _path in checks)
+        visible = preflight_passed and automated["visible"]
         markdown_path = reports_dir / "wave_visibility.md"
         html_path = reports_dir / "wave_visibility.html"
-        status = "PASS" if visible else "FAIL"
+        if not preflight_passed or automated["status"] == "FAIL":
+            status = "FAIL"
+        elif visible:
+            status = "PASS"
+        else:
+            status = "PENDING"
         wcfg_status = "PASS" if wcfg["valid"] else "FAIL"
+        runtime_status = str(automated["runtime_status"])
+        screenshot_status = str(automated["screenshot_status"])
+        non_uniform_ratio = float(
+            screenshot_metrics.get("non_uniform_ratio", 0.0)
+        )
 
         lines = [
             "# async-fifo 波形可见性验收",
             "",
             "- 总体状态：{}".format(status),
+            "- 静态预检状态：{}".format("PASS" if preflight_passed else "FAIL"),
+            "- 运行时探针状态：{}".format(runtime_status),
+            "- 截图像素状态：{}".format(screenshot_status),
             "- WCFG 状态：{}".format(wcfg_status),
             "- 波形对象数：{}".format(wcfg["object_count"]),
+            "- Scope 数：{}".format(probe.get("scope_count", "-")),
+            "- Object 数：{}".format(probe.get("object_count", "-")),
+            "- Wave 数：{}".format(probe.get("wave_count", "-")),
+            "- Wave Config 数：{}".format(probe.get("wave_config_count", "-")),
+            "- 截图唯一颜色数：{}".format(
+                screenshot_metrics.get("unique_colors", "-")
+            ),
+            "- 非均匀像素比例：{:.2f}%".format(non_uniform_ratio * 100.0),
             "- WDB：`{}`".format(wave_db_path),
             "- WCFG：`{}`".format(wcfg["path"]),
+            "- 运行时探针：`{}`".format(probe_path),
+            "- 截图指标：`{}`".format(screenshot_metrics_path),
             "- 关键 Tcl 命令：`open_project` / `open_wave_database`",
             "",
             "## GUI 预检项",
@@ -1101,6 +1138,26 @@ class DigitalICAgent:
                     label=html.escape(label),
                     result="OK" if passed else "NO",
                     path=html.escape(str(path)),
+                )
+            )
+        for item in automated["checks"]:
+            passed = item["status"] == "PASS"
+            cards.append(
+                '<article class="visibility-card {status}"><strong>{label}</strong><span>{result}</span><code>{path}</code></article>'.format(
+                    status="pass" if passed else "fail",
+                    label=html.escape(str(item["label"])),
+                    result=html.escape(str(item["status"])),
+                    path=html.escape(str(probe_path)),
+                )
+            )
+        for item in automated["screenshot_checks"]:
+            passed = item["status"] == "PASS"
+            cards.append(
+                '<article class="visibility-card {status}"><strong>{label}</strong><span>{result}</span><code>{path}</code></article>'.format(
+                    status="pass" if passed else "fail",
+                    label=html.escape(str(item["label"])),
+                    result=html.escape(str(item["status"])),
+                    path=html.escape(str(screenshot_metrics_path)),
                 )
             )
         html_lines = [
@@ -1136,7 +1193,16 @@ class DigitalICAgent:
             "",
         ]
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
-        return {"visible": visible, "markdown_path": markdown_path, "html_path": html_path, "checks": checks}
+        return {
+            "visible": visible,
+            "status": status,
+            "runtime_status": runtime_status,
+            "screenshot_status": screenshot_status,
+            "markdown_path": markdown_path,
+            "html_path": html_path,
+            "checks": checks,
+            "automated": automated,
+        }
 
     def write_async_fifo_wave_screenshot_report(self, project_dir):
         project_dir = Path(project_dir)
@@ -1146,21 +1212,26 @@ class DigitalICAgent:
         markdown_path = reports_dir / "wave_screenshot.md"
         html_path = reports_dir / "wave_screenshot.html"
         capture_script_path = reports_dir / "capture_wave_screenshot.ps1"
+        metrics_path = reports_dir / "wave_screenshot_metrics.json"
         captured = screenshot_path.exists() and screenshot_path.stat().st_size > 8
-        status = "PASS" if captured else "PENDING"
-
-        capture_script = r'''Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$output = Join-Path $PSScriptRoot "wave_visibility.png"
-$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-$bitmap.Save($output, [System.Drawing.Imaging.ImageFormat]::Png)
-$graphics.Dispose()
-$bitmap.Dispose()
-Write-Host "Saved waveform screenshot to $output"
-'''
+        automated = evaluate_wave_open_check(
+            reports_dir / "wave_open_check.json",
+            screenshot_metrics_path=metrics_path,
+        )
+        screenshot_metrics = automated["screenshot_metrics"] or {}
+        screenshot_status = (
+            str(automated["screenshot_status"])
+            if captured
+            else "PENDING"
+        )
+        status = screenshot_status
+        non_uniform_ratio = float(
+            screenshot_metrics.get("non_uniform_ratio", 0.0)
+        )
+        capture_script = render_window_capture_script(
+            screenshot_name="wave_visibility.png",
+            metrics_name="wave_screenshot_metrics.json",
+        )
         capture_script_path.write_text(capture_script, encoding="utf-8")
 
         lines = [
@@ -1168,6 +1239,16 @@ Write-Host "Saved waveform screenshot to $output"
             "",
             "- 状态：{}".format(status),
             "- 截图：`{}`".format(screenshot_path),
+            "- 截图指标：`{}`".format(metrics_path),
+            "- 窗口标题：{}".format(
+                screenshot_metrics.get("window_title", "-")
+            ),
+            "- 截图唯一颜色数：{}".format(
+                screenshot_metrics.get("unique_colors", "-")
+            ),
+            "- 非均匀像素比例：{:.2f}%".format(
+                non_uniform_ratio * 100.0
+            ),
             "- 捕获脚本：`{}`".format(capture_script_path),
             "",
             "## 使用方式",
@@ -1213,6 +1294,7 @@ Write-Host "Saved waveform screenshot to $output"
             ".screenshot-card{margin-top:18px;padding:18px;border-radius:8px;background:#fff;border:1px solid #dbe3ee;box-shadow:0 8px 24px rgba(31,45,61,.06)}",
             ".screenshot-card.pass{border-left:6px solid #0f8a5f}",
             ".screenshot-card.pending{border-left:6px solid #b7791f}",
+            ".screenshot-card.fail{border-left:6px solid #b42318}",
             ".screenshot-card img{display:block;width:100%;max-height:720px;object-fit:contain;border-radius:6px;border:1px solid #dbe3ee;background:#101828}",
             ".empty{margin:0;color:#6b778c}",
             "code{display:block;overflow-x:auto;padding:8px;border-radius:6px;background:#eef3f8}",
@@ -1221,9 +1303,10 @@ Write-Host "Saved waveform screenshot to $output"
             "<body>",
             '<main class="page">',
             '<section class="hero"><h1>async-fifo GUI 波形截图验收</h1><p>状态：{}</p></section>'.format(html.escape(status)),
-            '<section class="screenshot-card {}">'.format("pass" if captured else "pending"),
+            '<section class="screenshot-card {}">'.format(status.lower()),
             screenshot_block,
             '<p><strong>截图文件</strong></p><code>{}</code>'.format(html.escape(str(screenshot_path))),
+            '<p><strong>截图指标</strong></p><code>{}</code>'.format(html.escape(str(metrics_path))),
             '<p><strong>捕获脚本</strong></p><code>{}</code>'.format(html.escape(str(capture_script_path))),
             "</section>",
             "</main>",
@@ -1234,10 +1317,13 @@ Write-Host "Saved waveform screenshot to $output"
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
         return {
             "captured": captured,
+            "screenshot_status": screenshot_status,
             "markdown_path": markdown_path,
             "html_path": html_path,
             "capture_script_path": capture_script_path,
             "screenshot_path": screenshot_path,
+            "metrics_path": metrics_path,
+            "automated": automated,
         }
 
     def write_async_fifo_uvm_wave_screenshot_report(self, project_dir, wave_kind="coverage"):
@@ -1254,31 +1340,61 @@ Write-Host "Saved waveform screenshot to $output"
         markdown_path = reports_dir / "uvm_wave_screenshot.md"
         html_path = reports_dir / "uvm_wave_screenshot.html"
         capture_script_path = reports_dir / "capture_uvm_wave_screenshot.ps1"
+        probe_path = reports_dir / "uvm_{}_wave_open_check.json".format(
+            wave_kind
+        )
+        metrics_path = reports_dir / "uvm_wave_screenshot_metrics.json"
         captured = screenshot_path.exists() and screenshot_path.stat().st_size > 8
-        status = "PASS" if captured else "PENDING"
-
-        capture_script = r'''# capture_uvm_wave_screenshot.ps1
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$output = Join-Path $PSScriptRoot "uvm_wave_visibility.png"
-$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-$bitmap.Save($output, [System.Drawing.Imaging.ImageFormat]::Png)
-$graphics.Dispose()
-$bitmap.Dispose()
-Write-Host "Saved UVM waveform screenshot to $output"
-'''
+        automated = evaluate_wave_open_check(
+            probe_path,
+            screenshot_metrics_path=metrics_path,
+        )
+        probe = automated["probe"] or {}
+        screenshot_metrics = automated["screenshot_metrics"] or {}
+        runtime_status = str(automated["runtime_status"])
+        screenshot_status = (
+            str(automated["screenshot_status"])
+            if captured
+            else "PENDING"
+        )
+        if runtime_status == "FAIL" or screenshot_status == "FAIL":
+            status = "FAIL"
+        elif runtime_status == "PASS" and screenshot_status == "PASS":
+            status = "PASS"
+        else:
+            status = "PENDING"
+        non_uniform_ratio = float(
+            screenshot_metrics.get("non_uniform_ratio", 0.0)
+        )
+        capture_script = (
+            "# capture_uvm_wave_screenshot.ps1\n"
+            + render_window_capture_script(
+                screenshot_name="uvm_wave_visibility.png",
+                metrics_name="uvm_wave_screenshot_metrics.json",
+            )
+        )
         capture_script_path.write_text(capture_script, encoding="utf-8")
 
         lines = [
             "# async-fifo UVM GUI 波形截图验收",
             "",
             "- 状态：{}".format(status),
+            "- 运行时探针状态：{}".format(runtime_status),
+            "- 截图像素状态：{}".format(screenshot_status),
             "- UVM 波形类型：{}".format(wave_kind),
             "- WDB：`{}`".format(wave_db_path),
+            "- Scope 数：{}".format(probe.get("scope_count", "-")),
+            "- Object 数：{}".format(probe.get("object_count", "-")),
+            "- Wave 数：{}".format(probe.get("wave_count", "-")),
+            "- Wave Config 数：{}".format(probe.get("wave_config_count", "-")),
             "- 截图：`{}`".format(screenshot_path),
+            "- 截图指标：`{}`".format(metrics_path),
+            "- 截图唯一颜色数：{}".format(
+                screenshot_metrics.get("unique_colors", "-")
+            ),
+            "- 非均匀像素比例：{:.2f}%".format(
+                non_uniform_ratio * 100.0
+            ),
             "- 捕获脚本：`{}`".format(capture_script_path),
             "",
             "## 使用方式",
@@ -1319,6 +1435,7 @@ Write-Host "Saved UVM waveform screenshot to $output"
             ".screenshot-card{margin-top:18px;padding:18px;border-radius:8px;background:#fff;border:1px solid #dbe3ee;box-shadow:0 8px 24px rgba(31,45,61,.06)}",
             ".screenshot-card.pass{border-left:6px solid #0f8a5f}",
             ".screenshot-card.pending{border-left:6px solid #b7791f}",
+            ".screenshot-card.fail{border-left:6px solid #b42318}",
             ".screenshot-card img{display:block;width:100%;max-height:720px;object-fit:contain;border-radius:6px;border:1px solid #dbe3ee;background:#101828}",
             ".empty{margin:0;color:#6b778c}",
             "code{display:block;overflow-x:auto;padding:8px;border-radius:6px;background:#eef3f8}",
@@ -1327,10 +1444,12 @@ Write-Host "Saved UVM waveform screenshot to $output"
             "<body>",
             '<main class="page">',
             '<section class="hero"><h1>async-fifo UVM GUI 波形截图验收</h1><p>状态：{} · 类型：{}</p></section>'.format(html.escape(status), html.escape(wave_kind)),
-            '<section class="screenshot-card {}">'.format("pass" if captured else "pending"),
+            '<section class="screenshot-card {}">'.format(status.lower()),
             screenshot_block,
             '<p><strong>WDB</strong></p><code>{}</code>'.format(html.escape(str(wave_db_path))),
+            '<p><strong>运行时探针</strong></p><code>{}</code>'.format(html.escape(str(probe_path))),
             '<p><strong>截图文件</strong></p><code>{}</code>'.format(html.escape(str(screenshot_path))),
+            '<p><strong>截图指标</strong></p><code>{}</code>'.format(html.escape(str(metrics_path))),
             '<p><strong>捕获脚本</strong></p><code>{}</code>'.format(html.escape(str(capture_script_path))),
             "</section>",
             "</main>",
@@ -1341,11 +1460,16 @@ Write-Host "Saved UVM waveform screenshot to $output"
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
         return {
             "captured": captured,
+            "runtime_status": runtime_status,
+            "screenshot_status": screenshot_status,
             "markdown_path": markdown_path,
             "html_path": html_path,
             "capture_script_path": capture_script_path,
             "screenshot_path": screenshot_path,
             "wave_db_path": wave_db_path,
+            "probe_path": probe_path,
+            "metrics_path": metrics_path,
+            "automated": automated,
         }
 
     def write_async_fifo_reports_index(self, project_dir):
@@ -4509,7 +4633,7 @@ exit 0
 """
 
     def render_async_fifo_open_project_gui_script(self):
-        return self.render_vivado_tclstore_bootstrap() + """
+        script = self.render_vivado_tclstore_bootstrap() + """
 set script_dir [file dirname [file normalize [info script]]]
 cd $script_dir
 set xpr_path [file normalize [file join $script_dir .. vivado_project async_fifo_project.xpr]]
@@ -4566,10 +4690,19 @@ if {[file exists $wave_db]} {
     catch {add_wave -radix hex {{/tb_async_fifo/dut/wr_gray_rd_sync1}}}
     catch {add_wave -radix hex {{/tb_async_fifo/dut/wr_gray_rd_sync2}}}
     catch {save_wave_config $wave_cfg}
+__WAVE_OPEN_PROBE__
 } else {
     puts stderr "Waveform database not found: $wave_db"
 }
 """
+        return script.replace(
+            "__WAVE_OPEN_PROBE__",
+            render_wave_open_probe_tcl(
+                "../reports/wave_open_check.json",
+                target_name="async-fifo",
+                flow_name="sim-rtl",
+            ),
+        )
 
     def render_async_fifo_readme(self):
         return """# async-fifo RTL Project
@@ -5461,8 +5594,10 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
         if not wave_db_path.exists():
             print("Vivado waveform database not found: {}".format(wave_db_path), file=sys.stderr)
             return False
-        if not gui_script_path.exists():
-            gui_script_path.write_text(self.render_async_fifo_open_project_gui_script(), encoding="utf-8")
+        gui_script_path.write_text(
+            self.render_async_fifo_open_project_gui_script(),
+            encoding="utf-8",
+        )
 
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
@@ -5483,6 +5618,11 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
         wave_db_name = "async_fifo_uvm_coverage.wdb" if wave_kind == "coverage" else "async_fifo_uvm_smoke.wdb"
         wave_db_path = sim_dir / wave_db_name
         gui_script_path = sim_dir / "open_async_fifo_uvm_{}_wave.tcl".format(wave_kind)
+        probe_tcl = render_wave_open_probe_tcl(
+            "../reports/uvm_{}_wave_open_check.json".format(wave_kind),
+            target_name="async-fifo",
+            flow_name="uvm-{}".format(wave_kind),
+        )
         gui_script_path.write_text(
             """set script_dir [file dirname [file normalize [info script]]]
 cd $script_dir
@@ -5494,7 +5634,11 @@ if {![file exists $wave_db]} {
 start_gui
 open_wave_database $wave_db
 add_wave -r /tb_async_fifo_uvm
-""".replace("__WAVE_DB__", wave_db_name),
+__WAVE_OPEN_PROBE__
+""".replace("__WAVE_DB__", wave_db_name).replace(
+                "__WAVE_OPEN_PROBE__",
+                probe_tcl,
+            ),
             encoding="utf-8",
         )
 
