@@ -148,6 +148,11 @@ def parse_args(argv=None):
         help="生成中文环境预检 Markdown/HTML 报告",
     )
     mode_group.add_argument(
+        "--generate-overview",
+        action="store_true",
+        help="生成多 target 顶层 Markdown/HTML 项目总览",
+    )
+    mode_group.add_argument(
         "--list-skills",
         action="store_true",
         help="列出技能配置",
@@ -177,6 +182,7 @@ def parse_args(argv=None):
     if args.no_tool_check and (
         args.diagnostic
         or args.environment_report
+        or args.generate_overview
         or args.list_skills
         or args.list_targets
         or args.analyze_vcd

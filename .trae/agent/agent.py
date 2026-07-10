@@ -36,6 +36,7 @@ from agent_waveform import (
 )
 from artifact_manifest import record_artifact_run as append_artifact_run
 from environment_report import write_environment_report as build_environment_report
+from project_overview import write_project_overview as build_project_overview
 from adapters.report import (
     render_target_design_spec as adapter_render_target_design_spec,
     render_target_verification_plan as adapter_render_target_verification_plan,
@@ -435,6 +436,7 @@ class DigitalICAgent:
     create_target_scaffold = build_target_scaffold
     record_artifact_run = append_artifact_run
     write_environment_report = build_environment_report
+    write_project_overview = build_project_overview
 
     def resolve_vcd_analyzer_path(self):
         return get_vcd_analyzer_path(self.project_root)
@@ -5691,6 +5693,17 @@ def main(argv=None):
         print("HTML: {}".format(report["html_path"]))
         print("Artifact manifest: {}".format(report["manifest_path"]))
         return 1 if report["status"] == "FAIL" else 0
+
+    if args.generate_overview:
+        try:
+            overview = agent.write_project_overview(output_dir=args.output_dir)
+        except (OSError, ValueError) as exc:
+            print("项目总览生成失败: {}".format(exc), file=sys.stderr)
+            return 1
+        print("项目总览状态: {}".format(overview["status"]))
+        print("Markdown: {}".format(overview["markdown_path"]))
+        print("HTML: {}".format(overview["html_path"]))
+        return 1 if overview["status"] == "FAIL" else 0
 
     if args.smoke_loop:
         return 0 if agent.run_smoke_loop(
