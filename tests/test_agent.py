@@ -1315,9 +1315,18 @@ def test_p5_11_project_overview_handles_empty_output_as_not_run(tmp_path):
         "NOT_RUN",
     ]
     markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
     assert "尚无运行记录" in markdown
     assert "NOT_RUN" in markdown
-    assert "environment-report/artifacts.json" in markdown
+    assert "manifest 尚未生成" in markdown
+    assert "manifest 尚未生成" in html_text
+    for missing_href in [
+        "environment-report/artifacts.json",
+        "async-fifo/artifacts.json",
+        "sync-fifo/artifacts.json",
+    ]:
+        assert missing_href not in markdown
+        assert missing_href not in html_text
 
 
 def test_p5_11_project_overview_keeps_other_targets_when_manifest_is_invalid(tmp_path):
