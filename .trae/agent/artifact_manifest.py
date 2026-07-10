@@ -6,6 +6,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from history_rotation import (
+    DEFAULT_ACTIVE_RECORD_LIMIT,
+    build_rotation_metadata,
+    rotate_json_records,
+)
+
 
 SCHEMA_VERSION = 1
 RUN_STATUSES = {"PASS", "FAIL"}
@@ -224,6 +230,7 @@ def record_artifact_run(
     project_dir=None,
     extra_artifacts=None,
     command=None,
+    max_active_runs=DEFAULT_ACTIVE_RECORD_LIMIT,
 ):
     status = str(status).upper()
     if status not in RUN_STATUSES:
@@ -263,6 +270,23 @@ def record_artifact_run(
         "error": str(error) if error else None,
     }
     manifest["runs"].append(run)
+    active_runs, archive_path, archived_runs = rotate_json_records(
+        manifest["runs"],
+        manifest_path,
+        active_limit=max_active_runs,
+    )
+    manifest["runs"] = active_runs
+    history = build_rotation_metadata(
+        manifest.get("history"),
+        active_limit=max_active_runs,
+        archive_path=archive_path,
+        newly_archived=archived_runs,
+        count_key="archived_runs",
+    )
+    if history is None:
+        manifest.pop("history", None)
+    else:
+        manifest["history"] = history
     manifest["updated_at"] = recorded_at
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",

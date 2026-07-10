@@ -5,10 +5,16 @@ from typing import Any, Mapping, Sequence
 
 from artifact_manifest import normalize_json_value, utc_timestamp
 from coverage_gates import COVERAGE_METRIC_LABELS, COVERAGE_METRIC_ORDER
+from history_rotation import (
+    DEFAULT_ACTIVE_RECORD_LIMIT,
+    build_rotation_metadata,
+    rotate_json_records,
+)
 
 
 SCHEMA_VERSION = 1
 VALID_STATUSES = {"PASS", "FAIL"}
+ROTATION_METADATA_SCHEMA_VERSION = 1
 
 
 def _normalize_status(status: str) -> str:
@@ -161,6 +167,9 @@ def _seed_text(record: Mapping[str, Any]) -> str:
 def write_coverage_trend_report(
     reports_dir: Path,
     records: Sequence[Mapping[str, Any]],
+    *,
+    archive_path: Path | None = None,
+    archived_records: int = 0,
 ) -> dict[str, Any]:
     reports_dir = Path(reports_dir)
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -169,11 +178,22 @@ def write_coverage_trend_report(
     metric_deltas = calculate_metric_deltas(records)
     latest = records[-1] if records else {}
     latest_metrics = latest.get("coverage_metrics", {})
+    archive_href = (
+        archive_path.name
+        if archive_path is not None and archive_path.is_file()
+        else None
+    )
 
     lines = [
         "# Coverage 趋势",
         "",
-        "- 记录数量：{}".format(len(records)),
+        "- 活动记录数量：{}".format(len(records)),
+        "- 已归档记录：{}".format(archived_records),
+        "- 压缩归档：{}".format(
+            "[{}]({})".format(archive_href, archive_href)
+            if archive_href
+            else "-"
+        ),
         "- 最新目标：{}".format(latest.get("target_name", "-")),
         "- 最新 Flow：{}".format(latest.get("flow_name", "-")),
         "- 最新状态：{}".format(latest.get("status", "-")),
@@ -275,8 +295,20 @@ def write_coverage_trend_report(
         "</head>",
         "<body>",
         '<main class="page">',
-        '<section class="hero"><h1>Coverage 趋势</h1><p>记录数量：{}</p></section>'.format(
-            len(records)
+        (
+            '<section class="hero"><h1>Coverage 趋势</h1>'
+            "<p>活动记录数量：{} · 已归档记录：{}</p>{}</section>"
+        ).format(
+            len(records),
+            archived_records,
+            (
+                '<a href="{href}">压缩归档：{label}</a>'.format(
+                    href=html.escape(archive_href, quote=True),
+                    label=html.escape(archive_href),
+                )
+                if archive_href
+                else "<span>压缩归档：-</span>"
+            ),
         ),
         '<section class="metrics">',
         "\n".join(metric_cards),
@@ -303,6 +335,24 @@ def write_coverage_trend_report(
     }
 
 
+def _load_rotation_metadata(metadata_path: Path) -> dict[str, Any] | None:
+    if not metadata_path.is_file():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "invalid coverage history rotation metadata: {}".format(
+                metadata_path
+            )
+        ) from exc
+    if not isinstance(metadata, dict):
+        raise ValueError("coverage history rotation metadata must be an object")
+    if metadata.get("schema_version") != ROTATION_METADATA_SCHEMA_VERSION:
+        raise ValueError("unsupported coverage history rotation metadata schema")
+    return metadata
+
+
 def append_coverage_history(
     reports_dir: Path,
     *,
@@ -315,11 +365,14 @@ def append_coverage_history(
     status: str,
     recorded_at: str | None = None,
     sources: Mapping[str, Any] | None = None,
+    max_active_records: int | None = DEFAULT_ACTIVE_RECORD_LIMIT,
 ) -> dict[str, Any]:
     reports_dir = Path(reports_dir)
     reports_dir.mkdir(parents=True, exist_ok=True)
     history_path = reports_dir / "coverage_history.jsonl"
+    metadata_path = reports_dir / "coverage_history.meta.json"
     existing_records = load_coverage_history(history_path)
+    existing_metadata = _load_rotation_metadata(metadata_path)
     record = build_coverage_history_record(
         target_name=target_name,
         flow_name=flow_name,
@@ -331,13 +384,52 @@ def append_coverage_history(
         recorded_at=recorded_at,
         sources=sources,
     )
-    with history_path.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-    records = [*existing_records, record]
-    trend_report = write_coverage_trend_report(reports_dir, records)
+    records, archive_path, newly_archived = rotate_json_records(
+        [*existing_records, record],
+        history_path,
+        active_limit=max_active_records,
+    )
+    history_path.write_text(
+        "".join(
+            json.dumps(item, ensure_ascii=False) + "\n"
+            for item in records
+        ),
+        encoding="utf-8",
+    )
+    rotation = build_rotation_metadata(
+        existing_metadata,
+        active_limit=max_active_records,
+        archive_path=archive_path,
+        newly_archived=newly_archived,
+        count_key="archived_records",
+    )
+    archived_records = 0
+    if rotation is not None:
+        archived_records = int(rotation["archived_records"])
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": ROTATION_METADATA_SCHEMA_VERSION,
+                    **rotation,
+                    "updated_at": record["recorded_at"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    trend_report = write_coverage_trend_report(
+        reports_dir,
+        records,
+        archive_path=archive_path,
+        archived_records=archived_records,
+    )
     return {
         "history_path": history_path,
+        "metadata_path": metadata_path,
+        "archive_path": archive_path,
+        "archived_records": archived_records,
         "record": record,
         "records": records,
         **trend_report,

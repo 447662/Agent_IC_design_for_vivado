@@ -10,6 +10,11 @@ from pathlib import Path
 
 from agent_reports import render_markdown_document_html
 from artifact_manifest import utc_timestamp
+from history_rotation import (
+    DEFAULT_ACTIVE_RECORD_LIMIT,
+    build_rotation_metadata,
+    rotate_json_records,
+)
 
 
 SCHEMA_VERSION = 1
@@ -346,6 +351,7 @@ def write_environment_manifest(
     generated_at,
     checks,
     report_paths,
+    max_active_runs=DEFAULT_ACTIVE_RECORD_LIMIT,
 ):
     manifest = load_environment_manifest(manifest_path)
     artifacts = []
@@ -378,6 +384,23 @@ def write_environment_manifest(
             "error": None,
         }
     )
+    active_runs, archive_path, archived_runs = rotate_json_records(
+        manifest["runs"],
+        manifest_path,
+        active_limit=max_active_runs,
+    )
+    manifest["runs"] = active_runs
+    history = build_rotation_metadata(
+        manifest.get("history"),
+        active_limit=max_active_runs,
+        archive_path=archive_path,
+        newly_archived=archived_runs,
+        count_key="archived_runs",
+    )
+    if history is None:
+        manifest.pop("history", None)
+    else:
+        manifest["history"] = history
     manifest["updated_at"] = generated_at
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
@@ -394,6 +417,7 @@ def write_environment_report(
     platform_system=None,
     version_info=None,
     python_executable=None,
+    max_active_runs=DEFAULT_ACTIVE_RECORD_LIMIT,
 ):
     output_dir = Path(output_dir)
     report_dir = output_dir / REPORT_DIRECTORY
@@ -428,6 +452,7 @@ def write_environment_report(
         generated_at,
         checks,
         [markdown_path, html_path],
+        max_active_runs=max_active_runs,
     )
     refresh_overview = getattr(self, "refresh_project_overview", None)
     if callable(refresh_overview):

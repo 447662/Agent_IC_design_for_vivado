@@ -1,6 +1,6 @@
+import gzip
 import importlib
 import importlib.util
-import gzip
 import json
 import pytest
 import subprocess

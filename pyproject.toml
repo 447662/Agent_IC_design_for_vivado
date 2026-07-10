@@ -31,6 +31,7 @@ files = [
     ".trae/agent/agent_reports.py",
     ".trae/agent/agent_waveform.py",
     ".trae/agent/artifact_manifest.py",
+    ".trae/agent/history_rotation.py",
     ".trae/agent/coverage_closure.py",
     ".trae/agent/coverage_gates.py",
     ".trae/agent/coverage_history.py",
