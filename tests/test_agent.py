@@ -15,6 +15,7 @@ AGENT_CONFIG_HELPERS_PATH = ROOT / ".trae" / "agent" / "agent_config.py"
 AGENT_REPORTS_PATH = ROOT / ".trae" / "agent" / "agent_reports.py"
 AGENT_WAVEFORM_PATH = ROOT / ".trae" / "agent" / "agent_waveform.py"
 TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
+TARGET_SCAFFOLDER_PATH = ROOT / ".trae" / "agent" / "target_scaffolder.py"
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
@@ -1179,6 +1180,99 @@ def test_p5_6_spec_and_plan_surface_capability_statuses():
     assert "| SKIP |" in spec_text
     assert "| 状态 |" in plan_text
     assert "coverage_metrics" in plan_text
+
+
+def test_p5_7_target_scaffolder_generates_valid_candidate_project(tmp_path):
+    assert TARGET_SCAFFOLDER_PATH.exists()
+
+    module = load_agent_module()
+    registry = load_local_module("target_registry", TARGET_REGISTRY_PATH)
+    agent = module.DigitalICAgent()
+
+    result = agent.create_target_scaffold(
+        "packet_router",
+        output_dir=tmp_path,
+        description="Configurable packet router target",
+    )
+
+    project_dir = tmp_path / "packet-router"
+    config_path = project_dir / "target" / "packet_router.json"
+    assert result["project_dir"] == project_dir
+    assert result["config_path"] == config_path
+
+    target = registry.get_target(
+        registry.load_target_registry(project_dir / "target"),
+        "packet_router",
+    )
+    assert target["name"] == "packet-router"
+    assert target["display_name"] == "Packet Router"
+    assert target["design_family"] == "custom"
+    assert target["aliases"] == ["packet_router"]
+    assert target["flows"] == []
+    assert target["description"] == "Configurable packet router target"
+    assert target["parameters"][0]["name"] == "DATA_WIDTH"
+    assert target["interfaces"][0]["name"] == "clk"
+    assert target["scenario_catalog"][0]["status"] == "SKIP"
+    assert target["coverage_metrics"][-1]["status"] == "N/A"
+    assert target["artifact_manifest"][0]["status"] == "SKIP"
+
+    rtl_path = project_dir / "rtl" / "packet_router.v"
+    tb_path = project_dir / "tb" / "tb_packet_router.v"
+    design_spec_path = project_dir / "reports" / "design_spec.md"
+    verification_plan_path = project_dir / "reports" / "verification_plan.md"
+    sim_report_path = project_dir / "reports" / "sim_report.md"
+    todo_path = project_dir / "TODO.md"
+    readme_path = project_dir / "README.md"
+    for path in [
+        rtl_path,
+        tb_path,
+        design_spec_path,
+        verification_plan_path,
+        sim_report_path,
+        todo_path,
+        readme_path,
+    ]:
+        assert path.exists()
+
+    assert "module packet_router" in rtl_path.read_text(encoding="utf-8")
+    assert "TODO" in rtl_path.read_text(encoding="utf-8")
+    assert "module tb_packet_router" in tb_path.read_text(encoding="utf-8")
+    assert "- [ ]" in todo_path.read_text(encoding="utf-8")
+    assert ".trae/agent/targets/packet_router.json" in readme_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_p5_7_target_scaffolder_rejects_invalid_duplicate_and_overwrite(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    with pytest.raises(ValueError, match="invalid target name"):
+        agent.create_target_scaffold("../escape", output_dir=tmp_path)
+
+    with pytest.raises(ValueError, match="already registered"):
+        agent.create_target_scaffold("async_fifo", output_dir=tmp_path)
+
+    first = agent.create_target_scaffold("packet-router", output_dir=tmp_path)
+    assert first["project_dir"].exists()
+    with pytest.raises(FileExistsError, match="already exists"):
+        agent.create_target_scaffold("packet-router", output_dir=tmp_path)
+
+
+def test_p5_7_cli_create_target_generates_scaffold(tmp_path):
+    result = run_agent(
+        "--create-target",
+        "packet_router",
+        "--output-dir",
+        str(tmp_path),
+        "Configurable packet router target",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Created target scaffold" in result.stdout
+    assert "packet_router.json" in result.stdout
+    assert (tmp_path / "packet-router" / "target" / "packet_router.json").exists()
+    assert (tmp_path / "packet-router" / "TODO.md").exists()
 
 
 def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
