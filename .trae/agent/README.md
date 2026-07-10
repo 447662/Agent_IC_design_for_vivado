@@ -154,7 +154,11 @@ outputs/async-fifo/
 - `agent_config.py` 负责 Agent JSON 配置读取与外部命令规范化。
 - `target_registry.py` 负责目标 JSON 校验、排序和别名解析。
 - `agent_cli.py` 负责命令行参数、UVM seed 解析和自然语言需求拼装。
-- 后续模块化批次将继续迁移 waveform adapter、报告生成和各 target 的 RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
+- `agent_reports.py` 提供通用 Markdown 到 HTML 文档渲染。
+- `agent_waveform.py` 负责 VCD_ANALYZER 和 RWaveAnalyzer 的路径、源码目录与可执行文件解析。
+- `target_flows.py` 负责 target flow handler 注册和参数转发。
+- `target_checks.py` 负责通用 RTL/TB/Vivado/VCD/WDB 产物检查。
+- 后续模块化批次将继续迁移 waveform 执行 adapter、各类详细报告生成和 target RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
 
 ## 问题复盘
 

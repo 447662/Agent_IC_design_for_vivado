@@ -178,7 +178,7 @@ python -X utf8 -m pytest tests/test_agent.py -v --basetemp .tmp-pytest
 Get-Content -Encoding UTF8 README.md
 ```
 
-当前完整回归：`102 passed`。
+当前完整回归：`106 passed`。
 
 ## RWaveAnalyzer / VCD_ANALYZER 整合
 
