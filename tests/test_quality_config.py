@@ -20,6 +20,11 @@ def test_pyproject_defines_python_quality_gates():
     assert tools["ruff"]["target-version"] == "py311"
     assert tools["mypy"]["python_version"] == "3.11"
     assert tools["mypy"]["check_untyped_defs"] is True
+    assert {
+        ".trae/agent/adapters/report.py",
+        ".trae/agent/adapters/vivado.py",
+        ".trae/agent/adapters/waveform.py",
+    } <= set(tools["mypy"]["files"])
     assert tools["coverage"]["report"]["fail_under"] >= 65
     assert tools["coverage"]["report"]["show_missing"] is True
 

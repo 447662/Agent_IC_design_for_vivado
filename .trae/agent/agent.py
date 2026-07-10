@@ -34,6 +34,25 @@ from agent_waveform import (
     resolve_rwave_source_dir as get_rwave_source_dir,
     resolve_vcd_analyzer_path as get_vcd_analyzer_path,
 )
+from adapters.report import (
+    render_target_design_spec as adapter_render_target_design_spec,
+    render_target_verification_plan as adapter_render_target_verification_plan,
+    target_scenario_catalog as adapter_target_scenario_catalog,
+    target_spec_catalog as adapter_target_spec_catalog,
+    write_target_design_spec as adapter_write_target_design_spec,
+    write_target_verification_plan as adapter_write_target_verification_plan,
+)
+from adapters.vivado import (
+    launch_vivado_gui as adapter_launch_vivado_gui,
+    resolve_vivado_command as adapter_resolve_vivado_command,
+    run_vivado_batch as adapter_run_vivado_batch,
+)
+from adapters.waveform import (
+    run_rwave_batch_json as adapter_run_rwave_batch_json,
+    run_rwave_json as adapter_run_rwave_json,
+    run_vcd_analyzer_json as adapter_run_vcd_analyzer_json,
+    run_waveform_analyzer_json as adapter_run_waveform_analyzer_json,
+)
 from target_checks import check_rtl_project as run_rtl_project_checks
 from target_flows import (
     build_target_handlers as build_registered_target_handlers,
@@ -373,141 +392,8 @@ class DigitalICAgent:
         spec_path.write_text(self.render_design_spec(user_input, matched_skills), encoding="utf-8")
         return spec_path
 
-    def target_spec_catalog(self, target):
-        target_info = self.get_target(target)
-        defaults = {
-            "async-fifo": {
-                "parameters": [
-                    ("DATA_WIDTH", "8", "FIFO 数据位宽，可按数据通路需求调整"),
-                    ("ADDR_WIDTH", "4", "FIFO 地址位宽，深度为 2**ADDR_WIDTH"),
-                ],
-                "interfaces": [
-                    ("wr_clk", "input", "1", "写时钟域"),
-                    ("wr_rst_n", "input", "1", "写时钟域低有效复位"),
-                    ("wr_en", "input", "1", "写请求，高有效"),
-                    ("wr_data", "input", "DATA_WIDTH", "写数据"),
-                    ("full", "output", "1", "FIFO 满标志"),
-                    ("rd_clk", "input", "1", "读时钟域"),
-                    ("rd_rst_n", "input", "1", "读时钟域低有效复位"),
-                    ("rd_en", "input", "1", "读请求，高有效"),
-                    ("rd_data", "output", "DATA_WIDTH", "读数据"),
-                    ("empty", "output", "1", "FIFO 空标志"),
-                ],
-                "checks": [
-                    "Gray pointer synchronization is two-flop protected",
-                    "full blocks writes without corrupting stored data",
-                    "empty blocks reads and preserves ordered output",
-                    "reset recovery clears pointers and status flags",
-                ],
-                "scenarios": [
-                    ("basic_ordered", "跨时钟有序写入与读取"),
-                    ("full_boundary", "写满边界与 full 标志"),
-                    ("empty_boundary", "读空边界与 empty 标志"),
-                    ("reset_recovery", "复位后重新收发"),
-                    ("mixed_stress", "读写混合压力"),
-                ],
-                "artifacts": [
-                    "rtl/async_fifo.v",
-                    "tb/tb_async_fifo.v",
-                    "sim/run_vivado_async_fifo.tcl",
-                    "reports/sim_report.md",
-                ],
-                "notes": ["P5 通用文档生成默认保留 Vivado/xsim 和 WDB GUI 波形闭环。"],
-            },
-            "sync-fifo": {
-                "parameters": [
-                    ("DATA_WIDTH", "8", "FIFO 数据位宽"),
-                    ("ADDR_WIDTH", "4", "FIFO 地址位宽，深度为 2**ADDR_WIDTH"),
-                ],
-                "interfaces": [
-                    ("clk", "input", "1", "单时钟域时钟"),
-                    ("rst_n", "input", "1", "低有效复位"),
-                    ("wr_en", "input", "1", "写请求"),
-                    ("wr_data", "input", "DATA_WIDTH", "写数据"),
-                    ("rd_en", "input", "1", "读请求"),
-                    ("rd_data", "output", "DATA_WIDTH", "读数据"),
-                    ("full", "output", "1", "FIFO 满标志"),
-                    ("empty", "output", "1", "FIFO 空标志"),
-                ],
-                "checks": [
-                    "write only advances when wr_en and not full",
-                    "read only advances when rd_en and not empty",
-                    "read data order matches write order",
-                    "full and empty never assert together outside reset",
-                ],
-                "scenarios": [
-                    ("basic_ordered", "基础有序写入与读取"),
-                    ("full_boundary", "写满边界"),
-                    ("empty_boundary", "读空边界"),
-                    ("mixed_stress", "读写混合压力"),
-                ],
-                "artifacts": [
-                    "rtl/sync_fifo.v",
-                    "tb/tb_sync_fifo.v",
-                    "sim/run_vivado_sync_fifo.tcl",
-                    "reports/sim_report.md",
-                ],
-                "notes": ["该目标用于验证通用 flow 不依赖异步跨时钟结构。"],
-            },
-            "round-robin-arbiter": {
-                "parameters": [
-                    ("REQ_WIDTH", "4", "请求端口数量，当前目标固定覆盖 4 requester"),
-                ],
-                "interfaces": [
-                    ("clk", "input", "1", "仲裁时钟"),
-                    ("rst_n", "input", "1", "低有效复位"),
-                    ("req[3:0]", "input", "4", "请求向量"),
-                    ("grant[3:0]", "output", "4", "授权向量，期望 one-hot grant"),
-                    ("grant_valid", "output", "1", "授权有效标志"),
-                ],
-                "checks": [
-                    "one-hot grant when grant_valid is asserted",
-                    "grant implies request",
-                    "rotating priority advances after accepted grant",
-                    "fairness window prevents starvation under sustained requests",
-                    "reset recovery restarts priority from requester 0",
-                ],
-                "scenarios": [
-                    ("single_request", "单请求授权"),
-                    ("multiple_requests", "多请求优先级轮转"),
-                    ("rotating_grant", "连续授权轮转"),
-                    ("reset_recovery", "复位恢复"),
-                    ("fairness_window", "公平性窗口"),
-                ],
-                "artifacts": [
-                    "rtl/round_robin_arbiter.v",
-                    "tb/tb_round_robin_arbiter.v",
-                    "sim/run_vivado_round_robin_arbiter.tcl",
-                    "reports/sim_report.md",
-                ],
-                "notes": ["P5.3 首个非 FIFO 控制逻辑目标，适合作为通用数字 IC Agent 扩展样例。"],
-            },
-        }
-
-        catalog = defaults.get(target_info["name"], {})
-        return {
-            "target": target_info,
-            "parameters": target_info.get("parameters", catalog.get("parameters", [])),
-            "interfaces": target_info.get("interfaces", catalog.get("interfaces", [])),
-            "checks": target_info.get("checks", catalog.get("checks", [])),
-            "scenarios": target_info.get("scenarios", catalog.get("scenarios", [])),
-            "artifacts": target_info.get("artifacts", catalog.get("artifacts", [])),
-            "notes": target_info.get("notes", catalog.get("notes", [])),
-        }
-
-    def target_scenario_catalog(self, target):
-        catalog = self.target_spec_catalog(target)
-        scenarios = []
-        for scenario in catalog["scenarios"]:
-            if isinstance(scenario, dict):
-                scenarios.append({
-                    "id": scenario.get("id", scenario.get("name", "")),
-                    "purpose": scenario.get("purpose", scenario.get("description", "")),
-                    "type": scenario.get("type", "functional"),
-                })
-            else:
-                scenarios.append({"id": scenario[0], "purpose": scenario[1], "type": "functional"})
-        return scenarios
+    target_spec_catalog = adapter_target_spec_catalog
+    target_scenario_catalog = adapter_target_scenario_catalog
 
     def render_markdown_document_html(self, title, markdown_text, variant="doc"):
         return render_markdown_html_document(
@@ -516,121 +402,10 @@ class DigitalICAgent:
             variant=variant,
         )
 
-    def render_target_design_spec(self, target, requirement=None):
-        catalog = self.target_spec_catalog(target)
-        target_info = catalog["target"]
-        requirement_text = requirement.strip() if requirement else "未提供额外自然语言需求；当前规格由 target 配置与内置 catalog 生成。"
-        lines = [
-            "# 设计规格",
-            "",
-            "## 目标概览",
-            "",
-            "| 字段 | 内容 |",
-            "| --- | --- |",
-            "| Target | {} |".format(target_info["name"]),
-            "| 显示名称 | {} |".format(target_info["display_name"]),
-            "| 设计族 | {} |".format(target_info["design_family"]),
-            "| 描述 | {} |".format(target_info.get("description", "")),
-            "",
-            "## 自然语言需求",
-            "",
-            requirement_text,
-            "",
-            "## 参数",
-            "",
-            "| 参数 | 默认值 | 说明 |",
-            "| --- | --- | --- |",
-        ]
-        for name, default, desc in catalog["parameters"]:
-            lines.append("| {} | {} | {} |".format(name, default, desc))
-        lines.extend(["", "## 接口定义", "", "| 信号 | 方向 | 位宽 | 说明 |", "| --- | --- | --- | --- |"])
-        for name, direction, width, desc in catalog["interfaces"]:
-            lines.append("| {} | {} | {} | {} |".format(name, direction, width, desc))
-        lines.extend(["", "## 功能场景", "", "| 场景 ID | 说明 |", "| --- | --- |"])
-        for scenario in self.target_scenario_catalog(target_info["name"]):
-            lines.append("| {} | {} |".format(scenario["id"], scenario["purpose"]))
-        lines.extend(["", "## 关键检查点", ""])
-        for check in catalog["checks"]:
-            lines.append("- {}".format(check))
-        lines.extend(["", "## 预期产物", ""])
-        for artifact in catalog["artifacts"]:
-            lines.append("- `{}`".format(artifact))
-        if catalog["notes"]:
-            lines.extend(["", "## 备注", ""])
-            for note in catalog["notes"]:
-                lines.append("- {}".format(note))
-        return "\n".join(lines) + "\n"
-
-    def write_target_design_spec(self, target, output_dir="outputs", requirement=None):
-        target_info = self.get_target(target)
-        reports_dir = Path(output_dir) / target_info["name"] / "reports"
-        reports_dir.mkdir(parents=True, exist_ok=True)
-        markdown_text = self.render_target_design_spec(target_info["name"], requirement=requirement)
-        md_path = reports_dir / "design_spec.md"
-        html_path = reports_dir / "design_spec.html"
-        md_path.write_text(markdown_text, encoding="utf-8")
-        html_path.write_text(
-            self.render_markdown_document_html("{} 设计规格".format(target_info["display_name"]), markdown_text),
-            encoding="utf-8",
-        )
-        return {"md_path": md_path, "html_path": html_path}
-
-    def render_target_verification_plan(self, target):
-        catalog = self.target_spec_catalog(target)
-        target_info = catalog["target"]
-        scenarios = self.target_scenario_catalog(target_info["name"])
-        lines = [
-            "# 验证计划",
-            "",
-            "## 目标概览",
-            "",
-            "| 字段 | 内容 |",
-            "| --- | --- |",
-            "| Target | {} |".format(target_info["name"]),
-            "| 显示名称 | {} |".format(target_info["display_name"]),
-            "| 设计族 | {} |".format(target_info["design_family"]),
-            "",
-            "## scenario catalog",
-            "",
-            "| 场景 ID | 类型 | 验证目的 |",
-            "| --- | --- | --- |",
-        ]
-        for scenario in scenarios:
-            lines.append("| {} | {} | {} |".format(scenario["id"], scenario["type"], scenario["purpose"]))
-        lines.extend(["", "## 检查点与断言建议", "", "| 检查点 | 建议落点 |", "| --- | --- |"])
-        for check in catalog["checks"]:
-            lines.append("| {} | RTL/TB scoreboard 或后续 SVA/UVM monitor |".format(check))
-        lines.extend([
-            "",
-            "## 验证执行顺序",
-            "",
-            "- 先生成 RTL/TB/Vivado Tcl，确认目标目录结构完整。",
-            "- 运行 Vivado/xsim smoke 仿真，生成 VCD/WDB。",
-            "- 打开 Vivado GUI 查看关键波形，不只依赖终端日志。",
-            "- 使用 VCD/RWave 分析关键握手、边界和公平性事件。",
-            "- 将 Markdown/HTML 报告作为评审入口，后续再扩展 UVM 与覆盖率。",
-            "",
-            "## 出口准则",
-            "",
-            "- 所有 scenario catalog 场景均有 PASS 证据。",
-            "- 所有关键检查点均能在 TB scoreboard、日志或波形分析中定位。",
-            "- 仿真报告、波形数据库和验证计划在 target reports 目录可追溯。",
-        ])
-        return "\n".join(lines) + "\n"
-
-    def write_target_verification_plan(self, target, output_dir="outputs"):
-        target_info = self.get_target(target)
-        reports_dir = Path(output_dir) / target_info["name"] / "reports"
-        reports_dir.mkdir(parents=True, exist_ok=True)
-        markdown_text = self.render_target_verification_plan(target_info["name"])
-        md_path = reports_dir / "verification_plan.md"
-        html_path = reports_dir / "verification_plan.html"
-        md_path.write_text(markdown_text, encoding="utf-8")
-        html_path.write_text(
-            self.render_markdown_document_html("{} 验证计划".format(target_info["display_name"]), markdown_text, variant="scenario"),
-            encoding="utf-8",
-        )
-        return {"md_path": md_path, "html_path": html_path}
+    render_target_design_spec = adapter_render_target_design_spec
+    write_target_design_spec = adapter_write_target_design_spec
+    render_target_verification_plan = adapter_render_target_verification_plan
+    write_target_verification_plan = adapter_write_target_verification_plan
 
     def resolve_vcd_analyzer_path(self):
         return get_vcd_analyzer_path(self.project_root)
@@ -646,114 +421,10 @@ class DigitalICAgent:
             source_dir_resolver=self.resolve_rwave_source_dir,
         )
 
-    def run_rwave_json(self, *args):
-        rwave_command = self.resolve_rwave_command()
-        if not rwave_command:
-            raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
-
-        result = self.command_runner.run(
-            [rwave_command, "--json", *[str(arg) for arg in args]],
-            cwd=self.project_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if result.returncode != 0:
-            message = result.stderr.strip() or result.stdout.strip() or "rwave failed"
-            raise RuntimeError(message)
-        try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("rwave returned invalid JSON: {}".format(exc))
-        data["_waveform_backend"] = "rwave"
-        return data
-
-    def run_rwave_batch_json(self, waveform_path, command_lines):
-        rwave_command = self.resolve_rwave_command()
-        if not rwave_command:
-            raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
-
-        result = self.command_runner.run(
-            [rwave_command, "--batch", "--json", str(waveform_path)],
-            input="\n".join(str(line) for line in command_lines) + "\n",
-            cwd=self.project_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if result.returncode != 0:
-            message = result.stderr.strip() or result.stdout.strip() or "rwave batch failed"
-            raise RuntimeError(message)
-
-        parsed = {}
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise RuntimeError("rwave batch returned invalid JSON: {}".format(exc))
-
-            result_id = row.get("id")
-            if not result_id:
-                raise RuntimeError("rwave batch result missing id")
-            if row.get("ok") is False:
-                error = row.get("error") or "rwave batch command failed"
-                raise RuntimeError("{}: {}".format(result_id, error))
-
-            item = row.get("result", {})
-            if isinstance(item, dict):
-                item["_waveform_backend"] = "rwave"
-            parsed[result_id] = item
-
-        return parsed
-
-    def run_vcd_analyzer_json(self, *args):
-        analyzer_path = self.resolve_vcd_analyzer_path()
-        if not analyzer_path.exists():
-            raise FileNotFoundError("VCD analyzer not found: {}".format(analyzer_path))
-
-        result = self.command_runner.run(
-            [sys.executable, str(analyzer_path), "--json", *[str(arg) for arg in args]],
-            cwd=self.project_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if result.returncode != 0:
-            message = result.stderr.strip() or result.stdout.strip() or "vcd_analyzer failed"
-            raise RuntimeError(message)
-        try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("vcd_analyzer returned invalid JSON: {}".format(exc))
-        data["_waveform_backend"] = "vcd_analyzer"
-        return data
-
-    def run_waveform_analyzer_json(self, *args, backend="auto"):
-        backend = str(backend or "auto").strip().lower()
-        if backend in ("vcd", "vcd_analyzer", "vcd-analyzer"):
-            return self.run_vcd_analyzer_json(*args)
-        if backend == "rwave":
-            return self.run_rwave_json(*args)
-        if backend != "auto":
-            raise ValueError("Unsupported waveform backend: {}".format(backend))
-
-        try:
-            return self.run_rwave_json(*args)
-        except FileNotFoundError:
-            return self.run_vcd_analyzer_json(*args)
-        except RuntimeError as rwave_error:
-            try:
-                data = self.run_vcd_analyzer_json(*args)
-            except (FileNotFoundError, RuntimeError):
-                raise rwave_error
-            data["_waveform_backend_fallback_reason"] = str(rwave_error)
-            return data
+    run_rwave_json = adapter_run_rwave_json
+    run_rwave_batch_json = adapter_run_rwave_batch_json
+    run_vcd_analyzer_json = adapter_run_vcd_analyzer_json
+    run_waveform_analyzer_json = adapter_run_waveform_analyzer_json
 
     def analyze_vcd(self, vcd_path, condition=None, show=None, limit=20, waveform_backend="auto"):
         vcd_file = Path(vcd_path)
@@ -3660,19 +3331,9 @@ b01010101 $
             return "verilator"
         return None
 
-    def resolve_vivado_command(self):
-        vivado_on_path = shutil.which("vivado")
-        if vivado_on_path:
-            return vivado_on_path
-
-        candidates = [
-            Path(r"D:\vivado\2025.2\Vivado\bin\vivado.bat"),
-            Path(r"D:\vivado\2025.2\Vivado\bin\unwrapped\win64.o\vivado.exe"),
-        ]
-        for candidate in candidates:
-            if candidate.exists():
-                return str(candidate)
-        return None
+    resolve_vivado_command = adapter_resolve_vivado_command
+    run_vivado_batch = adapter_run_vivado_batch
+    launch_vivado_gui = adapter_launch_vivado_gui
 
     def write_sim_smoke_sources(self, output_dir):
         sim_dir = Path(output_dir) / "sim-smoke"
@@ -3852,10 +3513,7 @@ add_wave -r /*
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        self.command_runner.launch(
-            [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
-            cwd=sim_dir,
-        )
+        self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
         print("Vivado waveform GUI launched: {}".format(wave_db_path))
         return True
 
@@ -3867,14 +3525,10 @@ add_wave -r /*
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-source", script_path.name],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        result = self.run_vivado_batch(
+            vivado_command,
+            script_path.name,
+            sim_dir,
         )
         if result.returncode != 0:
             print(result.stderr.strip() or result.stdout.strip() or "vivado simulation failed", file=sys.stderr)
@@ -5399,10 +5053,7 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        self.command_runner.launch(
-            [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
-            cwd=sim_dir,
-        )
+        self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
         print("Vivado project GUI launched: {}".format(xpr_path))
         print("Vivado waveform database: {}".format(wave_db_path))
         return True
@@ -5428,10 +5079,7 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        self.command_runner.launch(
-            [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
-            cwd=sim_dir,
-        )
+        self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
         print("Vivado project GUI launched: {}".format(xpr_path))
         print("Vivado waveform database: {}".format(wave_db_path))
         return True
@@ -5457,10 +5105,7 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        self.command_runner.launch(
-            [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
-            cwd=sim_dir,
-        )
+        self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
         print("Vivado project GUI launched: {}".format(xpr_path))
         print("Vivado waveform database: {}".format(wave_db_path))
         return True
@@ -5498,10 +5143,7 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found; cannot open UVM waveform GUI.", file=sys.stderr)
             return False
 
-        self.command_runner.launch(
-            [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
-            cwd=sim_dir,
-        )
+        self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
         screenshot_report = self.write_async_fifo_uvm_wave_screenshot_report(project_dir, wave_kind=wave_kind)
         print("Vivado UVM waveform GUI launched: {}".format(wave_db_path))
         print("UVM waveform screenshot report: {}".format(screenshot_report["markdown_path"]))
@@ -5539,14 +5181,10 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-source", "run_vivado_async_fifo.tcl"],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        sim_result = self.run_vivado_batch(
+            vivado_command,
+            "run_vivado_async_fifo.tcl",
+            sim_dir,
         )
         if sim_result.returncode != 0:
             print(sim_result.stderr.strip() or sim_result.stdout.strip() or "async FIFO simulation failed", file=sys.stderr)
@@ -5561,14 +5199,11 @@ add_wave -r /tb_async_fifo_uvm
             print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
             return False
 
-        project_result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_async_fifo_project.tcl"],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        project_result = self.run_vivado_batch(
+            vivado_command,
+            "create_async_fifo_project.tcl",
+            sim_dir,
+            extra_args=["-nojournal", "-nolog", "-notrace"],
         )
         if project_result.returncode != 0:
             print(project_result.stderr.strip() or project_result.stdout.strip() or "Vivado project generation failed", file=sys.stderr)
@@ -5603,14 +5238,10 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-source", "run_vivado_sync_fifo.tcl"],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        sim_result = self.run_vivado_batch(
+            vivado_command,
+            "run_vivado_sync_fifo.tcl",
+            sim_dir,
         )
         if sim_result.returncode != 0:
             print(sim_result.stderr.strip() or sim_result.stdout.strip() or "sync FIFO simulation failed", file=sys.stderr)
@@ -5625,14 +5256,11 @@ add_wave -r /tb_async_fifo_uvm
             print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
             return False
 
-        project_result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_sync_fifo_project.tcl"],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        project_result = self.run_vivado_batch(
+            vivado_command,
+            "create_sync_fifo_project.tcl",
+            sim_dir,
+            extra_args=["-nojournal", "-nolog", "-notrace"],
         )
         project_warning = None
         if project_result.returncode != 0:
@@ -5665,14 +5293,10 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-source", "run_vivado_round_robin_arbiter.tcl"],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        sim_result = self.run_vivado_batch(
+            vivado_command,
+            "run_vivado_round_robin_arbiter.tcl",
+            sim_dir,
         )
         if sim_result.returncode != 0:
             print(sim_result.stderr.strip() or sim_result.stdout.strip() or "round-robin arbiter simulation failed", file=sys.stderr)
@@ -5687,14 +5311,11 @@ add_wave -r /tb_async_fifo_uvm
             print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
             return False
 
-        project_result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_round_robin_arbiter_project.tcl"],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        project_result = self.run_vivado_batch(
+            vivado_command,
+            "create_round_robin_arbiter_project.tcl",
+            sim_dir,
+            extra_args=["-nojournal", "-nolog", "-notrace"],
         )
         project_warning = None
         if project_result.returncode != 0:
@@ -5765,14 +5386,10 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = self.command_runner.run(
-            [vivado_command, "-mode", "batch", "-source", "run_vivado_async_fifo_uvm.tcl"],
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
+        sim_result = self.run_vivado_batch(
+            vivado_command,
+            "run_vivado_async_fifo_uvm.tcl",
+            sim_dir,
         )
         if sim_result.returncode != 0:
             self.write_async_fifo_uvm_smoke_report(project_dir, sim_result=sim_result)
@@ -5818,22 +5435,16 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        command = [vivado_command, "-mode", "batch", "-source", "run_vivado_async_fifo_uvm_coverage.tcl"]
-        run_kwargs = {}
+        env = None
         if seed is not None:
             env = os.environ.copy()
             env["ASYNC_FIFO_UVM_SEED"] = str(int(seed))
-            run_kwargs["env"] = env
 
-        sim_result = self.command_runner.run(
-            command,
-            cwd=sim_dir,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=self.vivado_timeout,
-            check=False,
-            **run_kwargs,
+        sim_result = self.run_vivado_batch(
+            vivado_command,
+            "run_vivado_async_fifo_uvm_coverage.tcl",
+            sim_dir,
+            env=env,
         )
         if sim_result.returncode != 0:
             self.write_async_fifo_uvm_coverage_report(project_dir, sim_result=sim_result)
