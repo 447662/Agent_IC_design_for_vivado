@@ -7,6 +7,7 @@
 ```powershell
 python .trae/agent/agent.py --diagnostic
 python .trae/agent/agent.py --environment-report --output-dir outputs
+python .trae/agent/agent.py --generate-overview --output-dir outputs
 python .trae/agent/agent.py --list-skills
 python .trae/agent/agent.py --list-targets
 python .trae/agent/agent.py --analyze-vcd path/to/wave.vcd
@@ -32,6 +33,7 @@ python .trae/agent/agent.py --open-wave async-fifo --output-dir outputs
 | --- | --- |
 | `--diagnostic` | 检查 Vivado、`uv`、SynthPilot MCP 和技能文件 |
 | `--environment-report` | 生成 Python、Git、Vivado、RWave fallback、权限和 GUI 条件的中文 Markdown/HTML 预检报告 |
+| `--generate-overview` | 聚合所有 target 与环境 manifest，生成顶层 `index.md/html` 项目总览 |
 | `--list-skills` | 列出当前 Agent 技能配置 |
 | `--list-targets` | 列出当前可用 RTL 设计目标、别名和支持 flow |
 | `--analyze-vcd <file>` | 分析 VCD，可配合 `--vcd-condition`、`--vcd-show`、`--vcd-limit` |
@@ -62,6 +64,16 @@ outputs/environment-report/
 ```
 
 报告按 `PASS/WARN/FAIL` 输出中文详情和修复建议。Vivado 或 GUI 不可用时通常为可降级 `WARN`；Python 版本不足、Git 缺失等基础条件为 `FAIL`。`artifacts.json` 使用项目级 `scope: environment`，记录每次预检的命令、检查结果和两个报告产物。
+
+## 多 Target 项目总览
+
+`--generate-overview --output-dir outputs` 生成顶层 `outputs/index.md` 和 `outputs/index.html`：
+
+- 注册但尚未运行的 target 显示 `NOT_RUN`。
+- 每个 target 展示最新 flow、状态、时间、失败信息和重跑命令。
+- 固定提供 Spec、RTL、Simulation、UVM、Coverage、Wave、Lessons surface。
+- 损坏的单个 manifest 标记为 `INVALID`，其余 target 继续展示。
+- target manifest 和环境预检写入后会自动刷新总览。
 
 ## Vivado 流程
 
@@ -162,6 +174,7 @@ outputs/async-fifo/
 - P5.1 已完成目标配置文件化：`DigitalICAgent.load_target_registry()` 从 `.trae/agent/targets/*.json` 加载目标元信息，当前 async FIFO 配置为 `.trae/agent/targets/async_fifo.json`。
 - P5.2 已完成 `sync-fifo` 最小闭环：新增 `.trae/agent/targets/sync_fifo.json`、RTL/TB/Vivado Tcl 生成、真实 Vivado/xsim 仿真、`--analyze-rtl-vcd sync-fifo`、WDB GUI 打开和中文仿真报告。
 - P5.10 已完成中文环境预检：`--environment-report` 生成 Markdown/HTML、修复建议和项目级运行清单。
+- P5.11 已完成多 target 顶层报告：`--generate-overview` 聚合 target/environment manifest，并在 manifest 更新后自动刷新。
 
 ## 代码模块化状态
 
@@ -173,6 +186,7 @@ outputs/async-fifo/
 - `agent_reports.py` 提供通用 Markdown 到 HTML 文档渲染。
 - `agent_waveform.py` 负责 VCD_ANALYZER 和 RWaveAnalyzer 的路径、源码目录与可执行文件解析。
 - `environment_report.py` 负责环境探测、中文 Markdown/HTML 和项目级 environment manifest。
+- `project_overview.py` 负责注册目标发现、manifest 状态聚合、统一报告 surface 和顶层 Markdown/HTML。
 - `target_flows.py` 负责 target flow handler 注册和参数转发。
 - `target_checks.py` 负责通用 RTL/TB/Vivado/VCD/WDB 产物检查。
 - 后续模块化批次将继续迁移 waveform 执行 adapter、各类详细报告生成和 target RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
@@ -186,7 +200,7 @@ python -m mypy
 python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov-fail-under=68 --basetemp .tmp-pytest
 ```
 
-当前质量基线为 `131 passed`，分支覆盖率 `73.61%`，CI 覆盖率门槛 `68%`。Mypy 当前覆盖 14 个已拆分模块。
+当前质量基线为 `139 passed`，分支覆盖率 `74.39%`，CI 覆盖率门槛 `68%`。Mypy 当前覆盖 15 个已拆分模块。
 
 ## 问题复盘
 
