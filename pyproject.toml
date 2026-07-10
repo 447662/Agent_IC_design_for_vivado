@@ -27,9 +27,12 @@ python_version = "3.11"
 files = [
     ".trae/agent/agent_runtime.py",
     ".trae/agent/agent_cli.py",
+    ".trae/agent/agent_composition.py",
+    ".trae/agent/agent_entrypoint.py",
     ".trae/agent/agent_config.py",
     ".trae/agent/agent_reports.py",
     ".trae/agent/agent_waveform.py",
+    ".trae/agent/intent_router.py",
     ".trae/agent/artifact_manifest.py",
     ".trae/agent/history_rotation.py",
     ".trae/agent/coverage_closure.py",

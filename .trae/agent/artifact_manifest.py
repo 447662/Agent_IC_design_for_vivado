@@ -126,7 +126,27 @@ def artifact_status(declared_status, exists):
     return "SKIP"
 
 
+def normalize_artifact_path(project_dir, artifact_path):
+    project_root = Path(project_dir).resolve()
+    artifact_path = Path(artifact_path)
+    resolved_path = (
+        artifact_path.resolve()
+        if artifact_path.is_absolute()
+        else (project_root / artifact_path).resolve()
+    )
+    try:
+        return resolved_path.relative_to(project_root)
+    except ValueError as exc:
+        raise ValueError(
+            "runtime artifact must be inside project directory: {}".format(
+                artifact_path
+            )
+        ) from exc
+
+
 def build_artifact_entry(project_dir, artifact_id, relative_path, declared_status):
+    project_dir = Path(project_dir).resolve()
+    relative_path = normalize_artifact_path(project_dir, relative_path)
     artifact_path = project_dir / relative_path
     exists = artifact_path.exists()
     entry = {
@@ -143,17 +163,7 @@ def build_artifact_entry(project_dir, artifact_id, relative_path, declared_statu
 
 def normalize_extra_artifact(project_dir, item):
     artifact_path = Path(item["path"])
-    if artifact_path.is_absolute():
-        try:
-            relative_path = artifact_path.resolve().relative_to(project_dir.resolve())
-        except ValueError as exc:
-            raise ValueError(
-                "runtime artifact must be inside project directory: {}".format(
-                    artifact_path
-                )
-            ) from exc
-    else:
-        relative_path = artifact_path
+    relative_path = normalize_artifact_path(project_dir, artifact_path)
     return {
         "id": str(item.get("id") or relative_path.as_posix()),
         "path": relative_path,
