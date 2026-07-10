@@ -30,6 +30,7 @@ files = [
     ".trae/agent/agent_reports.py",
     ".trae/agent/agent_waveform.py",
     ".trae/agent/artifact_manifest.py",
+    ".trae/agent/coverage_closure.py",
     ".trae/agent/environment_report.py",
     ".trae/agent/project_overview.py",
     ".trae/agent/waveform_samples.py",

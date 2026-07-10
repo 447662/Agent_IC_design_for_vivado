@@ -20,6 +20,11 @@ def parse_args(argv=None):
         help="Verify bundled VCD/FST/GHW samples with RWaveAnalyzer",
     )
     mode_group.add_argument(
+        "--coverage-closure",
+        action="store_true",
+        help="Generate a multi-target coverage closure dashboard",
+    )
+    mode_group.add_argument(
         "--smoke-loop",
         action="store_true",
         help="Generate a built-in VCD and analyze it",
@@ -112,6 +117,12 @@ def parse_args(argv=None):
         help="Measured UVM code coverage percentage for gate/reporting",
     )
     parser.add_argument(
+        "--coverage-target",
+        type=float,
+        default=80.0,
+        help="Target percentage used by the coverage closure dashboard",
+    )
+    parser.add_argument(
         "--uvm-seeds",
         default="101,202,303",
         help="Comma-separated UVM random regression seeds",
@@ -198,6 +209,7 @@ def parse_args(argv=None):
         or args.analyze_waveform
         or args.analyze_vcd
         or args.verify_waveform_samples
+        or args.coverage_closure
         or args.smoke_loop
         or args.sim_smoke
         or args.generate_rtl

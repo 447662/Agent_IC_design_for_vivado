@@ -35,6 +35,9 @@ from agent_waveform import (
     resolve_vcd_analyzer_path as get_vcd_analyzer_path,
 )
 from artifact_manifest import record_artifact_run as append_artifact_run
+from coverage_closure import (
+    write_coverage_closure_report as build_coverage_closure_report,
+)
 from environment_report import write_environment_report as build_environment_report
 from project_overview import write_project_overview as build_project_overview
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
@@ -438,6 +441,7 @@ class DigitalICAgent:
     write_environment_report = build_environment_report
     write_project_overview = build_project_overview
     write_waveform_sample_report = build_waveform_sample_report
+    write_coverage_closure_report = build_coverage_closure_report
 
     def refresh_project_overview(self, output_dir="outputs"):
         try:
@@ -5771,6 +5775,20 @@ def main(argv=None):
         print("Markdown: {}".format(overview["markdown_path"]))
         print("HTML: {}".format(overview["html_path"]))
         return 1 if overview["status"] == "FAIL" else 0
+
+    if args.coverage_closure:
+        try:
+            report = agent.write_coverage_closure_report(
+                output_dir=args.output_dir,
+                target_threshold=args.coverage_target,
+            )
+        except (OSError, ValueError) as exc:
+            print("Coverage closure 生成失败: {}".format(exc), file=sys.stderr)
+            return 1
+        print("Coverage closure 状态: {}".format(report["status"]))
+        print("Markdown: {}".format(report["markdown_path"]))
+        print("HTML: {}".format(report["html_path"]))
+        return 1 if report["status"] == "FAIL" else 0
 
     if args.verify_waveform_samples:
         try:

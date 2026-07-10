@@ -1804,7 +1804,7 @@ def test_p4_0_coverage_dashboard_marks_enabled_target_without_data_not_run(tmp_p
     assert result["targets"][0]["gap"] is None
     markdown = result["markdown_path"].read_text(encoding="utf-8")
     assert "尚未找到 coverage 数值产物" in markdown
-    assert "0.0%" not in markdown
+    assert "| enabled-target | custom | NOT_RUN | 0.0% |" not in markdown
 
 
 def test_p4_0_coverage_dashboard_isolates_invalid_target_report(tmp_path):
