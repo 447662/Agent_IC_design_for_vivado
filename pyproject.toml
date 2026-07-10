@@ -32,6 +32,7 @@ files = [
     ".trae/agent/artifact_manifest.py",
     ".trae/agent/coverage_closure.py",
     ".trae/agent/coverage_gates.py",
+    ".trae/agent/coverage_history.py",
     ".trae/agent/coverage_recommendations.py",
     ".trae/agent/environment_report.py",
     ".trae/agent/project_overview.py",

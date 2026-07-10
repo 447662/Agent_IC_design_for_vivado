@@ -34,7 +34,10 @@ from agent_waveform import (
     resolve_rwave_source_dir as get_rwave_source_dir,
     resolve_vcd_analyzer_path as get_vcd_analyzer_path,
 )
-from artifact_manifest import record_artifact_run as append_artifact_run
+from artifact_manifest import (
+    extract_tool_version,
+    record_artifact_run as append_artifact_run,
+)
 from coverage_closure import (
     write_coverage_closure_report as build_coverage_closure_report,
 )
@@ -43,6 +46,7 @@ from coverage_gates import (
     COVERAGE_METRIC_ORDER,
     evaluate_coverage_gates,
 )
+from coverage_history import append_coverage_history
 from environment_report import write_environment_report as build_environment_report
 from project_overview import write_project_overview as build_project_overview
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
@@ -1359,6 +1363,8 @@ Write-Host "Saved UVM waveform screenshot to $output"
         ]
         report_items.extend([
             ("UVM Coverage Summary", "uvm_coverage_summary.html", "uvm_coverage_summary.md", "P3.13 summary with gate result, coverage scores, and xcrg links"),
+            ("Coverage Trend", "coverage_trend.html", "coverage_trend.md", "P4.4 coverage history and metric deltas"),
+            ("Coverage History JSONL", "coverage_history.jsonl", None, "P4.4 append-only machine-readable coverage history"),
             ("Vivado Code Coverage", "uvm_coverage_xcrg/codeCoverageReport/dashboard.html", None, "Official xcrg code coverage HTML dashboard"),
             ("Vivado Functional Coverage", "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html", None, "Official xcrg functional coverage HTML dashboard"),
             ("XCRG Log", "xcrg_coverage.log", None, "Vivado xcrg export log"),
@@ -2728,6 +2734,48 @@ exit 0
             "code_cov_dir": code_cov_dir,
             "code_cov_info": code_cov_info,
         }
+
+    def write_async_fifo_coverage_history(
+        self,
+        project_dir,
+        summary_report,
+        status,
+        vivado_command,
+        seed=None,
+    ):
+        percent_summary = summary_report["coverage_percent_summary"]
+        coverage_metrics = {
+            metric: percent_summary["metrics"].get(metric)
+            for metric in COVERAGE_METRIC_ORDER
+        }
+        coverage_metrics["total"] = summary_report["coverage_percent"]
+        if coverage_metrics["total"] is None:
+            coverage_metrics["total"] = percent_summary["total_percent"]
+        return append_coverage_history(
+            Path(project_dir) / "reports",
+            target_name="async-fifo",
+            flow_name="uvm-coverage",
+            toolchain={
+                "vivado": {
+                    "version": extract_tool_version(vivado_command),
+                    "command": vivado_command,
+                },
+                "simulator": {
+                    "name": "xsim",
+                },
+            },
+            seed_set=[] if seed is None else [int(seed)],
+            coverage_metrics=coverage_metrics,
+            coverage_gates=summary_report["coverage_gates"],
+            status=status,
+            sources={
+                "summary_markdown": summary_report["markdown_path"],
+                "summary_html": summary_report["html_path"],
+                "coverage_percent": summary_report["coverage_percent_report_path"],
+                "xcrg_code": summary_report["xcrg_code_report_path"],
+                "xcrg_functional": summary_report["xcrg_functional_report_path"],
+            },
+        )
 
     def write_async_fifo_uvm_random_regression_report(self, project_dir, results):
         project_dir = Path(project_dir)
@@ -5674,12 +5722,19 @@ add_wave -r /tb_async_fifo_uvm
         )
         if sim_result.returncode != 0:
             self.write_async_fifo_uvm_coverage_report(project_dir, sim_result=sim_result)
-            self.write_async_fifo_uvm_coverage_summary_report(
+            summary_report = self.write_async_fifo_uvm_coverage_summary_report(
                 project_dir,
                 sim_result=sim_result,
                 coverage_threshold=coverage_threshold,
                 coverage_percent=coverage_percent,
                 coverage_thresholds=coverage_thresholds,
+            )
+            self.write_async_fifo_coverage_history(
+                project_dir,
+                summary_report,
+                status="FAIL",
+                vivado_command=vivado_command,
+                seed=seed,
             )
             self.write_async_fifo_reports_index(project_dir)
             print(sim_result.stderr.strip() or sim_result.stdout.strip() or "async FIFO UVM coverage failed", file=sys.stderr)
@@ -5699,21 +5754,52 @@ add_wave -r /tb_async_fifo_uvm
             coverage_percent=auto_percent,
             coverage_thresholds=coverage_thresholds,
         )
-        self.write_async_fifo_reports_index(project_dir)
         if not report["passed"]:
+            self.write_async_fifo_coverage_history(
+                project_dir,
+                summary_report,
+                status="FAIL",
+                vivado_command=vivado_command,
+                seed=seed,
+            )
+            self.write_async_fifo_reports_index(project_dir)
             print("UVM coverage markers or xsim.codeCov database were not found.", file=sys.stderr)
             return False
         functional_log = ""
         if functional_report["log_path"].exists():
             functional_log = functional_report["log_path"].read_text(encoding="utf-8", errors="replace")
         if "ASYNC_FIFO_SVA_FAIL" in functional_log:
+            self.write_async_fifo_coverage_history(
+                project_dir,
+                summary_report,
+                status="FAIL",
+                vivado_command=vivado_command,
+                seed=seed,
+            )
+            self.write_async_fifo_reports_index(project_dir)
             print("UVM assertion failure marker was found.", file=sys.stderr)
             return False
         if not summary_report["coverage_gate_passed"]:
+            self.write_async_fifo_coverage_history(
+                project_dir,
+                summary_report,
+                status="FAIL",
+                vivado_command=vivado_command,
+                seed=seed,
+            )
+            self.write_async_fifo_reports_index(project_dir)
             print("UVM coverage threshold gate failed.", file=sys.stderr)
             print("UVM coverage summary: {}".format(summary_report["markdown_path"]))
             return False
 
+        self.write_async_fifo_coverage_history(
+            project_dir,
+            summary_report,
+            status="PASS",
+            vivado_command=vivado_command,
+            seed=seed,
+        )
+        self.write_async_fifo_reports_index(project_dir)
         print("Async FIFO UVM coverage completed")
         print("UVM log: {}".format(report["log_path"]))
         print("Generated WDB: {}".format(report["wdb_path"]))
