@@ -1688,6 +1688,8 @@ def _write_p4_1_xcrg_fixture(project_dir):
 <td>Covered</td><td>Percent</td><td>Goal</td></tr>
 <tr><td><span class="tooltiptext5">cross_write_full</span></td>
 <td>1</td><td>1</td><td>0</td><td>0</td><td>100</td></tr>
+<tr><td><span class="tooltiptext5">cross_read_empty</span></td>
+<td>1</td><td>1</td><td>0</td><td>0</td><td>100</td></tr>
 </table>
 """,
         encoding="utf-8",
@@ -1706,7 +1708,7 @@ def test_p4_1_extracts_project_low_coverage_items_from_xcrg(tmp_path):
     )
 
     assert result["diagnostics"] == []
-    assert len(result["items"]) == 13
+    assert len(result["items"]) == 14
     assert [item["score"] for item in result["items"]] == sorted(
         item["score"] for item in result["items"]
     )
@@ -1879,7 +1881,7 @@ def test_p4_1_dashboard_renders_concrete_items_and_writes_json(tmp_path):
 
     target = result["targets"][0]
     assert target["coverage_gaps"]
-    assert len(target["low_coverage_items"]) == 13
+    assert len(target["low_coverage_items"]) == 14
     assert target["low_coverage_diagnostics"] == []
     assert target["recommended_scenarios"] == []
     assert result["low_coverage_items_path"] == (
@@ -1889,7 +1891,7 @@ def test_p4_1_dashboard_renders_concrete_items_and_writes_json(tmp_path):
         result["low_coverage_items_path"].read_text(encoding="utf-8")
     )
     assert payload["targets"][0]["name"] == "async-fifo"
-    assert len(payload["targets"][0]["low_coverage_items"]) == 13
+    assert len(payload["targets"][0]["low_coverage_items"]) == 14
 
     markdown = result["markdown_path"].read_text(encoding="utf-8")
     html_text = result["html_path"].read_text(encoding="utf-8")
@@ -2151,7 +2153,11 @@ def test_p4_2_dashboard_renders_recommendations_and_json(tmp_path):
         for item in target["scenario_recommendations"]
     ] == target["recommended_scenarios"]
     assert target["scenario_recommendations"][0]["matched_items"] == [
-        "cp_full"
+        "cp_full",
+        "cross_write_full",
+    ]
+    assert target["scenario_recommendations"][1]["matched_items"] == [
+        "cross_read_empty"
     ]
 
     payload = json.loads(

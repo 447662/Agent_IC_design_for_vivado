@@ -51,10 +51,63 @@
   ],
   "scenario_catalog": [
     {"id": "basic_ordered", "type": "functional", "purpose": "跨时钟有序写入与读取", "status": "PASS"},
-    {"id": "full_boundary", "type": "boundary", "purpose": "写满边界与 full 标志", "status": "PASS"},
-    {"id": "empty_boundary", "type": "boundary", "purpose": "读空边界与 empty 标志", "status": "PASS"},
-    {"id": "reset_recovery", "type": "recovery", "purpose": "复位后重新收发", "status": "PASS"},
-    {"id": "mixed_stress", "type": "stress", "purpose": "读写混合压力", "status": "PASS"}
+    {
+      "id": "full_boundary",
+      "type": "boundary",
+      "purpose": "写满边界与 full 标志",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["full", "write_full"],
+        "metrics": ["cover_point", "cross"],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "empty_boundary",
+      "type": "boundary",
+      "purpose": "读空边界与 empty 标志",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["empty", "read_empty"],
+        "metrics": ["cover_point", "cross"],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "reset_recovery",
+      "type": "recovery",
+      "purpose": "复位后重新收发",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["reset", "rst"],
+        "source_patterns": ["uvm/*sva*.sv"],
+        "metrics": ["statement", "branch", "condition", "toggle"],
+        "priority": "MEDIUM"
+      }
+    },
+    {
+      "id": "clock_ratio_sweep",
+      "type": "timing",
+      "purpose": "写快读慢、读快写慢、近似同频和相位错开",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["clock", "wr_clk", "rd_clk"],
+        "source_patterns": ["rtl/async_fifo.v"],
+        "metrics": ["toggle"],
+        "priority": "MEDIUM"
+      }
+    },
+    {
+      "id": "mixed_stress",
+      "type": "stress",
+      "purpose": "读写混合压力与随机 burst",
+      "status": "PASS",
+      "coverage_match": {
+        "metrics": ["statement", "branch", "condition", "toggle", "functional_group"],
+        "fallback": true,
+        "priority": "LOW"
+      }
+    }
   ],
   "coverage_metrics": [
     {"id": "statement", "label": "Statement coverage", "source": "Vivado xcrg", "status": "PASS"},

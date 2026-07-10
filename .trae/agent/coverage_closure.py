@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
+from coverage_recommendations import (
+    ScenarioRecommendation,
+    recommend_scenarios,
+)
 from xcrg_coverage import (
     CoverageDiagnostic,
     CoverageItem,
@@ -212,7 +216,12 @@ def _target_next_action(target: dict[str, Any]) -> str:
     if status == "INVALID":
         return "修复 coverage 报告格式后重新生成看板。"
     if status == "GAP":
-        return "进入 P4.1 提取低覆盖明细，再由 P4.2 映射 scenario_catalog 补测。"
+        scenarios = ", ".join(target.get("recommended_scenarios", []))
+        if scenarios:
+            return (
+                "基于 P4.1 低覆盖明细执行 P4.2 补测场景：{}。"
+            ).format(scenarios)
+        return "基于 P4.1 低覆盖明细继续补充 P4.2 场景映射规则。"
     if status == "MISSING":
         return "补齐缺失的 coverage metric 数据源，再重新评估 closure gap。"
     if status == "NOT_RUN":
@@ -336,6 +345,13 @@ def _collect_target(
         )
         low_coverage_items = extraction["items"]
         low_coverage_diagnostics = extraction["diagnostics"]
+    scenario_result = recommend_scenarios(
+        low_coverage_items,
+        list(target_info.get("scenario_catalog", [])),
+    )
+    scenario_recommendations: list[ScenarioRecommendation] = (
+        scenario_result["recommendations"]
+    )
 
     result = {
         "name": target_name,
@@ -355,7 +371,10 @@ def _collect_target(
         "coverage_gaps": coverage_gaps,
         "low_coverage_items": low_coverage_items,
         "low_coverage_diagnostics": low_coverage_diagnostics,
-        "recommended_scenarios": [],
+        "recommended_scenarios": scenario_result[
+            "recommended_scenarios"
+        ],
+        "scenario_recommendations": scenario_recommendations,
         "links": _report_links(project_dir, report_dir),
         "error": error,
     }
@@ -450,7 +469,8 @@ def render_coverage_closure_markdown(
                 "- 诊断：{}".format(_markdown_text(target["error"])),
                 "- 下一步：{}".format(target["next_action"]),
                 "- `recommended_scenarios`：{}".format(
-                    ", ".join(target["recommended_scenarios"]) or "待 P4.2 生成"
+                    ", ".join(target["recommended_scenarios"])
+                    or "无匹配场景"
                 ),
                 "",
                 "| Metric | Current | Target | Status | Gap | Source |",
@@ -489,6 +509,42 @@ def render_coverage_closure_markdown(
                         score=_percent(item["score"]),
                         details=_markdown_text(_item_detail(item)),
                         source_report=item["source_report"],
+                    )
+                )
+        if target["scenario_recommendations"]:
+            lines.extend(
+                [
+                    "",
+                    "### 推荐补测场景",
+                    "",
+                    "| Priority | Scenario ID | Type | Purpose | Evidence | Reason |",
+                    "|---|---|---|---|---|---|",
+                ]
+            )
+            for recommendation in target["scenario_recommendations"]:
+                lines.append(
+                    "| {priority} | `{scenario_id}` | {scenario_type} | "
+                    "{purpose} | {evidence} | {reason} |".format(
+                        priority=_markdown_text(
+                            recommendation["priority"]
+                        ),
+                        scenario_id=_markdown_text(
+                            recommendation["scenario_id"]
+                        ),
+                        scenario_type=_markdown_text(
+                            recommendation["scenario_type"]
+                        ),
+                        purpose=_markdown_text(
+                            recommendation["purpose"]
+                        ),
+                        evidence=_markdown_text(
+                            ", ".join(
+                                recommendation["matched_items"]
+                            )
+                        ),
+                        reason=_markdown_text(
+                            recommendation["reason"]
+                        ),
                     )
                 )
         if target["low_coverage_diagnostics"]:
@@ -583,6 +639,40 @@ def render_coverage_closure_html(
                     ),
                 )
             )
+        scenario_rows = []
+        for recommendation in target["scenario_recommendations"]:
+            scenario_rows.append(
+                "<tr><td>{priority}</td><td><code>{scenario_id}</code></td>"
+                "<td>{scenario_type}</td><td>{purpose}</td>"
+                "<td>{evidence}</td><td>{reason}</td></tr>".format(
+                    priority=html.escape(
+                        str(recommendation["priority"])
+                    ),
+                    scenario_id=html.escape(
+                        str(recommendation["scenario_id"])
+                    ),
+                    scenario_type=html.escape(
+                        str(recommendation["scenario_type"])
+                    ),
+                    purpose=html.escape(
+                        str(recommendation["purpose"])
+                    ),
+                    evidence=html.escape(
+                        ", ".join(recommendation["matched_items"])
+                    ),
+                    reason=html.escape(
+                        str(recommendation["reason"])
+                    ),
+                )
+            )
+        scenario_section = ""
+        if scenario_rows:
+            scenario_section = (
+                "<h3>推荐补测场景</h3><table><thead><tr>"
+                "<th>Priority</th><th>Scenario ID</th><th>Type</th>"
+                "<th>Purpose</th><th>Evidence</th><th>Reason</th>"
+                "</tr></thead><tbody>{}</tbody></table>"
+            ).format("".join(scenario_rows))
         low_coverage_section = ""
         if low_item_rows:
             low_coverage_section += (
@@ -622,6 +712,7 @@ def render_coverage_closure_html(
     <thead><tr><th>Metric</th><th>Current</th><th>Target</th><th>Status</th><th>Gap</th><th>Source</th></tr></thead>
     <tbody>{metric_rows}</tbody>
   </table>
+  {scenario_section}
   {low_coverage_section}
   <ul class="links">{links}</ul>
 </article>""".format(
@@ -638,6 +729,7 @@ def render_coverage_closure_html(
                 diagnostic=html.escape(str(target["error"])),
                 next_action=html.escape(str(target["next_action"])),
                 metric_rows="".join(metric_rows),
+                scenario_section=scenario_section,
                 low_coverage_section=low_coverage_section,
                 links=link_items,
             )
@@ -741,6 +833,12 @@ def write_coverage_closure_report(
                         "name": target["name"],
                         "low_coverage_items": target["low_coverage_items"],
                         "diagnostics": target["low_coverage_diagnostics"],
+                        "recommended_scenarios": target[
+                            "recommended_scenarios"
+                        ],
+                        "scenario_recommendations": target[
+                            "scenario_recommendations"
+                        ],
                     }
                     for target in targets
                 ],
