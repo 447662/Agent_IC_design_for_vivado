@@ -169,10 +169,16 @@ docs/vivado_async_fifo_lessons_learned.md
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m pytest tests/test_agent.py -v --basetemp .tmp-pytest
+python -X utf8 -m pytest tests/test_agent.py -v --basetemp .tmp-pytest
 ```
 
-当前完整回归：`80 passed`；P5.2 目标回归已通过 `47 passed, 33 deselected`。
+项目文本统一使用无 BOM 的 UTF-8。Windows PowerShell 5.x 直接读取中文文件时，请显式指定编码，例如：
+
+```powershell
+Get-Content -Encoding UTF8 README.md
+```
+
+当前完整回归：`98 passed`。
 
 ## RWaveAnalyzer / VCD_ANALYZER 整合
 

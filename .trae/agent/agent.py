@@ -23,8 +23,8 @@ from pathlib import Path
 
 def _configure_text_stream(stream):
     try:
-        stream.reconfigure(encoding="utf-8")
-    except AttributeError:
+        stream.reconfigure(encoding="utf-8", errors="replace", write_through=True)
+    except (AttributeError, OSError, ValueError):
         pass
 
 
@@ -32,11 +32,67 @@ _configure_text_stream(sys.stdout)
 _configure_text_stream(sys.stderr)
 
 
+class CommandRunner:
+    def __init__(self, default_timeout=120):
+        self.default_timeout = int(default_timeout)
+
+    @staticmethod
+    def _coerce_text(value):
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value)
+
+    def run(self, command, timeout=None, **kwargs):
+        effective_timeout = self.default_timeout if timeout is None else int(timeout)
+        kwargs["timeout"] = effective_timeout
+        if kwargs.get("text") or kwargs.get("universal_newlines"):
+            kwargs.setdefault("encoding", "utf-8")
+            kwargs.setdefault("errors", "replace")
+        try:
+            return subprocess.run(command, **kwargs)
+        except subprocess.TimeoutExpired as exc:
+            stdout = self._coerce_text(exc.stdout or exc.output)
+            timeout_message = "Command timed out after {} seconds: {}".format(
+                effective_timeout,
+                " ".join(str(part) for part in command),
+            )
+            stderr = self._coerce_text(exc.stderr)
+            if stderr:
+                timeout_message = "{}\n{}".format(timeout_message, stderr)
+            return subprocess.CompletedProcess(
+                command,
+                124,
+                stdout=stdout,
+                stderr=timeout_message,
+            )
+
+    def launch(self, command, **kwargs):
+        return subprocess.Popen(command, **kwargs)
+
+
+class TargetHandler:
+    def __init__(self, target_name, flows):
+        self.target_name = target_name
+        self.flows = dict(flows)
+
+    def run(self, flow, **kwargs):
+        handler = self.flows.get(flow)
+        if handler is None:
+            raise ValueError(
+                "Target {} does not support flow: {}".format(self.target_name, flow)
+            )
+        return handler(**kwargs)
+
+
 class DigitalICAgent:
-    def __init__(self, config_path=None):
+    def __init__(self, config_path=None, command_runner=None):
         self.base_dir = Path(__file__).resolve().parent
         self.trae_dir = self.base_dir.parent
         self.project_root = self.trae_dir.parent
+        self.command_runner = command_runner or CommandRunner()
+        self.vivado_timeout = int(os.environ.get("VIVADO_TIMEOUT_SECONDS", "1800"))
         self.config_path = Path(config_path) if config_path else self.base_dir / "agent.json"
         self.agent_config = self.load_config()
         self.skill_mapping = {skill["name"]: skill for skill in self.agent_config["skills"]}
@@ -44,6 +100,8 @@ class DigitalICAgent:
         self.cli_tools = self.agent_config["cliTools"]
         self.targets_dir = self.base_dir / "targets"
         self.targets = self.load_target_registry()
+        self.target_handlers = self.build_target_handlers()
+        self.validate_target_handlers()
         self.OK = "[OK]"
         self.NO = "[NO]"
         self.WARN = "[WARN]"
@@ -69,7 +127,7 @@ class DigitalICAgent:
                 vivado_command = self.resolve_vivado_command()
                 if vivado_command:
                     command[0] = vivado_command
-            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+            result = self.command_runner.run(command, capture_output=True, text=True, timeout=30, check=False)
             return result.returncode == 0
         except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError):
             return False
@@ -82,7 +140,7 @@ class DigitalICAgent:
 
         try:
             command = [mcp["command"], *mcp.get("args", []), "--version"]
-            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+            result = self.command_runner.run(command, capture_output=True, text=True, timeout=30, check=False)
             return result.returncode == 0
         except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
             return False
@@ -174,6 +232,127 @@ class DigitalICAgent:
             print("  flows: {}".format(", ".join(target.get("flows", []))))
             print("  note: {}".format(target.get("description", "")))
         return True
+
+    def build_target_handlers(self):
+        return {
+            "async-fifo": TargetHandler("async-fifo", {
+                "generate-rtl": lambda output_dir="outputs", data_width=8, addr_width=4, **_: self.write_async_fifo_project(
+                    output_dir,
+                    data_width=data_width,
+                    addr_width=addr_width,
+                ),
+                "sim-rtl": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_async_fifo_vivado_sim(
+                    output_dir=output_dir,
+                    open_wave_gui=open_wave_gui,
+                ),
+                "regress-rtl": lambda output_dir="outputs", open_wave_gui=False, **_: self.run_async_fifo_regression(
+                    output_dir=output_dir,
+                    open_wave_gui=open_wave_gui,
+                ),
+                "uvm-smoke": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_async_fifo_uvm_smoke(
+                    output_dir=output_dir,
+                    open_wave_gui=open_wave_gui,
+                ),
+                "uvm-coverage": lambda output_dir="outputs", coverage_threshold=None, coverage_percent=None, **_: self.run_async_fifo_uvm_coverage(
+                    output_dir=output_dir,
+                    coverage_threshold=coverage_threshold,
+                    coverage_percent=coverage_percent,
+                ),
+                "uvm-random-regress": lambda output_dir="outputs", seeds=None, **_: self.run_async_fifo_uvm_random_regression(
+                    output_dir=output_dir,
+                    seeds=seeds,
+                ),
+                "analyze-rtl-vcd": lambda output_dir="outputs", limit=20, waveform_backend="auto", **_: self.analyze_async_fifo_vcd(
+                    output_dir=output_dir,
+                    limit=limit,
+                    waveform_backend=waveform_backend,
+                ),
+                "check-rtl": lambda output_dir="outputs", **_: self.check_async_fifo_rtl(
+                    output_dir=output_dir,
+                ),
+                "open-wave": lambda output_dir="outputs", **_: self.open_async_fifo_project_gui(
+                    Path(output_dir) / "async-fifo",
+                ),
+                "open-uvm-wave": lambda output_dir="outputs", wave_kind="coverage", **_: self.open_async_fifo_uvm_wave_gui(
+                    Path(output_dir) / "async-fifo",
+                    wave_kind=wave_kind,
+                ),
+            }),
+            "sync-fifo": TargetHandler("sync-fifo", {
+                "generate-rtl": lambda output_dir="outputs", data_width=8, addr_width=4, **_: self.write_sync_fifo_project(
+                    output_dir,
+                    data_width=data_width,
+                    addr_width=addr_width,
+                ),
+                "sim-rtl": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_sync_fifo_vivado_sim(
+                    output_dir=output_dir,
+                    open_wave_gui=open_wave_gui,
+                ),
+                "analyze-rtl-vcd": lambda output_dir="outputs", limit=20, waveform_backend="auto", **_: self.analyze_sync_fifo_vcd(
+                    output_dir=output_dir,
+                    limit=limit,
+                    waveform_backend=waveform_backend,
+                ),
+                "check-rtl": lambda output_dir="outputs", **_: self.check_sync_fifo_rtl(
+                    output_dir=output_dir,
+                ),
+                "open-wave": lambda output_dir="outputs", **_: self.open_sync_fifo_project_gui(
+                    Path(output_dir) / "sync-fifo",
+                ),
+            }),
+            "round-robin-arbiter": TargetHandler("round-robin-arbiter", {
+                "generate-rtl": lambda output_dir="outputs", **_: self.write_round_robin_arbiter_project(
+                    output_dir,
+                ),
+                "sim-rtl": lambda output_dir="outputs", open_wave_gui=True, **_: self.run_round_robin_arbiter_vivado_sim(
+                    output_dir=output_dir,
+                    open_wave_gui=open_wave_gui,
+                ),
+                "analyze-rtl-vcd": lambda output_dir="outputs", limit=20, waveform_backend="auto", **_: self.analyze_round_robin_arbiter_vcd(
+                    output_dir=output_dir,
+                    limit=limit,
+                    waveform_backend=waveform_backend,
+                ),
+                "check-rtl": lambda output_dir="outputs", **_: self.check_round_robin_arbiter_rtl(
+                    output_dir=output_dir,
+                ),
+                "open-wave": lambda output_dir="outputs", **_: self.open_round_robin_arbiter_project_gui(
+                    Path(output_dir) / "round-robin-arbiter",
+                ),
+            }),
+        }
+
+    def validate_target_handlers(self):
+        if set(self.target_handlers) != set(self.targets):
+            missing_handlers = sorted(set(self.targets) - set(self.target_handlers))
+            unknown_handlers = sorted(set(self.target_handlers) - set(self.targets))
+            raise ValueError(
+                "Target handler registry mismatch; missing={}, unknown={}".format(
+                    missing_handlers,
+                    unknown_handlers,
+                )
+            )
+
+        for target_name, target in self.targets.items():
+            configured_flows = set(target.get("flows", []))
+            implemented_flows = set(self.target_handlers[target_name].flows)
+            if configured_flows != implemented_flows:
+                raise ValueError(
+                    "Target {} flow mismatch; configured={}, implemented={}".format(
+                        target_name,
+                        sorted(configured_flows),
+                        sorted(implemented_flows),
+                    )
+                )
+        return True
+
+    def run_target_flow(self, target, flow, **kwargs):
+        target_name = self.normalize_rtl_target(target)
+        if flow not in self.targets[target_name].get("flows", []):
+            raise ValueError(
+                "Target {} does not declare flow: {}".format(target_name, flow)
+            )
+        return self.target_handlers[target_name].run(flow, **kwargs)
 
     def resolve_skill_path(self, skill):
         """解析技能文件路径。"""
@@ -730,7 +909,7 @@ class DigitalICAgent:
         if not rwave_command:
             raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
 
-        result = subprocess.run(
+        result = self.command_runner.run(
             [rwave_command, "--json", *[str(arg) for arg in args]],
             cwd=self.project_root,
             capture_output=True,
@@ -753,7 +932,7 @@ class DigitalICAgent:
         if not rwave_command:
             raise FileNotFoundError("RWaveAnalyzer rwave binary not found")
 
-        result = subprocess.run(
+        result = self.command_runner.run(
             [rwave_command, "--batch", "--json", str(waveform_path)],
             input="\n".join(str(line) for line in command_lines) + "\n",
             cwd=self.project_root,
@@ -795,7 +974,7 @@ class DigitalICAgent:
         if not analyzer_path.exists():
             raise FileNotFoundError("VCD analyzer not found: {}".format(analyzer_path))
 
-        result = subprocess.run(
+        result = self.command_runner.run(
             [sys.executable, str(analyzer_path), "--json", *[str(arg) for arg in args]],
             cwd=self.project_root,
             capture_output=True,
@@ -1138,6 +1317,15 @@ class DigitalICAgent:
                 else:
                     print("  {}. {} {}".format(index, begin, values))
 
+        project_dir = Path(output_dir) / "round-robin-arbiter"
+        report_path = self.write_round_robin_arbiter_sim_report(
+            project_dir=project_dir,
+            vcd_path=vcd_path,
+            wave_db_path=self.resolve_round_robin_arbiter_wave_db(project_dir / "sim"),
+            analysis=analysis,
+            limit=limit,
+        )
+        print("Simulation report refreshed: {}".format(report_path))
         return True
 
     def analyze_async_fifo_vcd(self, output_dir="outputs", limit=20, waveform_backend="auto"):
@@ -3352,19 +3540,31 @@ exit 0
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
         return report_path
 
-    def write_round_robin_arbiter_sim_report(self, project_dir, vcd_path, wave_db_path, sim_result=None, project_result=None, limit=20):
+    def write_round_robin_arbiter_sim_report(
+        self,
+        project_dir,
+        vcd_path,
+        wave_db_path,
+        sim_result=None,
+        project_result=None,
+        limit=20,
+        analysis=None,
+    ):
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
         report_path = reports_dir / "sim_report.md"
         html_path = reports_dir / "sim_report.html"
 
-        analysis = None
         analysis_error = None
-        try:
-            analysis = self.collect_round_robin_arbiter_vcd_analysis(output_dir=project_dir.parent, limit=limit)
-        except (FileNotFoundError, RuntimeError) as exc:
-            analysis_error = str(exc)
+        if analysis is None:
+            try:
+                analysis = self.collect_round_robin_arbiter_vcd_analysis(
+                    output_dir=project_dir.parent,
+                    limit=limit,
+                )
+            except (FileNotFoundError, RuntimeError) as exc:
+                analysis_error = str(exc)
 
         lines = [
             "# round-robin-arbiter 仿真报告",
@@ -3563,15 +3763,122 @@ exit 0
             ok = ok and passed
         return ok
 
+    def check_rtl_project(
+        self,
+        target_name,
+        output_dir,
+        rtl_name,
+        tb_name,
+        sim_script_name,
+        project_script_name,
+        gui_script_name,
+        xpr_name,
+        vcd_name,
+        wave_db_resolver,
+        rtl_markers,
+        tb_markers,
+    ):
+        project_dir = Path(output_dir) / target_name
+        rtl_path = project_dir / "rtl" / rtl_name
+        tb_path = project_dir / "tb" / tb_name
+        sim_dir = project_dir / "sim"
+        sim_script_path = sim_dir / sim_script_name
+        project_script_path = sim_dir / project_script_name
+        gui_script_path = sim_dir / gui_script_name
+        xpr_path = project_dir / "vivado_project" / xpr_name
+        vcd_path = sim_dir / vcd_name
+        wave_db_path = wave_db_resolver(sim_dir)
+        report_path = project_dir / "reports" / "sim_report.md"
+
+        checks = [
+            ("RTL exists", rtl_path.exists(), rtl_path),
+            ("Testbench exists", tb_path.exists(), tb_path),
+            ("Vivado sim script exists", sim_script_path.exists(), sim_script_path),
+            ("Vivado project script exists", project_script_path.exists(), project_script_path),
+            ("Vivado GUI script exists", gui_script_path.exists(), gui_script_path),
+            ("Vivado project exists", xpr_path.exists(), xpr_path),
+            ("VCD exists", vcd_path.exists(), vcd_path),
+            ("WDB exists", wave_db_path.exists(), wave_db_path),
+            ("Simulation report exists", report_path.exists(), report_path),
+        ]
+
+        if rtl_path.exists():
+            rtl_text = rtl_path.read_text(encoding="utf-8")
+            checks.extend(
+                (label, token in rtl_text, rtl_path)
+                for label, token in rtl_markers
+            )
+
+        if tb_path.exists():
+            tb_text = tb_path.read_text(encoding="utf-8")
+            checks.extend(
+                (label, token in tb_text, tb_path)
+                for label, token in tb_markers
+            )
+
+        print("{} RTL check".format(target_name))
+        print("=" * 60)
+        ok = True
+        for label, passed, path in checks:
+            print("[{}] {}: {}".format("OK" if passed else "NO", label, path))
+            ok = ok and passed
+        return ok
+
+    def check_sync_fifo_rtl(self, output_dir="outputs"):
+        return self.check_rtl_project(
+            target_name="sync-fifo",
+            output_dir=output_dir,
+            rtl_name="sync_fifo.v",
+            tb_name="tb_sync_fifo.v",
+            sim_script_name="run_vivado_sync_fifo.tcl",
+            project_script_name="create_sync_fifo_project.tcl",
+            gui_script_name="open_sync_fifo_project_gui.tcl",
+            xpr_name="sync_fifo_project.xpr",
+            vcd_name="sync_fifo_trace.vcd",
+            wave_db_resolver=self.resolve_sync_fifo_wave_db,
+            rtl_markers=[
+                ("RTL declares sync_fifo", "module sync_fifo"),
+                ("RTL has full logic", "assign full"),
+                ("RTL has empty logic", "assign empty"),
+            ],
+            tb_markers=[
+                ("TB declares tb_sync_fifo", "module tb_sync_fifo"),
+                ("TB prints scoreboard pass", "SYNC_FIFO_SCOREBOARD_PASS"),
+                ("TB fatal on scoreboard fail", "SYNC_FIFO_SCOREBOARD_FAIL"),
+            ],
+        )
+
+    def check_round_robin_arbiter_rtl(self, output_dir="outputs"):
+        return self.check_rtl_project(
+            target_name="round-robin-arbiter",
+            output_dir=output_dir,
+            rtl_name="round_robin_arbiter.v",
+            tb_name="tb_round_robin_arbiter.v",
+            sim_script_name="run_vivado_round_robin_arbiter.tcl",
+            project_script_name="create_round_robin_arbiter_project.tcl",
+            gui_script_name="open_round_robin_arbiter_project_gui.tcl",
+            xpr_name="round_robin_arbiter_project.xpr",
+            vcd_name="round_robin_arbiter_trace.vcd",
+            wave_db_resolver=self.resolve_round_robin_arbiter_wave_db,
+            rtl_markers=[
+                ("RTL declares round_robin_arbiter", "module round_robin_arbiter"),
+                ("RTL has grant validity logic", "assign grant_valid"),
+                ("RTL has rotating grant logic", "grant_next"),
+            ],
+            tb_markers=[
+                ("TB declares tb_round_robin_arbiter", "module tb_round_robin_arbiter"),
+                ("TB prints scoreboard pass", "ROUND_ROBIN_ARBITER_SCOREBOARD_PASS"),
+                ("TB covers fairness window", "fairness_window"),
+                ("TB fatal on scoreboard fail", "ROUND_ROBIN_ARBITER_SCOREBOARD_FAIL"),
+            ],
+        )
+
     def open_rtl_wave(self, target, output_dir="outputs"):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.open_async_fifo_project_gui(Path(output_dir) / "async-fifo")
-        if target_name == "sync-fifo":
-            return self.open_sync_fifo_project_gui(Path(output_dir) / "sync-fifo")
-        if target_name == "round-robin-arbiter":
-            return self.open_round_robin_arbiter_project_gui(Path(output_dir) / "round-robin-arbiter")
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "open-wave",
+            output_dir=output_dir,
+        )
 
     def write_smoke_loop_vcd(self, output_dir):
         smoke_dir = Path(output_dir) / "smoke-loop"
@@ -3747,7 +4054,7 @@ endmodule
         sim_dir, rtl_path, tb_path, vcd_path = self.write_sim_smoke_sources(output_dir)
         sim_out = sim_dir / "handshake_smoke.vvp"
 
-        compile_result = subprocess.run(
+        compile_result = self.command_runner.run(
             ["iverilog", "-g2012", "-o", sim_out, rtl_path, tb_path],
             cwd=sim_dir,
             capture_output=True,
@@ -3759,7 +4066,7 @@ endmodule
             print(compile_result.stderr.strip() or "iverilog compile failed", file=sys.stderr)
             return False
 
-        run_result = subprocess.run(
+        run_result = self.command_runner.run(
             ["vvp", sim_out],
             cwd=sim_dir,
             capture_output=True,
@@ -3834,7 +4141,7 @@ add_wave -r /*
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        subprocess.Popen(
+        self.command_runner.launch(
             [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
             cwd=sim_dir,
         )
@@ -3849,12 +4156,13 @@ add_wave -r /*
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        result = subprocess.run(
+        result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-source", script_path.name],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         if result.returncode != 0:
@@ -4591,14 +4899,13 @@ vivado -mode gui -source open_async_fifo_project_gui.tcl
         return project_dir
 
     def generate_rtl_project(self, target, output_dir="outputs", data_width=8, addr_width=4):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.write_async_fifo_project(output_dir, data_width=data_width, addr_width=addr_width)
-        if target_name == "sync-fifo":
-            return self.write_sync_fifo_project(output_dir, data_width=data_width, addr_width=addr_width)
-        if target_name == "round-robin-arbiter":
-            return self.write_round_robin_arbiter_project(output_dir)
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "generate-rtl",
+            output_dir=output_dir,
+            data_width=data_width,
+            addr_width=addr_width,
+        )
 
     def render_sync_fifo_rtl(self, data_width=8, addr_width=4):
         return """`timescale 1ns/1ps
@@ -5381,7 +5688,7 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        subprocess.Popen(
+        self.command_runner.launch(
             [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
             cwd=sim_dir,
         )
@@ -5410,7 +5717,7 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        subprocess.Popen(
+        self.command_runner.launch(
             [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
             cwd=sim_dir,
         )
@@ -5439,7 +5746,7 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
             return False
 
-        subprocess.Popen(
+        self.command_runner.launch(
             [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
             cwd=sim_dir,
         )
@@ -5480,7 +5787,7 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found; cannot open UVM waveform GUI.", file=sys.stderr)
             return False
 
-        subprocess.Popen(
+        self.command_runner.launch(
             [vivado_command, "-mode", "gui", "-source", gui_script_path.name],
             cwd=sim_dir,
         )
@@ -5521,12 +5828,13 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = subprocess.run(
+        sim_result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-source", "run_vivado_async_fifo.tcl"],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         if sim_result.returncode != 0:
@@ -5542,12 +5850,13 @@ add_wave -r /tb_async_fifo_uvm
             print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
             return False
 
-        project_result = subprocess.run(
+        project_result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_async_fifo_project.tcl"],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         if project_result.returncode != 0:
@@ -5583,12 +5892,13 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = subprocess.run(
+        sim_result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-source", "run_vivado_sync_fifo.tcl"],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         if sim_result.returncode != 0:
@@ -5604,12 +5914,13 @@ add_wave -r /tb_async_fifo_uvm
             print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
             return False
 
-        project_result = subprocess.run(
+        project_result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_sync_fifo_project.tcl"],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         project_warning = None
@@ -5643,12 +5954,13 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = subprocess.run(
+        sim_result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-source", "run_vivado_round_robin_arbiter.tcl"],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         if sim_result.returncode != 0:
@@ -5664,12 +5976,13 @@ add_wave -r /tb_async_fifo_uvm
             print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
             return False
 
-        project_result = subprocess.run(
+        project_result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-nojournal", "-nolog", "-notrace", "-source", "create_round_robin_arbiter_project.tcl"],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         project_warning = None
@@ -5741,12 +6054,13 @@ add_wave -r /tb_async_fifo_uvm
             print("Vivado command not found.", file=sys.stderr)
             return False
 
-        sim_result = subprocess.run(
+        sim_result = self.command_runner.run(
             [vivado_command, "-mode", "batch", "-source", "run_vivado_async_fifo_uvm.tcl"],
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
         )
         if sim_result.returncode != 0:
@@ -5800,12 +6114,13 @@ add_wave -r /tb_async_fifo_uvm
             env["ASYNC_FIFO_UVM_SEED"] = str(int(seed))
             run_kwargs["env"] = env
 
-        sim_result = subprocess.run(
+        sim_result = self.command_runner.run(
             command,
             cwd=sim_dir,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            timeout=self.vivado_timeout,
             check=False,
             **run_kwargs,
         )
@@ -5881,63 +6196,53 @@ add_wave -r /tb_async_fifo_uvm
         return all_passed
 
     def run_rtl_sim(self, target, output_dir="outputs", open_wave_gui=True):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.run_async_fifo_vivado_sim(
-                output_dir=output_dir,
-                open_wave_gui=open_wave_gui,
-            )
-        if target_name == "sync-fifo":
-            return self.run_sync_fifo_vivado_sim(
-                output_dir=output_dir,
-                open_wave_gui=open_wave_gui,
-            )
-        if target_name == "round-robin-arbiter":
-            return self.run_round_robin_arbiter_vivado_sim(
-                output_dir=output_dir,
-                open_wave_gui=open_wave_gui,
-            )
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "sim-rtl",
+            output_dir=output_dir,
+            open_wave_gui=open_wave_gui,
+        )
 
     def run_uvm_smoke(self, target, output_dir="outputs", open_wave_gui=True):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.run_async_fifo_uvm_smoke(
-                output_dir=output_dir,
-                open_wave_gui=open_wave_gui,
-            )
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "uvm-smoke",
+            output_dir=output_dir,
+            open_wave_gui=open_wave_gui,
+        )
 
     def run_uvm_coverage(self, target, output_dir="outputs", coverage_threshold=None, coverage_percent=None):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.run_async_fifo_uvm_coverage(
-                output_dir=output_dir,
-                coverage_threshold=coverage_threshold,
-                coverage_percent=coverage_percent,
-            )
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "uvm-coverage",
+            output_dir=output_dir,
+            coverage_threshold=coverage_threshold,
+            coverage_percent=coverage_percent,
+        )
 
     def run_uvm_random_regression(self, target, output_dir="outputs", seeds=None):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.run_async_fifo_uvm_random_regression(output_dir=output_dir, seeds=seeds)
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "uvm-random-regress",
+            output_dir=output_dir,
+            seeds=seeds,
+        )
 
     def open_uvm_wave(self, target, output_dir="outputs", wave_kind="coverage"):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.open_async_fifo_uvm_wave_gui(Path(output_dir) / "async-fifo", wave_kind=wave_kind)
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "open-uvm-wave",
+            output_dir=output_dir,
+            wave_kind=wave_kind,
+        )
 
     def regress_rtl(self, target, output_dir="outputs", open_wave_gui=False):
-        target_name = self.normalize_rtl_target(target)
-        if target_name == "async-fifo":
-            return self.run_async_fifo_regression(
-                output_dir=output_dir,
-                open_wave_gui=open_wave_gui,
-            )
-        raise ValueError("Unsupported RTL target: {}".format(target))
+        return self.run_target_flow(
+            target,
+            "regress-rtl",
+            output_dir=output_dir,
+            open_wave_gui=open_wave_gui,
+        )
 
     def execute_workflow(self, user_input, output_dir="outputs", skip_tool_check=False):
         """执行完整工作流。"""
@@ -6213,36 +6518,24 @@ def main(argv=None):
 
     if args.analyze_rtl_vcd:
         try:
-            target_name = agent.normalize_rtl_target(args.analyze_rtl_vcd)
-            if target_name == "async-fifo":
-                return 0 if agent.analyze_async_fifo_vcd(
-                    output_dir=args.output_dir,
-                    limit=args.vcd_limit,
-                    waveform_backend=args.wave_backend,
-                ) else 1
-            if target_name == "sync-fifo":
-                return 0 if agent.analyze_sync_fifo_vcd(
-                    output_dir=args.output_dir,
-                    limit=args.vcd_limit,
-                    waveform_backend=args.wave_backend,
-                ) else 1
-            if target_name == "round-robin-arbiter":
-                return 0 if agent.analyze_round_robin_arbiter_vcd(
-                    output_dir=args.output_dir,
-                    limit=args.vcd_limit,
-                    waveform_backend=args.wave_backend,
-                ) else 1
-            raise ValueError("Unsupported RTL target: {}".format(args.analyze_rtl_vcd))
+            return 0 if agent.run_target_flow(
+                args.analyze_rtl_vcd,
+                "analyze-rtl-vcd",
+                output_dir=args.output_dir,
+                limit=args.vcd_limit,
+                waveform_backend=args.wave_backend,
+            ) else 1
         except (OSError, ValueError) as exc:
             print("RTL VCD analysis failed: {}".format(exc), file=sys.stderr)
             return 1
 
     if args.check_rtl:
         try:
-            target_name = agent.normalize_rtl_target(args.check_rtl)
-            if target_name != "async-fifo":
-                raise ValueError("Unsupported RTL target: {}".format(args.check_rtl))
-            return 0 if agent.check_async_fifo_rtl(output_dir=args.output_dir) else 1
+            return 0 if agent.run_target_flow(
+                args.check_rtl,
+                "check-rtl",
+                output_dir=args.output_dir,
+            ) else 1
         except (OSError, ValueError) as exc:
             print("RTL check failed: {}".format(exc), file=sys.stderr)
             return 1

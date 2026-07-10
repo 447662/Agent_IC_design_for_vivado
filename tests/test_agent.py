@@ -38,6 +38,117 @@ def run_agent(*args):
     )
 
 
+def write_round_robin_vcd_fixture(path):
+    scenario_bits = format(int.from_bytes(b"fairness_window", "big"), "0128b")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        """$date
+    P0 integration fixture
+$end
+$version
+    DigitalICAgent tests
+$end
+$timescale 1ns $end
+$scope module tb_round_robin_arbiter $end
+$var wire 1 ! grant_valid $end
+$var integer 32 " grant_count $end
+$var wire 4 # req [3:0] $end
+$var wire 4 $ grant [3:0] $end
+$var reg 128 % scenario_id [127:0] $end
+$upscope $end
+$enddefinitions $end
+#0
+0!
+b0 "
+b0000 #
+b0000 $
+b0 %
+#10
+1!
+b1 "
+b1111 #
+b0001 $
+b__SCENARIO__ %
+#20
+b10 "
+b0010 $
+#30
+0!
+""".replace("__SCENARIO__", scenario_bits),
+        encoding="utf-8",
+    )
+
+
+def test_configure_text_stream_uses_utf8_replacement_mode():
+    module = load_agent_module()
+    calls = []
+
+    class FakeStream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+
+    module._configure_text_stream(FakeStream())
+
+    assert calls == [{
+        "encoding": "utf-8",
+        "errors": "replace",
+        "write_through": True,
+    }]
+
+
+def test_command_runner_applies_timeout_and_utf8_defaults(monkeypatch):
+    module = load_agent_module()
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout="完成", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    runner = module.CommandRunner(default_timeout=17)
+
+    result = runner.run(["tool", "--version"], capture_output=True, text=True)
+
+    assert result.returncode == 0
+    assert captured["command"] == ["tool", "--version"]
+    assert captured["kwargs"]["timeout"] == 17
+    assert captured["kwargs"]["encoding"] == "utf-8"
+    assert captured["kwargs"]["errors"] == "replace"
+
+
+def test_command_runner_converts_timeout_to_failed_result(monkeypatch):
+    module = load_agent_module()
+
+    def fake_run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"], output="partial")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    runner = module.CommandRunner(default_timeout=9)
+
+    result = runner.run(["slow-tool"], capture_output=True, text=True)
+
+    assert result.returncode == 124
+    assert "timed out after 9 seconds" in result.stderr
+    assert result.stdout == "partial"
+
+
+def test_project_owned_text_files_are_valid_utf8():
+    paths = [ROOT / "README.md"]
+    paths.extend((ROOT / ".trae").rglob("*.py"))
+    paths.extend((ROOT / ".trae").rglob("*.json"))
+    paths.extend((ROOT / ".trae").rglob("*.md"))
+    paths.extend(
+        path
+        for path in (ROOT / "docs").rglob("*.md")
+        if "tools_archive" not in path.parts
+    )
+
+    for path in paths:
+        text = path.read_bytes().decode("utf-8")
+        assert "\ufffd" not in text, path
+
+
 def test_config_uses_portable_synthpilot_command():
     agent_config = json.loads(AGENT_CONFIG_PATH.read_text(encoding="utf-8"))
     trae_config = json.loads(TRAE_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -378,7 +489,7 @@ def test_run_sim_smoke_uses_icarus_and_analyzes_vcd(monkeypatch, tmp_path):
 
     monkeypatch.setattr(agent, "detect_simulator", lambda: "icarus")
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append([str(part) for part in command])
         if command[0] == "iverilog":
             assert "-o" in command
@@ -420,7 +531,7 @@ def test_run_sim_smoke_uses_vivado_and_analyzes_vcd(monkeypatch, tmp_path):
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: r"D:\vivado\2025.2\Vivado\bin\vivado.bat")
     monkeypatch.setattr(agent, "open_vivado_wave_gui", lambda sim_dir, vcd_path: gui_calls.append((Path(sim_dir), Path(vcd_path))) or True)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append([str(part) for part in command])
         assert command[0] == r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
         assert "-mode" in command
@@ -464,7 +575,7 @@ def test_run_vivado_sim_smoke_can_skip_wave_gui(monkeypatch, tmp_path):
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: r"D:\vivado\2025.2\Vivado\bin\vivado.bat")
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         vcd_path = tmp_path / "sim-smoke" / "handshake_trace.vcd"
         vcd_path.write_text("$date\nvivado sim smoke test\n$end\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="Vivado simulation done", stderr="")
@@ -624,6 +735,49 @@ def test_p5_target_registry_rejects_invalid_target_config(tmp_path):
         assert "missing required field: name" in str(exc)
     else:
         raise AssertionError("Expected invalid target config to raise ValueError")
+
+
+def test_target_handler_registry_matches_declared_flows():
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    assert set(agent.target_handlers) == set(agent.targets)
+    for target_name, target in agent.targets.items():
+        assert set(agent.target_handlers[target_name].flows) == set(target["flows"])
+
+
+def test_registered_check_rtl_flows_execute_for_all_targets(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    target_artifacts = {
+        "sync-fifo": {
+            "vcd": "sync_fifo_trace.vcd",
+            "wdb": "sync_fifo_smoke.wdb",
+            "xpr": "sync_fifo_project.xpr",
+        },
+        "round-robin-arbiter": {
+            "vcd": "round_robin_arbiter_trace.vcd",
+            "wdb": "round_robin_arbiter_smoke.wdb",
+            "xpr": "round_robin_arbiter_project.xpr",
+        },
+    }
+
+    for target, names in target_artifacts.items():
+        project_dir = agent.generate_rtl_project(target, tmp_path)
+        (project_dir / "sim" / names["vcd"]).write_text("$date\nfixture\n$end\n", encoding="utf-8")
+        (project_dir / "sim" / names["wdb"]).write_text("wdb", encoding="utf-8")
+        xpr_path = project_dir / "vivado_project" / names["xpr"]
+        xpr_path.parent.mkdir(parents=True, exist_ok=True)
+        xpr_path.write_text("<Project />\n", encoding="utf-8")
+        report_path = project_dir / "reports" / "sim_report.md"
+        report_path.write_text("# Simulation Report\n\n- Status: PASS\n", encoding="utf-8")
+
+        assert module.main([
+            "--check-rtl",
+            target,
+            "--output-dir",
+            str(tmp_path),
+        ]) == 0
 
 
 def test_cli_list_targets_outputs_registered_targets(capsys):
@@ -996,7 +1150,7 @@ def test_run_async_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypatch,
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append(([str(part) for part in command], Path(cwd)))
         if "run_vivado_async_fifo.tcl" in command:
             (Path(cwd) / "async_fifo_trace.vcd").write_text("$date\nasync fifo\n$end\n", encoding="utf-8")
@@ -1041,7 +1195,7 @@ def test_p5_2_run_sync_fifo_vivado_sim_creates_project_and_can_skip_gui(monkeypa
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append(([str(part) for part in command], Path(cwd)))
         if "run_vivado_sync_fifo.tcl" in command:
             (Path(cwd) / "sync_fifo_trace.vcd").write_text("$date\nsync fifo\n$end\n", encoding="utf-8")
@@ -1086,7 +1240,7 @@ def test_p5_3_run_round_robin_arbiter_vivado_sim_creates_project_and_can_skip_gu
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append(([str(part) for part in command], Path(cwd)))
         if "run_vivado_round_robin_arbiter.tcl" in command:
             (Path(cwd) / "round_robin_arbiter_trace.vcd").write_text("$date\nround robin arbiter\n$end\n", encoding="utf-8")
@@ -1233,6 +1387,28 @@ def test_p5_3_analyze_round_robin_arbiter_vcd_reports_grants_and_fairness(monkey
     assert any("tb_round_robin_arbiter.scenario_id" in str(arg) for arg in calls[2])
 
 
+def test_round_robin_real_vcd_analysis_refreshes_clean_report(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    project_dir = tmp_path / "round-robin-arbiter"
+    vcd_path = project_dir / "sim" / "round_robin_arbiter_trace.vcd"
+    write_round_robin_vcd_fixture(vcd_path)
+    wave_db_path = project_dir / "sim" / "round_robin_arbiter_smoke.wdb"
+    wave_db_path.write_text("wdb", encoding="utf-8")
+
+    assert agent.analyze_round_robin_arbiter_vcd(
+        output_dir=tmp_path,
+        limit=4,
+        waveform_backend="vcd-analyzer",
+    ) is True
+
+    report_path = project_dir / "reports" / "sim_report.md"
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "- 状态：PASS" in report_text
+    assert "PASS_WITH_ANALYSIS_WARNING" not in report_text
+    assert "- Backend: `vcd_analyzer`" in report_text
+
+
 def test_p5_3_cli_analyze_rtl_vcd_round_robin_arbiter_invokes_analyzer(monkeypatch, tmp_path):
     module = load_agent_module()
     calls = []
@@ -1334,7 +1510,7 @@ def test_async_fifo_regression_runs_parameter_matrix_and_writes_summary(monkeypa
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append(([str(part) for part in command], Path(cwd)))
         if "run_vivado_async_fifo.tcl" in command:
             (Path(cwd) / "async_fifo_trace.vcd").write_text("$date\nasync fifo\n$end\n", encoding="utf-8")
@@ -1756,7 +1932,7 @@ def test_run_async_fifo_uvm_smoke_writes_report_and_can_skip_gui(monkeypatch, tm
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append(([str(part) for part in command], Path(cwd)))
         (Path(cwd) / "async_fifo_uvm_smoke.log").write_text(
             "UVM_INFO async FIFO smoke\nASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\nASYNC_FIFO_UVM_TEST_DONE\n",
@@ -1831,7 +2007,7 @@ def test_run_async_fifo_uvm_coverage_writes_report(monkeypatch, tmp_path):
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         calls.append(([str(part) for part in command], Path(cwd)))
         sim_dir = Path(cwd)
         (sim_dir / "async_fifo_uvm_coverage.log").write_text(
@@ -2003,7 +2179,7 @@ def test_run_async_fifo_uvm_coverage_fails_when_threshold_not_met(monkeypatch, t
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         sim_dir = Path(cwd)
         (sim_dir / "async_fifo_uvm_coverage.log").write_text(
             "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\nASYNC_FIFO_UVM_TEST_DONE\n",
@@ -2035,7 +2211,7 @@ def test_run_async_fifo_uvm_coverage_uses_auto_percent_report(monkeypatch, tmp_p
 
     monkeypatch.setattr(agent, "resolve_vivado_command", lambda: vivado_path)
 
-    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, check=False):
+    def fake_run(command, cwd=None, capture_output=False, text=False, encoding=None, errors=None, timeout=None, check=False):
         sim_dir = Path(cwd)
         project_dir = sim_dir.parent
         reports_dir = project_dir / "reports"
