@@ -177,7 +177,8 @@ outputs/async-fifo/
 
 ## P4-P5 路线
 
-- P4.0-P4.4 已完成 coverage closure 看板、xcrg 低覆盖项提取、`scenario_catalog` 补测建议、分项 gate 和 coverage 历史趋势；下一步进入 P4.5 失败 seed 自动归档。
+- P4.0-P4.5 已完成 coverage closure 看板、xcrg 低覆盖项提取、`scenario_catalog` 补测建议、分项 gate、coverage 历史趋势和失败 seed 自动归档；下一步进入 P4.6 GUI 可见性自动化增强。
+- P4.5 的通用归档内核位于 `failure_archive.py`，失败运行固定写入 `failure_archives/<flow>/<run_id>/`，保存 manifest、log、WDB、coverage DB、Tcl、目标配置、`reproduce.ps1` 和 `open_wave.ps1`；成功 seed 不创建归档。
 - P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
 - P5 系列执行记录已落地到 `docs/roadmap/p5_series_execution_record.md`，用于跟踪 P5.0-P5.12 的状态和验收口径。
 - P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理目标元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。
@@ -199,6 +200,7 @@ outputs/async-fifo/
 - `project_overview.py` 负责注册目标发现、manifest 状态聚合、统一报告 surface 和顶层 Markdown/HTML。
 - `coverage_gates.py` 负责目标无关的分项 coverage gate 计算，统一输出 `PASS/FAIL/MISSING/SKIP`、gap 和诊断。
 - `coverage_history.py` 负责追加 `coverage_history.jsonl`，并生成带相邻运行 delta 的 `coverage_trend.md/html`。
+- `failure_archive.py` 负责目标和 flow 无关的失败运行材料复制、JSON manifest、重跑脚本和波形打开脚本生成。
 - `target_flows.py` 负责 target flow handler 注册和参数转发。
 - `target_checks.py` 负责通用 RTL/TB/Vivado/VCD/WDB 产物检查。
 - 后续模块化批次将继续迁移 waveform 执行 adapter、各类详细报告生成和 target RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
@@ -212,7 +214,7 @@ python -m mypy
 python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov-fail-under=68 --basetemp .tmp-pytest
 ```
 
-当前全量回归为 `172 passed`；既有 CI 分支覆盖率基线为 `74.39%`，门槛为 `68%`。Mypy 当前覆盖 21 个源文件。
+当前全量回归为 `175 passed`；本地全量分支覆盖率为 `79.07%`，门槛为 `68%`，`failure_archive.py` 定向覆盖率为 `89.0%`。Mypy 当前覆盖 22 个源文件。
 
 ## 问题复盘
 
