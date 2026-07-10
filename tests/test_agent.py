@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
 AGENT_RUNTIME_PATH = ROOT / ".trae" / "agent" / "agent_runtime.py"
 AGENT_CLI_PATH = ROOT / ".trae" / "agent" / "agent_cli.py"
+AGENT_ENTRYPOINT_PATH = ROOT / ".trae" / "agent" / "agent_entrypoint.py"
+AGENT_COMPOSITION_PATH = ROOT / ".trae" / "agent" / "agent_composition.py"
 AGENT_CONFIG_HELPERS_PATH = ROOT / ".trae" / "agent" / "agent_config.py"
 AGENT_REPORTS_PATH = ROOT / ".trae" / "agent" / "agent_reports.py"
 AGENT_WAVEFORM_PATH = ROOT / ".trae" / "agent" / "agent_waveform.py"
@@ -200,6 +202,29 @@ def test_cli_helpers_live_in_dedicated_module():
     args = cli.parse_args(["--list-targets"])
     assert args.list_targets is True
     assert cli.parse_seed_list("1, 2,3") == [1, 2, 3]
+
+
+def test_cli_entrypoint_and_composition_live_in_dedicated_modules(monkeypatch):
+    assert AGENT_ENTRYPOINT_PATH.exists()
+    assert AGENT_COMPOSITION_PATH.exists()
+
+    entrypoint = load_local_module("agent_entrypoint", AGENT_ENTRYPOINT_PATH)
+    composition = load_local_module("agent_composition", AGENT_COMPOSITION_PATH)
+    module = load_agent_module()
+
+    assert module.run_cli is entrypoint.run_cli
+    assert module.build_agent is composition.build_agent
+
+    calls = []
+
+    def fake_run_cli(argv, agent_factory):
+        calls.append((argv, agent_factory))
+        return 7
+
+    monkeypatch.setattr(module, "run_cli", fake_run_cli)
+
+    assert module.main(["--list-targets"]) == 7
+    assert calls == [(["--list-targets"], module.create_agent)]
 
 
 def test_config_helpers_live_in_dedicated_module():
@@ -570,6 +595,24 @@ def test_analyze_requirement_defaults_to_rtl_skill():
     agent = module.DigitalICAgent()
 
     assert agent.analyze_requirement("做一个计数器") == ["digital-ic-rtl-designer"]
+
+
+@pytest.mark.parametrize(
+    ("requirement", "expected_skills"),
+    [
+        ("不需要UVM，只做RTL", ["digital-ic-rtl-designer"]),
+        ("不要设计文档，只实现RTL", ["digital-ic-rtl-designer"]),
+        ("只生成设计文档，不要RTL和仿真", ["digital-ic-designer"]),
+    ],
+)
+def test_analyze_requirement_respects_negated_skill_keywords(
+    requirement,
+    expected_skills,
+):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    assert agent.analyze_requirement(requirement) == expected_skills
 
 
 def test_cli_list_skills_succeeds():
@@ -3286,6 +3329,38 @@ def test_p5_8_manifest_rejects_invalid_status_external_path_and_corrupt_json(
             "generate-rtl",
             output_dir=tmp_path,
             status="PASS",
+        )
+
+
+def test_artifact_manifest_rejects_relative_path_escape(tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    outside_path = tmp_path / "outside.log"
+    outside_path.write_text("outside", encoding="utf-8")
+    relative_escape = Path("..") / outside_path.name
+
+    with pytest.raises(ValueError, match="inside project directory"):
+        agent.record_artifact_run(
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            status="PASS",
+            extra_artifacts=[
+                {"id": "outside", "path": relative_escape, "status": "PASS"},
+            ],
+        )
+
+    target_info = dict(agent.get_target("sync-fifo"))
+    target_info["artifact_manifest"] = [
+        {"id": "outside", "path": relative_escape, "status": "PASS"},
+    ]
+    with pytest.raises(ValueError, match="inside project directory"):
+        agent.record_artifact_run(
+            "sync-fifo",
+            "generate-rtl",
+            output_dir=tmp_path,
+            status="PASS",
+            target_info=target_info,
         )
 
 
