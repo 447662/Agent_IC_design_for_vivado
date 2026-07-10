@@ -1,9 +1,16 @@
 import html
+import json
 import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
+
+from xcrg_coverage import (
+    CoverageDiagnostic,
+    CoverageItem,
+    extract_low_coverage_items,
+)
 
 
 SCORE_PATTERNS = {
@@ -101,6 +108,20 @@ def _markdown_text(value: object) -> str:
 
 def _percent(value: float | None) -> str:
     return "-" if value is None else "{:.1f}%".format(value)
+
+
+def _item_detail(item: dict[str, Any]) -> str:
+    details = item.get("details", {})
+    if not isinstance(details, dict):
+        return _clean_text(details)
+    parts = [
+        _clean_text(details.get("scope", "")),
+        _clean_text(details.get("name", "")),
+    ]
+    for field in ("expected", "uncovered", "covered", "goal"):
+        if field in details:
+            parts.append("{}={}".format(field, details[field]))
+    return "; ".join(part for part in parts if part)
 
 
 def _relative_href(report_dir: Path, path: Path) -> str:
@@ -299,6 +320,23 @@ def _collect_target(
         if current_total is not None
         else None
     )
+    coverage_gaps = [
+        metric
+        for metric in metric_rows
+        if metric["status"] in {"GAP", "MISSING"}
+    ]
+    low_coverage_items: list[CoverageItem] = []
+    low_coverage_diagnostics: list[CoverageDiagnostic] = []
+    xcrg_dir = reports_dir / "uvm_coverage_xcrg"
+    if expects_data and (has_data or xcrg_dir.is_dir()):
+        extraction = extract_low_coverage_items(
+            project_dir,
+            report_base=report_dir,
+            target_threshold=target_threshold,
+        )
+        low_coverage_items = extraction["items"]
+        low_coverage_diagnostics = extraction["diagnostics"]
+
     result = {
         "name": target_name,
         "display_name": str(
@@ -314,11 +352,9 @@ def _collect_target(
         "target_threshold": target_threshold,
         "gap": gap,
         "metrics": metric_rows,
-        "low_coverage_items": [
-            metric
-            for metric in metric_rows
-            if metric["status"] in {"GAP", "MISSING"}
-        ],
+        "coverage_gaps": coverage_gaps,
+        "low_coverage_items": low_coverage_items,
+        "low_coverage_diagnostics": low_coverage_diagnostics,
         "recommended_scenarios": [],
         "links": _report_links(project_dir, report_dir),
         "error": error,
@@ -433,6 +469,46 @@ def render_coverage_closure_markdown(
                     source=_markdown_text(metric["source"]),
                 )
             )
+        if target["low_coverage_items"]:
+            lines.extend(
+                [
+                    "",
+                    "### 低覆盖项",
+                    "",
+                    "| Source File | Instance | Metric | Score | Details | Source Report |",
+                    "|---|---|---|---:|---|---|",
+                ]
+            )
+            for item in target["low_coverage_items"]:
+                lines.append(
+                    "| {source_file} | {instance} | {metric} | {score} | "
+                    "{details} | [原始报告]({source_report}) |".format(
+                        source_file=_markdown_text(item["source_file"]) or "-",
+                        instance=_markdown_text(item["instance"]) or "-",
+                        metric=_markdown_text(item["metric"]),
+                        score=_percent(item["score"]),
+                        details=_markdown_text(_item_detail(item)),
+                        source_report=item["source_report"],
+                    )
+                )
+        if target["low_coverage_diagnostics"]:
+            lines.extend(
+                [
+                    "",
+                    "### 低覆盖项解析诊断",
+                    "",
+                    "| Status | Message | Source Report |",
+                    "|---|---|---|",
+                ]
+            )
+            for diagnostic in target["low_coverage_diagnostics"]:
+                lines.append(
+                    "| {status} | {message} | [原始报告]({source_report}) |".format(
+                        status=_markdown_text(diagnostic["status"]),
+                        message=_markdown_text(diagnostic["message"]),
+                        source_report=diagnostic["source_report"],
+                    )
+                )
         if target["links"]:
             lines.extend(["", "### 产物入口", ""])
             for link in target["links"]:
@@ -477,6 +553,50 @@ def render_coverage_closure_html(
                     source=html.escape(str(metric["source"])),
                 )
             )
+        low_item_rows = []
+        for item in target["low_coverage_items"]:
+            low_item_rows.append(
+                "<tr><td>{source_file}</td><td>{instance}</td>"
+                "<td>{metric}</td><td>{score}</td><td>{details}</td>"
+                '<td><a href="{source_report}">原始报告</a></td></tr>'.format(
+                    source_file=html.escape(str(item["source_file"] or "-")),
+                    instance=html.escape(str(item["instance"] or "-")),
+                    metric=html.escape(str(item["metric"])),
+                    score=html.escape(_percent(item["score"])),
+                    details=html.escape(_item_detail(item)),
+                    source_report=html.escape(
+                        str(item["source_report"]),
+                        quote=True,
+                    ),
+                )
+            )
+        diagnostic_rows = []
+        for diagnostic in target["low_coverage_diagnostics"]:
+            diagnostic_rows.append(
+                "<tr><td>{status}</td><td>{message}</td>"
+                '<td><a href="{source_report}">原始报告</a></td></tr>'.format(
+                    status=html.escape(str(diagnostic["status"])),
+                    message=html.escape(str(diagnostic["message"])),
+                    source_report=html.escape(
+                        str(diagnostic["source_report"]),
+                        quote=True,
+                    ),
+                )
+            )
+        low_coverage_section = ""
+        if low_item_rows:
+            low_coverage_section += (
+                "<h3>低覆盖项</h3><table><thead><tr>"
+                "<th>Source File</th><th>Instance</th><th>Metric</th>"
+                "<th>Score</th><th>Details</th><th>Source Report</th>"
+                "</tr></thead><tbody>{}</tbody></table>"
+            ).format("".join(low_item_rows))
+        if diagnostic_rows:
+            low_coverage_section += (
+                "<h3>低覆盖项解析诊断</h3><table><thead><tr>"
+                "<th>Status</th><th>Message</th><th>Source Report</th>"
+                "</tr></thead><tbody>{}</tbody></table>"
+            ).format("".join(diagnostic_rows))
         link_items = "".join(
             '<li><a href="{href}">{label}</a></li>'.format(
                 href=html.escape(link["href"], quote=True),
@@ -502,6 +622,7 @@ def render_coverage_closure_html(
     <thead><tr><th>Metric</th><th>Current</th><th>Target</th><th>Status</th><th>Gap</th><th>Source</th></tr></thead>
     <tbody>{metric_rows}</tbody>
   </table>
+  {low_coverage_section}
   <ul class="links">{links}</ul>
 </article>""".format(
                 klass=_status_class(str(target["status"])),
@@ -517,6 +638,7 @@ def render_coverage_closure_html(
                 diagnostic=html.escape(str(target["error"])),
                 next_action=html.escape(str(target["next_action"])),
                 metric_rows="".join(metric_rows),
+                low_coverage_section=low_coverage_section,
                 links=link_items,
             )
         )
@@ -608,6 +730,27 @@ def write_coverage_closure_report(
         ),
         encoding="utf-8",
     )
+    low_coverage_items_path = report_dir / "low_coverage_items.json"
+    low_coverage_items_path.write_text(
+        json.dumps(
+            {
+                "generated_at": generated_at,
+                "target_threshold": float(target_threshold),
+                "targets": [
+                    {
+                        "name": target["name"],
+                        "low_coverage_items": target["low_coverage_items"],
+                        "diagnostics": target["low_coverage_diagnostics"],
+                    }
+                    for target in targets
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return {
         "status": status,
         "target_count": len(targets),
@@ -626,4 +769,5 @@ def write_coverage_closure_report(
         "targets": targets,
         "markdown_path": markdown_path,
         "html_path": html_path,
+        "low_coverage_items_path": low_coverage_items_path,
     }
