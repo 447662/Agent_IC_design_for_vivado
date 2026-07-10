@@ -23,6 +23,7 @@ WAVEFORM_SAMPLES_PATH = ROOT / ".trae" / "agent" / "waveform_samples.py"
 COVERAGE_CLOSURE_PATH = ROOT / ".trae" / "agent" / "coverage_closure.py"
 COVERAGE_HISTORY_PATH = ROOT / ".trae" / "agent" / "coverage_history.py"
 FAILURE_ARCHIVE_PATH = ROOT / ".trae" / "agent" / "failure_archive.py"
+WAVE_VISIBILITY_PATH = ROOT / ".trae" / "agent" / "wave_visibility.py"
 XCRG_COVERAGE_PATH = ROOT / ".trae" / "agent" / "xcrg_coverage.py"
 COVERAGE_RECOMMENDATIONS_PATH = (
     ROOT / ".trae" / "agent" / "coverage_recommendations.py"
@@ -3844,6 +3845,8 @@ def test_async_fifo_wave_visibility_report_validates_gui_preflight(tmp_path):
     agent = module.DigitalICAgent()
     project_dir = agent.generate_rtl_project("async-fifo", tmp_path)
     sim_dir = project_dir / "sim"
+    reports_dir = project_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
     xpr = project_dir / "vivado_project" / "async_fifo_project.xpr"
     xpr.parent.mkdir(parents=True, exist_ok=True)
     xpr.write_text("<Project />\n", encoding="utf-8")
@@ -3862,17 +3865,190 @@ def test_async_fifo_wave_visibility_report_validates_gui_preflight(tmp_path):
         ]),
         encoding="utf-8",
     )
+    (reports_dir / "wave_open_check.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target_name": "async-fifo",
+                "flow_name": "sim-rtl",
+                "wave_database": str(sim_dir / "async_fifo_smoke_20260709_000000.wdb"),
+                "wdb_opened": True,
+                "scope_count": 3,
+                "object_count": 48,
+                "wave_count": 31,
+                "wave_config_count": 1,
+                "diagnostics": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (reports_dir / "wave_screenshot_metrics.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "window_title": "Vivado 2025.2",
+                "width": 1600,
+                "height": 900,
+                "sampled_pixels": 4096,
+                "unique_colors": 128,
+                "non_uniform_pixels": 3011,
+                "non_uniform_ratio": 0.7351,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     report = agent.write_async_fifo_wave_visibility_report(project_dir)
     text = report["markdown_path"].read_text(encoding="utf-8")
     html_text = report["html_path"].read_text(encoding="utf-8")
 
     assert report["visible"] is True
+    assert report["runtime_status"] == "PASS"
+    assert report["screenshot_status"] == "PASS"
     assert "\u6ce2\u5f62\u53ef\u89c1\u6027\u9a8c\u6536" in text
     assert "open_project" in text
     assert "open_wave_database" in text
     assert "- WCFG \u72b6\u6001\uff1aPASS" in text
+    assert "Scope 数：3" in text
+    assert "Object 数：48" in text
+    assert "Wave 数：31" in text
+    assert "非均匀像素比例：73.51%" in text
     assert "class=\"visibility-card pass\"" in html_text
+
+
+def test_p4_6_wave_open_check_evaluates_runtime_and_screenshot_metrics(tmp_path):
+    module = load_local_module("wave_visibility_p4_6", WAVE_VISIBILITY_PATH)
+    probe_path = tmp_path / "wave_open_check.json"
+    metrics_path = tmp_path / "wave_screenshot_metrics.json"
+    probe_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target_name": "sync-fifo",
+                "flow_name": "formal-smoke",
+                "wave_database": "sync_fifo.wdb",
+                "wdb_opened": True,
+                "scope_count": 2,
+                "object_count": 18,
+                "wave_count": 12,
+                "wave_config_count": 1,
+                "diagnostics": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "window_title": "Vivado",
+                "width": 1280,
+                "height": 720,
+                "sampled_pixels": 2048,
+                "unique_colors": 64,
+                "non_uniform_pixels": 1024,
+                "non_uniform_ratio": 0.5,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = module.evaluate_wave_open_check(
+        probe_path,
+        screenshot_metrics_path=metrics_path,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["runtime_status"] == "PASS"
+    assert result["screenshot_status"] == "PASS"
+    assert result["visible"] is True
+    assert result["probe"]["target_name"] == "sync-fifo"
+    assert result["probe"]["flow_name"] == "formal-smoke"
+    assert result["probe"]["scope_count"] == 2
+    assert result["probe"]["object_count"] == 18
+    assert result["probe"]["wave_count"] == 12
+    assert result["screenshot_metrics"]["unique_colors"] == 64
+
+
+def test_p4_6_wave_open_check_rejects_empty_runtime_and_blank_screenshot(tmp_path):
+    module = load_local_module("wave_visibility_empty_p4_6", WAVE_VISIBILITY_PATH)
+    probe_path = tmp_path / "wave_open_check.json"
+    metrics_path = tmp_path / "wave_screenshot_metrics.json"
+    probe_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target_name": "round-robin-arbiter",
+                "flow_name": "sim-rtl",
+                "wave_database": "arbiter.wdb",
+                "wdb_opened": True,
+                "scope_count": 0,
+                "object_count": 0,
+                "wave_count": 0,
+                "wave_config_count": 0,
+                "diagnostics": ["get_scopes returned no scopes"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "window_title": "Vivado",
+                "width": 1280,
+                "height": 720,
+                "sampled_pixels": 2048,
+                "unique_colors": 1,
+                "non_uniform_pixels": 0,
+                "non_uniform_ratio": 0.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = module.evaluate_wave_open_check(
+        probe_path,
+        screenshot_metrics_path=metrics_path,
+    )
+
+    assert result["status"] == "FAIL"
+    assert result["runtime_status"] == "FAIL"
+    assert result["screenshot_status"] == "FAIL"
+    assert result["visible"] is False
+    assert {"scope_count", "object_count", "wave_count", "wave_config_count"} <= {
+        item["id"] for item in result["checks"] if item["status"] == "FAIL"
+    }
+    assert "unique_colors" in {
+        item["id"] for item in result["screenshot_checks"] if item["status"] == "FAIL"
+    }
+
+
+def test_p4_6_wave_probe_and_capture_scripts_are_flow_agnostic():
+    module = load_local_module("wave_visibility_scripts_p4_6", WAVE_VISIBILITY_PATH)
+
+    probe_tcl = module.render_wave_open_probe_tcl(
+        "../reports/wave_open_check.json",
+        target_name="sync-fifo",
+        flow_name="formal-smoke",
+    )
+    capture_script = module.render_window_capture_script(
+        screenshot_name="formal_wave.png",
+        metrics_name="formal_wave_metrics.json",
+    )
+
+    assert "get_scopes" in probe_tcl
+    assert "get_objects" in probe_tcl
+    assert "get_waves" in probe_tcl
+    assert "wave_config_count" in probe_tcl
+    assert "formal-smoke" in probe_tcl
+    assert "GetForegroundWindow" in capture_script
+    assert "GetWindowRect" in capture_script
+    assert "unique_colors" in capture_script
+    assert "non_uniform_ratio" in capture_script
+    source = WAVE_VISIBILITY_PATH.read_text(encoding="utf-8")
+    assert "tb_async_fifo" not in source
+    assert "async_fifo" not in source
 
 
 def test_async_fifo_wave_screenshot_report_embeds_png_and_capture_script(tmp_path):
@@ -3883,6 +4059,21 @@ def test_async_fifo_wave_screenshot_report_embeds_png_and_capture_script(tmp_pat
     reports_dir.mkdir(parents=True, exist_ok=True)
     screenshot_path = reports_dir / "wave_visibility.png"
     screenshot_path.write_bytes(b"\x89PNG\r\n\x1a\nfake-png")
+    (reports_dir / "wave_screenshot_metrics.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "window_title": "Vivado 2025.2",
+                "width": 1600,
+                "height": 900,
+                "sampled_pixels": 4096,
+                "unique_colors": 128,
+                "non_uniform_pixels": 3011,
+                "non_uniform_ratio": 0.7351,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     report = agent.write_async_fifo_wave_screenshot_report(project_dir)
     text = report["markdown_path"].read_text(encoding="utf-8")
@@ -3890,10 +4081,14 @@ def test_async_fifo_wave_screenshot_report_embeds_png_and_capture_script(tmp_pat
     script_text = report["capture_script_path"].read_text(encoding="utf-8")
 
     assert report["captured"] is True
+    assert report["screenshot_status"] == "PASS"
     assert "GUI 波形截图验收" in text
     assert "- 状态：PASS" in text
     assert "wave_visibility.png" in text
+    assert "非均匀像素比例：73.51%" in text
     assert "CopyFromScreen" in script_text
+    assert "GetForegroundWindow" in script_text
+    assert "wave_screenshot_metrics.json" in script_text
     assert "class=\"screenshot-card pass\"" in html_text
     assert "<img" in html_text
     assert "wave_visibility.png" in html_text
@@ -5377,6 +5572,10 @@ def test_open_async_fifo_uvm_wave_gui_uses_uvm_wdb(monkeypatch, tmp_path):
     assert "async_fifo_uvm_coverage.wdb" in script_text
     assert "open_wave_database $wave_db" in script_text
     assert "add_wave -r /tb_async_fifo_uvm" in script_text
+    assert "uvm_coverage_wave_open_check.json" in script_text
+    assert "get_scopes" in script_text
+    assert "get_objects" in script_text
+    assert "get_waves" in script_text
     assert calls == [([vivado_path, "-mode", "gui", "-source", script.name], sim_dir)]
 
 
@@ -5390,10 +5589,44 @@ def test_async_fifo_uvm_wave_screenshot_report_embeds_png_and_capture_script(tmp
     sim_dir.mkdir(parents=True)
     (sim_dir / "async_fifo_uvm_coverage.wdb").write_text("wdb", encoding="utf-8")
     (reports_dir / "uvm_wave_visibility.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    (reports_dir / "uvm_coverage_wave_open_check.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target_name": "async-fifo",
+                "flow_name": "uvm-coverage",
+                "wave_database": str(sim_dir / "async_fifo_uvm_coverage.wdb"),
+                "wdb_opened": True,
+                "scope_count": 2,
+                "object_count": 40,
+                "wave_count": 40,
+                "wave_config_count": 1,
+                "diagnostics": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (reports_dir / "uvm_wave_screenshot_metrics.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "window_title": "Vivado 2025.2",
+                "width": 1600,
+                "height": 900,
+                "sampled_pixels": 4096,
+                "unique_colors": 96,
+                "non_uniform_pixels": 2440,
+                "non_uniform_ratio": 0.5957,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     report = agent.write_async_fifo_uvm_wave_screenshot_report(project_dir, wave_kind="coverage")
 
     assert report["captured"] is True
+    assert report["runtime_status"] == "PASS"
+    assert report["screenshot_status"] == "PASS"
     assert report["markdown_path"].name == "uvm_wave_screenshot.md"
     assert report["html_path"].name == "uvm_wave_screenshot.html"
     assert report["capture_script_path"].name == "capture_uvm_wave_screenshot.ps1"
@@ -5403,8 +5636,18 @@ def test_async_fifo_uvm_wave_screenshot_report_embeds_png_and_capture_script(tmp
     assert "async-fifo UVM GUI 波形截图验收" in text
     assert "--open-uvm-wave async-fifo --uvm-wave-kind coverage" in text
     assert "uvm_wave_visibility.png" in text
+    assert "Scope 数：2" in text
+    assert "非均匀像素比例：59.57%" in text
     assert "uvm_wave_visibility.png" in html_text
     assert "capture_uvm_wave_screenshot.ps1" in script_text
+    assert "GetForegroundWindow" in script_text
+    assert "uvm_wave_screenshot_metrics.json" in script_text
+
+
+def test_p4_6_wave_visibility_module_is_in_mypy_scope():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '".trae/agent/wave_visibility.py"' in pyproject
 
 
 def test_cli_uvm_random_regress_and_open_uvm_wave(monkeypatch, tmp_path):
