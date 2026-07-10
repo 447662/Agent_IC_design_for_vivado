@@ -169,7 +169,9 @@ docs/vivado_async_fifo_lessons_learned.md
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -X utf8 -m pytest tests/test_agent.py -v --basetemp .tmp-pytest
+python -m ruff check .trae/agent tests
+python -m mypy
+python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov-fail-under=68 --basetemp .tmp-pytest
 ```
 
 项目文本统一使用无 BOM 的 UTF-8。Windows PowerShell 5.x 直接读取中文文件时，请显式指定编码，例如：
@@ -178,7 +180,9 @@ python -X utf8 -m pytest tests/test_agent.py -v --basetemp .tmp-pytest
 Get-Content -Encoding UTF8 README.md
 ```
 
-当前完整回归：`106 passed`。
+当前完整回归：`110 passed`；分支覆盖率基线为 `70.8%`，CI 门槛为 `68%`。
+
+GitHub Actions 会在 Python 3.11 和 3.13 上运行 Ruff、Mypy、完整 pytest 与覆盖率门槛，配置见 `.github/workflows/python-quality.yml`。
 
 ## RWaveAnalyzer / VCD_ANALYZER 整合
 

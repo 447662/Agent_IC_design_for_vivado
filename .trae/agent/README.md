@@ -160,6 +160,17 @@ outputs/async-fifo/
 - `target_checks.py` 负责通用 RTL/TB/Vivado/VCD/WDB 产物检查。
 - 后续模块化批次将继续迁移 waveform 执行 adapter、各类详细报告生成和 target RTL/Vivado runner；迁移期间保持 `agent.py` 的现有公开 API。
 
+## 工程质量
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m ruff check .trae/agent tests
+python -m mypy
+python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov-fail-under=68 --basetemp .tmp-pytest
+```
+
+当前质量基线为 `110 passed`，分支覆盖率 `70.8%`，CI 覆盖率门槛 `68%`。Mypy 当前覆盖 8 个已拆分模块，后续随 `DigitalICAgent` 继续拆分逐步扩大范围。
+
 ## 问题复盘
 
 Vivado/async FIFO 仿真过程中遇到的问题已沉淀到：
