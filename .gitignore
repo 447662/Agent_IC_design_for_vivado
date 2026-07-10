@@ -9,6 +9,7 @@ __pycache__/
 coverage.xml
 htmlcov/
 .tmp-*/
+.tmp/
 .tmp-pytest/
 .tmp-agent-output/
 outputs/

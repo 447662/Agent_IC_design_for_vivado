@@ -9,6 +9,7 @@ line-length = 100
 extend-exclude = [
     "OpenCLI",
     "outputs",
+    ".tmp",
     ".tmp-*",
     "VCD_ANALYZER-main",
     "RWaveAnalyzer-main",
