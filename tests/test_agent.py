@@ -10,7 +10,11 @@ AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
 AGENT_RUNTIME_PATH = ROOT / ".trae" / "agent" / "agent_runtime.py"
 AGENT_CLI_PATH = ROOT / ".trae" / "agent" / "agent_cli.py"
 AGENT_CONFIG_HELPERS_PATH = ROOT / ".trae" / "agent" / "agent_config.py"
+AGENT_REPORTS_PATH = ROOT / ".trae" / "agent" / "agent_reports.py"
+AGENT_WAVEFORM_PATH = ROOT / ".trae" / "agent" / "agent_waveform.py"
 TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
+TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
+TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 AGENT_CONFIG_PATH = ROOT / ".trae" / "agent" / "agent.json"
 AGENT_TARGETS_DIR = ROOT / ".trae" / "agent" / "targets"
 TRAE_CONFIG_PATH = ROOT / ".trae" / "config.json"
@@ -196,6 +200,107 @@ def test_config_helpers_live_in_dedicated_module():
         "uvx",
         "synthpilot",
     ]
+
+
+def test_report_renderer_lives_in_dedicated_module():
+    assert AGENT_REPORTS_PATH.exists()
+
+    reports = load_local_module("agent_reports", AGENT_REPORTS_PATH)
+    module = load_agent_module()
+
+    assert (
+        module.render_markdown_html_document
+        is reports.render_markdown_document_html
+    )
+    html_text = reports.render_markdown_document_html(
+        "验证报告",
+        "# 标题\n\n| 项目 | 状态 |\n| --- | --- |\n| smoke | PASS |\n",
+    )
+    assert "<title>验证报告</title>" in html_text
+    assert "<th>项目</th>" in html_text
+    assert "<td>PASS</td>" in html_text
+
+
+def test_waveform_resolvers_live_in_dedicated_module(tmp_path):
+    assert AGENT_WAVEFORM_PATH.exists()
+
+    waveform = load_local_module("agent_waveform", AGENT_WAVEFORM_PATH)
+    module = load_agent_module()
+
+    assert module.get_vcd_analyzer_path is waveform.resolve_vcd_analyzer_path
+    assert module.get_rwave_source_dir is waveform.resolve_rwave_source_dir
+    assert module.get_rwave_command is waveform.resolve_rwave_command
+
+    source_dir = tmp_path / "RWaveAnalyzer-main" / "RWaveAnalyzer-main"
+    (source_dir / "crates" / "rwave").mkdir(parents=True)
+    (source_dir / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+    binary = source_dir / "target" / "release" / "rwave.exe"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("binary", encoding="utf-8")
+
+    assert waveform.resolve_rwave_source_dir(tmp_path) == source_dir
+    assert waveform.resolve_rwave_command(
+        tmp_path,
+        env={},
+        which=lambda _: None,
+    ) == str(binary)
+
+
+def test_target_flow_builder_lives_in_dedicated_module():
+    assert TARGET_FLOWS_PATH.exists()
+
+    flows = load_local_module("target_flows", TARGET_FLOWS_PATH)
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    assert (
+        module.build_registered_target_handlers
+        is flows.build_target_handlers
+    )
+    assert set(flows.build_target_handlers(agent)) == {
+        "async-fifo",
+        "round-robin-arbiter",
+        "sync-fifo",
+    }
+
+
+def test_generic_target_checks_live_in_dedicated_module(tmp_path):
+    assert TARGET_CHECKS_PATH.exists()
+
+    target_checks = load_local_module("target_checks", TARGET_CHECKS_PATH)
+    module = load_agent_module()
+
+    assert module.run_rtl_project_checks is target_checks.check_rtl_project
+
+    project_dir = tmp_path / "demo"
+    rtl_path = project_dir / "rtl" / "demo.v"
+    tb_path = project_dir / "tb" / "tb_demo.v"
+    sim_dir = project_dir / "sim"
+    vivado_dir = project_dir / "vivado_project"
+    reports_dir = project_dir / "reports"
+    for directory in (rtl_path.parent, tb_path.parent, sim_dir, vivado_dir, reports_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+    rtl_path.write_text("module demo; endmodule\n", encoding="utf-8")
+    tb_path.write_text("module tb_demo; endmodule\n", encoding="utf-8")
+    for name in ("run.tcl", "project.tcl", "gui.tcl", "trace.vcd", "trace.wdb"):
+        (sim_dir / name).write_text("fixture\n", encoding="utf-8")
+    (vivado_dir / "demo.xpr").write_text("<Project />\n", encoding="utf-8")
+    (reports_dir / "sim_report.md").write_text("# PASS\n", encoding="utf-8")
+
+    assert target_checks.check_rtl_project(
+        target_name="demo",
+        output_dir=tmp_path,
+        rtl_name="demo.v",
+        tb_name="tb_demo.v",
+        sim_script_name="run.tcl",
+        project_script_name="project.tcl",
+        gui_script_name="gui.tcl",
+        xpr_name="demo.xpr",
+        vcd_name="trace.vcd",
+        wave_db_resolver=lambda current_sim_dir: current_sim_dir / "trace.wdb",
+        rtl_markers=[("RTL marker", "module demo")],
+        tb_markers=[("TB marker", "module tb_demo")],
+    ) is True
 
 
 def test_project_owned_text_files_are_valid_utf8():
