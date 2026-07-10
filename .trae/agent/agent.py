@@ -48,6 +48,7 @@ from coverage_gates import (
 )
 from coverage_history import append_coverage_history
 from environment_report import write_environment_report as build_environment_report
+from failure_archive import archive_failed_run
 from project_overview import write_project_overview as build_project_overview
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
 from adapters.report import (
@@ -2792,25 +2793,46 @@ exit 0
             "- 通过 seed：{}/{}".format(passed, total),
             "- 输出策略：每个 seed 使用独立目录，避免日志、WDB 和 coverage DB 相互覆盖。",
             "",
-            "| Seed | Status | Log | WDB | Project |",
-            "|---:|---|---|---|---|",
+            "| Seed | Status | Log | WDB | Project | Failure Archive | Reproduce | Open WDB |",
+            "|---:|---|---|---|---|---|---|---|",
         ]
         for item in results:
             lines.append(
-                "| {seed} | {status} | `{log}` | `{wdb}` | `{project}` |".format(**item)
+                "| {seed} | {status} | `{log}` | `{wdb}` | `{project}` | `{archive}` | `{reproduce}` | `{open_wdb}` |".format(
+                    seed=item["seed"],
+                    status=item["status"],
+                    log=item["log"],
+                    wdb=item["wdb"],
+                    project=item["project"],
+                    archive=item.get("failure_archive") or "-",
+                    reproduce=item.get("reproduce") or "-",
+                    open_wdb=item.get("open_wdb") or "-",
+                )
             )
         md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         cards = []
         for item in results:
+            archive_block = ""
+            if item.get("failure_archive"):
+                archive_block = (
+                    "<p>Failure Archive</p><code>{archive}</code>"
+                    "<p>Reproduce</p><code>{reproduce}</code>"
+                    "<p>Open WDB</p><code>{open_wdb}</code>"
+                ).format(
+                    archive=html.escape(str(item["failure_archive"])),
+                    reproduce=html.escape(str(item["reproduce"])),
+                    open_wdb=html.escape(str(item["open_wdb"])),
+                )
             cards.append(
-                '<article class="seed-card {klass}"><h2>Seed {seed}</h2><strong>{status}</strong><p>Log</p><code>{log}</code><p>WDB</p><code>{wdb}</code><p>Project</p><code>{project}</code></article>'.format(
+                '<article class="seed-card {klass}"><h2>Seed {seed}</h2><strong>{status}</strong><p>Log</p><code>{log}</code><p>WDB</p><code>{wdb}</code><p>Project</p><code>{project}</code>{archive_block}</article>'.format(
                     klass="pass" if item["status"] == "PASS" else "fail",
                     seed=item["seed"],
                     status=item["status"],
                     log=html.escape(str(item["log"])),
                     wdb=html.escape(str(item["wdb"])),
                     project=html.escape(str(item["project"])),
+                    archive_block=archive_block,
                 )
             )
         html_lines = [
@@ -2845,6 +2867,75 @@ exit 0
         ]
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
         return {"passed": passed == total, "markdown_path": md_path, "html_path": html_path}
+
+    def archive_async_fifo_uvm_failed_seed(
+        self,
+        project_dir,
+        seed_output_dir,
+        seed_project_dir,
+        regression_output_dir,
+        seed,
+    ):
+        project_dir = Path(project_dir)
+        seed_output_dir = Path(seed_output_dir)
+        seed_project_dir = Path(seed_project_dir)
+        sim_dir = seed_project_dir / "sim"
+        seed_value = int(seed)
+        return archive_failed_run(
+            project_dir / "failure_archives",
+            target_name="async-fifo",
+            flow_name="uvm-coverage",
+            run_id="seed_{}".format(seed_value),
+            status="FAIL",
+            seed=seed_value,
+            artifacts=[
+                {
+                    "role": "log",
+                    "path": sim_dir / "async_fifo_uvm_coverage.log",
+                },
+                {
+                    "role": "waveform",
+                    "path": sim_dir / "async_fifo_uvm_coverage.wdb",
+                },
+                {
+                    "role": "coverage_db",
+                    "path": (
+                        sim_dir
+                        / "coverage"
+                        / "xsim.codeCov"
+                        / "async_fifo_uvm_cov"
+                    ),
+                },
+                {
+                    "role": "tcl",
+                    "path": sim_dir / "run_vivado_async_fifo_uvm_coverage.tcl",
+                },
+                {
+                    "role": "target_config",
+                    "path": AGENT_MODULE_DIR / "targets" / "async_fifo.json",
+                },
+            ],
+            reproduce_command=[
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--uvm-random-regress",
+                "async-fifo",
+                "--uvm-seeds",
+                str(seed_value),
+                "--output-dir",
+                str(Path(regression_output_dir)),
+            ],
+            wave_open_command=[
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "--open-uvm-wave",
+                "async-fifo",
+                "--uvm-wave-kind",
+                "coverage",
+                "--output-dir",
+                str(seed_output_dir),
+            ],
+        )
 
     def write_async_fifo_regression_summary(self, project_dir, results):
         project_dir = Path(project_dir)
@@ -5821,12 +5912,36 @@ add_wave -r /tb_async_fifo_uvm
             seed_project_dir = seed_output_dir / "async-fifo"
             passed = self.run_async_fifo_uvm_coverage(output_dir=seed_output_dir, seed=seed_value)
             all_passed = all_passed and passed
+            failure_archive = None
+            if not passed:
+                failure_archive = self.archive_async_fifo_uvm_failed_seed(
+                    project_dir,
+                    seed_output_dir,
+                    seed_project_dir,
+                    output_dir,
+                    seed_value,
+                )
             results.append({
                 "seed": seed_value,
                 "status": "PASS" if passed else "FAIL",
                 "log": seed_project_dir / "sim" / "async_fifo_uvm_coverage.log",
                 "wdb": seed_project_dir / "sim" / "async_fifo_uvm_coverage.wdb",
                 "project": seed_project_dir,
+                "failure_archive": (
+                    failure_archive["archive_dir"]
+                    if failure_archive is not None
+                    else None
+                ),
+                "reproduce": (
+                    failure_archive["reproduce_script_path"]
+                    if failure_archive is not None
+                    else None
+                ),
+                "open_wdb": (
+                    failure_archive["wave_open_script_path"]
+                    if failure_archive is not None
+                    else None
+                ),
             })
         self.write_async_fifo_uvm_random_regression_report(project_dir, results)
         return all_passed

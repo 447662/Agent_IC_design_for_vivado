@@ -35,6 +35,7 @@ files = [
     ".trae/agent/coverage_history.py",
     ".trae/agent/coverage_recommendations.py",
     ".trae/agent/environment_report.py",
+    ".trae/agent/failure_archive.py",
     ".trae/agent/project_overview.py",
     ".trae/agent/waveform_samples.py",
     ".trae/agent/xcrg_coverage.py",
