@@ -4526,6 +4526,12 @@ def test_write_async_fifo_uvm_coverage_summary_report_marks_missing_component_da
     assert "| Functional | 0.0%" not in markdown
 
 
+def test_p4_3_coverage_gates_module_is_in_mypy_scope():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '".trae/agent/coverage_gates.py"' in pyproject
+
+
 def test_write_async_fifo_uvm_coverage_summary_report_requires_percent_when_threshold_set(tmp_path):
     module = load_agent_module()
     agent = module.DigitalICAgent()
