@@ -76,3 +76,8 @@ def test_python_quality_artifacts_are_gitignored():
 def test_p5_8_artifact_manifest_is_in_mypy_scope():
     config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
     assert ".trae/agent/artifact_manifest.py" in config["tool"]["mypy"]["files"]
+
+
+def test_p5_10_environment_report_is_in_mypy_scope():
+    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    assert ".trae/agent/environment_report.py" in config["tool"]["mypy"]["files"]

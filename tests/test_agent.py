@@ -17,6 +17,7 @@ AGENT_WAVEFORM_PATH = ROOT / ".trae" / "agent" / "agent_waveform.py"
 TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
 TARGET_SCAFFOLDER_PATH = ROOT / ".trae" / "agent" / "target_scaffolder.py"
 ARTIFACT_MANIFEST_PATH = ROOT / ".trae" / "agent" / "artifact_manifest.py"
+ENVIRONMENT_REPORT_PATH = ROOT / ".trae" / "agent" / "environment_report.py"
 TARGET_CHECKS_PATH = ROOT / ".trae" / "agent" / "target_checks.py"
 TARGET_FLOWS_PATH = ROOT / ".trae" / "agent" / "target_flows.py"
 ADAPTERS_DIR = ROOT / ".trae" / "agent" / "adapters"
@@ -983,6 +984,140 @@ def test_diagnostic_uses_resolved_vivado_command(monkeypatch):
 
     assert agent.check_cli_tool("vivado", ["vivado", "-version"]) is True
     assert seen == [[vivado_path, "-version"]]
+
+
+def test_p5_10_environment_report_writes_chinese_markdown_html_and_manifest(tmp_path):
+    module = load_local_module("environment_report_complete", ENVIRONMENT_REPORT_PATH)
+
+    class FakeRunner:
+        def run(self, command, **_kwargs):
+            output = {
+                "git": "git version 2.50.0",
+                "vivado": "Vivado v2025.2",
+                "rwave": "rwave 0.4.0",
+            }.get(Path(str(command[0])).stem.lower(), "tool 1.0")
+            return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+
+    class FakeAgent:
+        project_root = ROOT
+        command_runner = FakeRunner()
+
+        def resolve_vivado_command(self):
+            return "vivado"
+
+        def resolve_rwave_command(self):
+            return "rwave"
+
+        def resolve_vcd_analyzer_path(self):
+            return ROOT / "VCD_ANALYZER-main" / "VCD_ANALYZER-main" / "vcd_analyzer.py"
+
+    result = module.write_environment_report(
+        FakeAgent(),
+        output_dir=tmp_path,
+        env={"SESSIONNAME": "Console"},
+        which=lambda name: name if name == "git" else None,
+        platform_system=lambda: "Windows",
+        version_info=(3, 11, 9),
+        python_executable="C:/Python311/python.exe",
+    )
+
+    assert result["status"] == "PASS"
+    assert result["markdown_path"] == tmp_path / "environment-report" / "environment_report.md"
+    assert result["html_path"] == tmp_path / "environment-report" / "environment_report.html"
+    assert result["manifest_path"] == tmp_path / "environment-report" / "artifacts.json"
+
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    html_text = result["html_path"].read_text(encoding="utf-8")
+    manifest = json.loads(result["manifest_path"].read_text(encoding="utf-8"))
+
+    assert "# 数字 IC Agent 环境预检报告" in markdown
+    assert "Python" in markdown
+    assert "Git" in markdown
+    assert "Vivado" in markdown
+    assert "RWave" in markdown
+    assert "输出目录权限" in markdown
+    assert "GUI 前置条件" in markdown
+    assert "环境预检报告" in html_text
+    assert "乱码" not in html_text
+    assert manifest["scope"] == "environment"
+    assert manifest["runs"][-1]["status"] == "PASS"
+    assert {
+        item["path"]
+        for item in manifest["runs"][-1]["artifacts"]
+    } == {"environment_report.md", "environment_report.html"}
+
+
+def test_p5_10_environment_report_warns_for_missing_optional_tools(tmp_path):
+    module = load_local_module("environment_report_missing_tools", ENVIRONMENT_REPORT_PATH)
+
+    class FakeRunner:
+        def run(self, command, **_kwargs):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="git version 2.50.0",
+                stderr="",
+            )
+
+    class FakeAgent:
+        project_root = ROOT
+        command_runner = FakeRunner()
+
+        def resolve_vivado_command(self):
+            return None
+
+        def resolve_rwave_command(self):
+            return None
+
+        def resolve_vcd_analyzer_path(self):
+            return tmp_path / "missing-vcd-analyzer.py"
+
+    result = module.write_environment_report(
+        FakeAgent(),
+        output_dir=tmp_path,
+        env={},
+        which=lambda name: "git" if name == "git" else None,
+        platform_system=lambda: "Windows",
+        version_info=(3, 11, 9),
+        python_executable="C:/Python311/python.exe",
+    )
+
+    assert result["status"] == "WARN"
+    markdown = result["markdown_path"].read_text(encoding="utf-8")
+    assert "| Vivado | WARN |" in markdown
+    assert "| RWave / VCD_ANALYZER | WARN |" in markdown
+    assert "| GUI 前置条件 | WARN |" in markdown
+    assert "修复建议" in markdown
+    assert "未检测到 Vivado" in markdown
+    assert "未检测到 RWave" in markdown
+
+
+def test_p5_10_environment_report_rejects_unwritable_output_path(tmp_path):
+    module = load_local_module("environment_report_unwritable", ENVIRONMENT_REPORT_PATH)
+    output_file = tmp_path / "not-a-directory"
+    output_file.write_text("blocked", encoding="utf-8")
+
+    class FakeAgent:
+        project_root = ROOT
+        command_runner = None
+
+    with pytest.raises(OSError):
+        module.write_environment_report(FakeAgent(), output_dir=output_file)
+
+
+def test_p5_10_cli_reports_output_failure_without_traceback(tmp_path):
+    output_file = tmp_path / "not-a-directory"
+    output_file.write_text("blocked", encoding="utf-8")
+
+    result = run_agent(
+        "--environment-report",
+        "--output-dir",
+        str(output_file),
+    )
+
+    assert result.returncode == 1
+    assert "环境预检报告生成失败" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_readmes_document_current_vivado_and_async_fifo_flow():
