@@ -1663,6 +1663,8 @@ def _write_p4_1_xcrg_fixture(project_dir):
     )
     (functional_dir / "grp0.html").write_text(
         f"""
+<a href="dashboard.html">Dashboard</a>
+<a href="groups.html">Groups</a>
 <span>Source File(s) :</span>
 <a href="file:{project_path}/uvm/async_fifo_uvm_pkg.sv">
 {project_path}/uvm/async_fifo_uvm_pkg.sv
@@ -1731,6 +1733,7 @@ def test_p4_1_extracts_project_low_coverage_items_from_xcrg(tmp_path):
     )
     assert any(
         item["metric"] == "cover_point"
+        and item["source_file"] == "uvm/async_fifo_uvm_pkg.sv"
         and item["instance"] == "this .async_fifo_cg"
         and item["score"] == 0.0
         and item["details"]["name"] == "cp_full"
