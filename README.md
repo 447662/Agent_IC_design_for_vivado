@@ -164,6 +164,7 @@ python .trae/agent/agent.py --open-wave round-robin-arbiter --output-dir outputs
 - 环境诊断：检查 Vivado、`uv`、SynthPilot MCP 等外部工具。
 - 环境预检报告：`--environment-report` 生成中文 Markdown/HTML，覆盖 Python、Git、Vivado、RWave fallback、权限和 GUI 条件。
 - 多 target 总览：`--generate-overview` 聚合 target/environment manifest，生成顶层 `index.md/html`，并在 manifest 更新后自动刷新。
+- Coverage closure 看板：`--coverage-closure` 聚合所有 target 的 Total/Statement/Branch/Condition/Toggle/Functional coverage，展示当前值、80% 默认目标、差距、状态和官方 xcrg/WDB 入口。
 - Target 元数据：三个 target 均使用统一 schema，场景、覆盖率和产物状态统一为 `PASS/SKIP/N/A`。
 - Target 脚手架：`--create-target` 生成候选配置、RTL/TB、报告占位、README 和 TODO 清单，且默认禁止覆盖。
 - 运行时 manifest：每个 target 的 `artifacts.json` 追加 flow 状态、命令、工具信息、产物存在性和失败证据。
@@ -189,6 +190,7 @@ python .trae/agent/agent.py --open-wave round-robin-arbiter --output-dir outputs
 python .trae/agent/agent.py --diagnostic
 python .trae/agent/agent.py --environment-report --output-dir outputs
 python .trae/agent/agent.py --generate-overview --output-dir outputs
+python .trae/agent/agent.py --coverage-closure --coverage-target 80 --output-dir outputs
 python .trae/agent/agent.py --list-skills
 python .trae/agent/agent.py --list-targets
 python .trae/agent/agent.py --create-target packet_router --output-dir outputs "Configurable packet router target"
@@ -330,7 +332,7 @@ python -X utf8 -m pytest tests --cov=.trae/agent --cov-report=term-missing --cov
 Get-Content -Encoding UTF8 README.md
 ```
 
-当前完整回归：`148 passed`；整体覆盖率为 `74.91%`，CI 门槛为 `68%`。
+当前完整回归：`155 passed`；整体覆盖率为 `75.87%`，CI 门槛为 `68%`。
 
 GitHub Actions 会在 Python 3.11 和 3.13 上运行 Ruff、Mypy、完整 pytest 与覆盖率门槛，配置见 `.github/workflows/python-quality.yml`。
 
@@ -350,6 +352,7 @@ GitHub Actions 会在 Python 3.11 和 3.13 上运行 Ruff、Mypy、完整 pytest
 ```text
 .trae/agent/agent.py          # Agent CLI、target flow 与兼容方法绑定
 .trae/agent/artifact_manifest.py # 运行时 artifacts.json 记录与校验
+.trae/agent/coverage_closure.py # 多 target coverage closure 聚合、差距计算与 Markdown/HTML 看板
 .trae/agent/environment_report.py # 中文环境预检、修复建议与项目级 manifest
 .trae/agent/project_overview.py # 多 target 状态聚合与顶层 index.md/html
 .trae/agent/waveform_samples.py # VCD/FST/GHW 真实样例矩阵报告

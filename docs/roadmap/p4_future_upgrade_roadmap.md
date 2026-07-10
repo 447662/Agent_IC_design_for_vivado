@@ -1,10 +1,10 @@
 # P4 后续升级路线图
 
-P4 先不作为当前必须实现项。本文件用于沉淀 P3.14 之后的 coverage、GUI、回归和报告增强方向，等待 P5 通用数字 IC Agent 主流程跑通后再逐步接入。
+P5 通用数字 IC Agent 主流程已经跑通，P4 从升级池转入实施阶段。本文件用于维护 coverage、GUI、回归和报告增强的交付顺序与当前状态。
 
 ## 定位
 
-- 当前优先级：暂停实现，作为后续升级池维护。
+- 当前优先级：实施中；P4.0 已完成，下一步进入 P4.1。
 - 当前基线：P0-P3.14 已打通 async FIFO 的 RTL 生成、Vivado/xsim 仿真、VCD/WDB、UVM smoke、coverage、xcrg 报告和总览页刷新。
 - P4 目标：把“能跑通并生成报告”升级为“能定位低覆盖、推荐补测、追踪趋势、服务多个设计目标”。
 - P5 兼容要求：P4 的任何能力都不应只绑定 async FIFO；新增报告、数据结构和 CLI 参数要能复用于 CDC、FIFO、arbiter、register file、protocol bridge 等后续目标。
@@ -24,6 +24,17 @@ P5 兼容点：
 
 - 使用通用字段：`target_name`、`design_family`、`coverage_metrics`、`low_coverage_items`、`recommended_scenarios`。
 - 避免写死 async FIFO 信号名；设计特有建议应来自目标配置或目标插件。
+
+当前状态：已完成。
+
+- `--coverage-closure --coverage-target 80 --output-dir outputs` 生成 `outputs/coverage-closure/index.md/html`。
+- 聚合注册 target 的 Total、Statement/Line、Branch、Condition、Toggle、Functional coverage。
+- 数值目标显示当前值、目标值和 gap；缺失值保持 `-`，不会伪造为 `0.0%`。
+- Target 状态支持 `PASS/GAP/MISSING/NOT_RUN/SKIP/INVALID`，项目状态支持 `PASS/WARN/FAIL`。
+- async-fifo 真实 xcrg 数据汇总为 Total `27.6%`、Statement `60.2%`、Branch `23.5%`、Condition `22.0%`、Toggle `4.8%`，相对 80% 目标总差距 `52.4%`。
+- sync-fifo 与 round-robin-arbiter 保留 target 元数据声明的 `SKIP/N/A`，不误报失败。
+- 看板链接 coverage summary、官方 xcrg code/functional HTML、原始 log、percent 文本和 WDB。
+- `recommended_scenarios` 字段已预留为空列表，由 P4.2 基于 P4.1 低覆盖明细生成。
 
 ## P4.1：低覆盖项提取
 
