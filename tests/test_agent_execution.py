@@ -1,4 +1,3 @@
-import json
 import sys
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from agent_contracts import (  # noqa: E402
     ToolResultStatus,
 )
 from agent_execution import AgentExecutionEngine, MCPToolExecutor  # noqa: E402
-from agent_provider import DeterministicProvider  # noqa: E402
+from agent_provider import ConfiguredAgentProvider, DeterministicProvider  # noqa: E402
 from mcp_client import (  # noqa: E402
     MCPProcessError,
     MCPProtocolError,
@@ -73,6 +72,44 @@ def test_deterministic_provider_returns_typed_plan_offline(tmp_path):
     assert result.tool_calls[0].tool_call_id == "tool-call-1"
 
 
+def test_configured_provider_builds_code_constrained_skill_plan(tmp_path):
+    provider = ConfiguredAgentProvider(
+        (
+            {
+                "name": "digital-ic-designer",
+                "action": "design-document",
+                "priority": 1,
+                "triggerKeywords": ["设计文档", "架构设计"],
+            },
+            {
+                "name": "digital-ic-rtl-designer",
+                "action": "rtl-implementation",
+                "priority": 2,
+                "triggerKeywords": ["RTL", "Verilog"],
+            },
+        )
+    )
+
+    plan = provider.create_plan(
+        AgentRequest(
+            request_id="request-configured",
+            user_input="先生成设计文档，再实现 Verilog RTL",
+            output_dir=tmp_path,
+        )
+    )
+
+    assert plan.skill_name == "digital-ic-designer"
+    assert [call.tool_name for call in plan.tool_calls] == [
+        "skill:design-document",
+        "skill:rtl-implementation",
+    ]
+    assert [call.arguments["skill_name"] for call in plan.tool_calls] == [
+        "digital-ic-designer",
+        "digital-ic-rtl-designer",
+    ]
+    assert len({call.tool_call_id for call in plan.tool_calls}) == 2
+
+
 def test_engine_correlates_tool_call_and_result_ids(tmp_path):
     call = _call()
     artifact = tmp_path / "rtl" / "demo.v"
@@ -98,6 +135,24 @@ def test_engine_correlates_tool_call_and_result_ids(tmp_path):
     assert run.tool_results[0].tool_call_id == call.tool_call_id
     assert run.tool_results[0].tool_name == call.tool_name
     assert run.artifacts == (artifact.resolve(),)
+
+
+def test_engine_rejects_success_without_artifact_list(tmp_path):
+    provider = DeterministicProvider(planner=lambda _request: _plan(_call()))
+    result = ToolResult(
+        tool_call_id="tool-call-1",
+        tool_name="write-rtl",
+        status=ToolResultStatus.SUCCEEDED,
+        returncode=0,
+    )
+
+    run = AgentExecutionEngine(
+        provider,
+        {"write-rtl": lambda _call, _request: result},
+    ).run(_request(tmp_path))
+
+    assert run.status is AgentRunStatus.FAILED
+    assert "artifact" in run.failure_reason.lower()
 
 
 @pytest.mark.parametrize(
@@ -269,6 +324,26 @@ def test_stdio_mcp_client_initializes_lists_and_calls_tools(tmp_path):
     assert [tool["name"] for tool in tools] == ["echo"]
     assert result["isError"] is False
     assert '"value": 7' in result["content"][0]["text"]
+
+
+def test_mcp_tool_success_persists_evidence_artifact(tmp_path):
+    call = ToolCall(
+        tool_call_id="mcp-call-success",
+        tool_name="echo",
+        arguments={"value": 7},
+    )
+    provider = DeterministicProvider(planner=lambda _request: _plan(call))
+
+    with _client(tmp_path) as client:
+        run = AgentExecutionEngine(
+            provider,
+            {"echo": MCPToolExecutor(client)},
+        ).run(_request(tmp_path))
+
+    assert run.status is AgentRunStatus.SUCCEEDED
+    assert len(run.artifacts) == 1
+    assert run.artifacts[0].name == "mcp-call-success.json"
+    assert '"value": 7' in run.artifacts[0].read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

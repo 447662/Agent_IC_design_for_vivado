@@ -27,6 +27,7 @@ from skill_runtime import (  # noqa: E402
     SkillExecutionResult,
     SkillExecutionStatus,
     SkillLoader,
+    SkillResultValidator,
     ToolRunRecord,
 )
 from target_plugins import (  # noqa: E402
@@ -182,6 +183,40 @@ def test_executor_requires_rtl_testbench_and_successful_check_for_rtl_success(tm
                 user_input="write rtl",
                 output_dir=tmp_path,
             )
+        )
+
+
+def test_skill_validator_rejects_none_returncode_for_rtl_success(tmp_path):
+    config = _write_skill(tmp_path, "rtl-implementation", "RTL Skill")
+    skill = SkillLoader(tmp_path).load(config)
+    rtl_path = tmp_path / "rtl" / "demo.v"
+    tb_path = tmp_path / "tb" / "tb_demo.v"
+    rtl_path.parent.mkdir()
+    tb_path.parent.mkdir()
+    rtl_path.write_text("module demo; endmodule\n", encoding="utf-8")
+    tb_path.write_text("module tb_demo; demo dut(); endmodule\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="successful RTL check"):
+        SkillResultValidator().validate(
+            SkillExecutionRequest(
+                skill=skill,
+                user_input="write rtl",
+                output_dir=tmp_path,
+            ),
+            SkillExecutionResult(
+                skill_name=skill.name,
+                action=skill.action,
+                status=SkillExecutionStatus.SUCCEEDED,
+                artifacts=(rtl_path, tb_path),
+                tool_runs=(
+                    ToolRunRecord(
+                        name="rtl-check",
+                        status=SkillExecutionStatus.SUCCEEDED,
+                        returncode=None,
+                    ),
+                ),
+                message="incorrect success",
+            ),
         )
 
 
@@ -594,6 +629,43 @@ def test_default_document_workflow_executes_loaded_skill_without_external_tools(
     assert 'name: "digital-ic-designer"' in calls[0].skill.content
     assert len(calls[0].skill.content_digest) == 64
     assert Path(calls[0].context["design_spec_path"]).exists()
+
+
+def test_default_document_workflow_records_real_agent_run(tmp_path):
+    from agent import DigitalICAgent
+    from agent_contracts import AgentRunStatus, ToolResultStatus
+
+    agent = DigitalICAgent()
+
+    assert agent.execute_workflow(
+        "请生成设计文档和架构方案",
+        output_dir=tmp_path,
+        skip_tool_check=False,
+    )
+    assert agent.last_agent_run.status is AgentRunStatus.SUCCEEDED
+    assert agent.last_agent_run.tool_results
+    assert all(
+        result.status is ToolResultStatus.SUCCEEDED
+        and result.returncode == 0
+        and result.artifacts
+        for result in agent.last_agent_run.tool_results
+    )
+    assert agent.last_agent_run.artifacts
+
+
+def test_workflow_rejects_empty_skill_selection(tmp_path):
+    from agent import DigitalICAgent
+    from agent_contracts import AgentRunStatus
+
+    agent = DigitalICAgent()
+
+    assert agent.execute_workflow(
+        "\u4e0d\u8981 RTL",
+        output_dir=tmp_path,
+        skip_tool_check=True,
+    ) is False
+    assert agent.last_agent_run.status is AgentRunStatus.FAILED
+    assert "skill" in agent.last_agent_run.failure_reason.lower()
 
 
 def test_default_rtl_and_verification_skills_do_not_report_success(tmp_path):
