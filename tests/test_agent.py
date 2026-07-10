@@ -1671,7 +1671,7 @@ def _write_p4_1_xcrg_fixture(project_dir):
 </a>
 <table id="sortable0">
 <tr><td>Name</td><td>Score</td><td>Weight</td><td>Goal</td></tr>
-<tr><td><span class="tooltiptext1">this .async_fifo_cg</span></td>
+<tr><td><span class="tooltiptext1">\this .async_fifo_cg</span></td>
 <td>57.1429</td><td>1</td><td>100</td></tr>
 </table>
 <table id="sortable1">
@@ -1734,7 +1734,7 @@ def test_p4_1_extracts_project_low_coverage_items_from_xcrg(tmp_path):
     assert any(
         item["metric"] == "cover_point"
         and item["source_file"] == "uvm/async_fifo_uvm_pkg.sv"
-        and item["instance"] == "this .async_fifo_cg"
+        and item["instance"] == "this.async_fifo_cg"
         and item["score"] == 0.0
         and item["details"]["name"] == "cp_full"
         and item["details"]["uncovered"] == 1
@@ -1892,7 +1892,7 @@ def test_p4_1_dashboard_renders_concrete_items_and_writes_json(tmp_path):
     html_text = result["html_path"].read_text(encoding="utf-8")
     assert "### 低覆盖项" in markdown
     assert "uvm/async_fifo_uvm_pkg.sv" in markdown
-    assert "this .async_fifo_cg" in markdown
+    assert "this.async_fifo_cg" in markdown
     assert "cp_full" in markdown
     assert "functionalCoverageReport/grp0.html" in markdown
     assert "低覆盖项" in html_text
