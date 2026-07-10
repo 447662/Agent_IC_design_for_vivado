@@ -177,8 +177,10 @@ outputs/async-fifo/
 
 ## P4-P5 路线
 
-- P4.0-P4.5 已完成 coverage closure 看板、xcrg 低覆盖项提取、`scenario_catalog` 补测建议、分项 gate、coverage 历史趋势和失败 seed 自动归档；下一步进入 P4.6 GUI 可见性自动化增强。
+- P4.0-P4.6 已完成 coverage closure 看板、xcrg 低覆盖项提取、`scenario_catalog` 补测建议、分项 gate、coverage 历史趋势、失败 seed 自动归档和 GUI 可见性自动验收；下一步进入 P4.7 报告体验升级。
 - P4.5 的通用归档内核位于 `failure_archive.py`，失败运行固定写入 `failure_archives/<flow>/<run_id>/`，保存 manifest、log、WDB、coverage DB、Tcl、目标配置、`reproduce.ps1` 和 `open_wave.ps1`；成功 seed 不创建归档。
+- P4.6 的通用可见性内核位于 `wave_visibility.py`，RTL/UVM GUI Tcl 会写入 WDB、Scope、Object、Wave 和 Wave Config 运行时探针；截图脚本捕获 Vivado 前台窗口并输出像素指标，`--check-rtl` 会刷新 Markdown/HTML 验收报告。
+- P4.6 已用 Vivado 2025.2 和真实 async FIFO WDB 验收：Scope `35`、Object `57`、Wave `31`、Wave Config `1`，截图 `1500x950`、唯一颜色 `582`、非均匀像素比例 `99.99%`。
 - P5 进入通用化设计阶段，目标是把 async FIFO 单点流程抽象为 target registry、通用 flow、工具 adapter 和报告 surface，设计见 `docs/roadmap/p5_general_digital_ic_agent_design.md`。
 - P5 系列执行记录已落地到 `docs/roadmap/p5_series_execution_record.md`，用于跟踪 P5.0-P5.12 的状态和验收口径。
 - P5.0 已完成最小 target registry：`DigitalICAgent.list_targets()` / `get_target()` 统一管理目标元信息，`--list-targets` 可列出目标、别名、设计族和支持 flow。

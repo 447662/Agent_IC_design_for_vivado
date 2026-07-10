@@ -13,4 +13,5 @@ htmlcov/
 .tmp-pytest/
 .tmp-agent-output/
 outputs/
+dfx_runtime.txt
 *.zip
