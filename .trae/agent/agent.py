@@ -49,7 +49,10 @@ from coverage_gates import (
 from coverage_history import append_coverage_history
 from environment_report import write_environment_report as build_environment_report
 from failure_archive import archive_failed_run
-from project_overview import write_project_overview as build_project_overview
+from project_overview import (
+    write_project_overview as build_project_overview,
+    write_target_dashboard as build_target_dashboard,
+)
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
 from wave_visibility import (
     evaluate_wave_open_check,
@@ -455,6 +458,7 @@ class DigitalICAgent:
     create_target_scaffold = build_target_scaffold
     write_environment_report = build_environment_report
     write_project_overview = build_project_overview
+    write_target_dashboard = build_target_dashboard
     write_waveform_sample_report = build_waveform_sample_report
     write_coverage_closure_report = build_coverage_closure_report
 
@@ -1473,113 +1477,19 @@ class DigitalICAgent:
         }
 
     def write_async_fifo_reports_index(self, project_dir):
-        project_dir = Path(project_dir)
-        reports_dir = project_dir / "reports"
-        reports_dir.mkdir(parents=True, exist_ok=True)
-        markdown_path = reports_dir / "index.md"
-        html_path = reports_dir / "index.html"
-        report_items = [
-            ("仿真摘要", "sim_summary.html", "sim_summary.md", "场景覆盖、VCD 统计、WDB/WCFG 产物和常用命令"),
-            ("回归摘要", "regression_summary.html", "regression_summary.md", "DATA_WIDTH / ADDR_WIDTH 真实 Vivado/xsim 回归结果"),
-            ("波形可见性", "wave_visibility.html", "wave_visibility.md", "工程、WDB、GUI Tcl、WCFG 对象和关键命令验收"),
-            ("GUI 波形截图", "wave_screenshot.html", "wave_screenshot.md", "人工可见波形截图与截图捕获脚本"),
-            ("UVM GUI 波形截图", "uvm_wave_screenshot.html", "uvm_wave_screenshot.md", "UVM WDB 人工可见波形截图与截图捕获脚本"),
-            ("问题复盘", "docs/vivado_async_fifo_lessons_learned.md", None, "历史问题、根因、修复方式和后续建议"),
-        ]
-        report_items.extend([
-            ("UVM Coverage Summary", "uvm_coverage_summary.html", "uvm_coverage_summary.md", "P3.13 summary with gate result, coverage scores, and xcrg links"),
-            ("Coverage Trend", "coverage_trend.html", "coverage_trend.md", "P4.4 coverage history and metric deltas"),
-            ("Coverage History JSONL", "coverage_history.jsonl", None, "P4.4 append-only machine-readable coverage history"),
-            ("Vivado Code Coverage", "uvm_coverage_xcrg/codeCoverageReport/dashboard.html", None, "Official xcrg code coverage HTML dashboard"),
-            ("Vivado Functional Coverage", "uvm_coverage_xcrg/functionalCoverageReport/dashboard.html", None, "Official xcrg functional coverage HTML dashboard"),
-            ("XCRG Log", "xcrg_coverage.log", None, "Vivado xcrg export log"),
-            ("Coverage Percent Text", "uvm_coverage_percent.txt", None, "Parsed xcrg score text used by coverage gate"),
-        ])
-        ready_count = 0
-        rows = []
-        for title, html_name, md_name, note in report_items:
-            if html_name.startswith("docs/"):
-                exists = (self.project_root / html_name).exists()
-            else:
-                exists = (reports_dir / html_name).exists()
-            ready_count += 1 if exists else 0
-            rows.append({
-                "title": title,
-                "html": html_name,
-                "markdown": md_name,
-                "note": note,
-                "ready": exists,
-            })
-
-        lines = [
-            "# async-fifo 报告总览",
-            "",
-            "- 可用报告：{}/{}".format(ready_count, len(report_items)),
-            "- 工程目录：`{}`".format(project_dir),
-            "",
-            "| 报告 | 状态 | HTML/路径 | Markdown | 说明 |",
-            "|---|---|---|---|---|",
-        ]
-        for item in rows:
-            lines.append(
-                "| {title} | {status} | `{html_path}` | {md_path} | {note} |".format(
-                    title=item["title"],
-                    status="READY" if item["ready"] else "MISSING",
-                    html_path=item["html"],
-                    md_path="`{}`".format(item["markdown"]) if item["markdown"] else "-",
-                    note=item["note"],
-                )
-            )
-        markdown_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-        cards = []
-        for item in rows:
-            klass = "ready" if item["ready"] else "missing"
-            cards.append(
-                '<article class="report-card {klass}"><h2>{title}</h2><p>{note}</p><a href="{href}">{href}</a><span>{status}</span></article>'.format(
-                    klass=klass,
-                    title=html.escape(str(item["title"] or "")),
-                    note=html.escape(str(item["note"] or "")),
-                    href=html.escape(str(item["html"] or "")),
-                    status="READY" if item["ready"] else "MISSING",
-                )
-            )
-        html_lines = [
-            "<!doctype html>",
-            '<html lang="zh-CN">',
-            "<head>",
-            '<meta charset="utf-8">',
-            '<meta name="viewport" content="width=device-width, initial-scale=1">',
-            "<title>async-fifo 报告总览</title>",
-            "<style>",
-            "body{margin:0;font-family:\"Microsoft YaHei\",\"Segoe UI\",Arial,sans-serif;background:#f5f7fb;color:#172033}",
-            ".page{max-width:1180px;margin:0 auto;padding:34px 22px}",
-            ".hero{padding:28px;border-radius:8px;color:#fff;background:#17324d}",
-            ".hero h1{margin:0 0 8px;font-size:32px}",
-            ".grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:20px}",
-            ".report-card{display:grid;gap:8px;padding:18px;border-radius:8px;background:#fff;border:1px solid #dbe3ee;box-shadow:0 8px 24px rgba(31,45,61,.06)}",
-            ".report-card.ready{border-left:6px solid #0f8a5f}",
-            ".report-card.missing{border-left:6px solid #b7791f}",
-            ".report-card h2{margin:0;font-size:20px}",
-            ".report-card p{margin:0;color:#516070}",
-            ".report-card a{color:#175cd3;word-break:break-all}",
-            ".report-card span{font-weight:800}",
-            "@media(max-width:760px){.grid{grid-template-columns:1fr}}",
-            "</style>",
-            "</head>",
-            "<body>",
-            '<main class="page">',
-            '<section class="hero"><h1>async-fifo 报告总览</h1><p>可用报告：{}/{}</p></section>'.format(ready_count, len(report_items)),
-            '<section class="grid">',
-            "\n".join(cards),
-            "</section>",
-            "</main>",
-            "</body>",
-            "</html>",
-            "",
-        ]
-        html_path.write_text("\n".join(html_lines), encoding="utf-8")
-        return {"ready_count": ready_count, "markdown_path": markdown_path, "html_path": html_path, "reports": rows}
+        return self.write_target_dashboard(
+            project_dir,
+            extra_resources=[
+                {
+                    "title": "问题复盘",
+                    "path": (
+                        self.project_root
+                        / "docs"
+                        / "vivado_async_fifo_lessons_learned.md"
+                    ),
+                }
+            ],
+        )
 
     def render_async_fifo_uvm_interface(self, data_width=8):
         return """interface async_fifo_if #(parameter DATA_WIDTH = __DATA_WIDTH__);
