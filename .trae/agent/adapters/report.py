@@ -155,6 +155,16 @@ def write_target_design_spec(self, target, output_dir="outputs", requirement=Non
         ),
         encoding="utf-8",
     )
+    self.record_artifact_run(
+        target_info["name"],
+        "generate-spec",
+        output_dir=output_dir,
+        status="PASS",
+        options={"requirement": requirement},
+        extra_artifacts=[
+            {"id": "design_spec_html", "path": html_path, "status": "PASS"},
+        ],
+    )
     return {"md_path": md_path, "html_path": html_path}
 
 
@@ -254,5 +264,18 @@ def write_target_verification_plan(self, target, output_dir="outputs"):
             variant="scenario",
         ),
         encoding="utf-8",
+    )
+    self.record_artifact_run(
+        target_info["name"],
+        "generate-verification-plan",
+        output_dir=output_dir,
+        status="PASS",
+        extra_artifacts=[
+            {
+                "id": "verification_plan_html",
+                "path": html_path,
+                "status": "PASS",
+            },
+        ],
     )
     return {"md_path": md_path, "html_path": html_path}

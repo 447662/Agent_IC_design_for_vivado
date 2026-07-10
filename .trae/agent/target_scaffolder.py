@@ -296,7 +296,7 @@ def create_target_scaffold(self, target_name, output_dir="outputs", description=
     todo_path.write_text(render_todo(target_slug, module_name), encoding="utf-8")
     readme_path.write_text(render_readme(target_slug, module_name), encoding="utf-8")
 
-    return {
+    result = {
         "project_dir": project_dir,
         "config_path": config_path,
         "rtl_path": rtl_path,
@@ -304,3 +304,17 @@ def create_target_scaffold(self, target_name, output_dir="outputs", description=
         "todo_path": todo_path,
         "readme_path": readme_path,
     }
+    result["manifest_path"] = self.record_artifact_run(
+        target_slug,
+        "create-target",
+        output_dir=output_dir,
+        status="PASS",
+        options={"description": description},
+        target_info=config,
+        project_dir=project_dir,
+        extra_artifacts=[
+            {"id": "target_config", "path": config_path, "status": "PASS"},
+            {"id": "readme", "path": readme_path, "status": "PASS"},
+        ],
+    )
+    return result

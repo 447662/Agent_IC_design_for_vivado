@@ -29,6 +29,7 @@ files = [
     ".trae/agent/agent_config.py",
     ".trae/agent/agent_reports.py",
     ".trae/agent/agent_waveform.py",
+    ".trae/agent/artifact_manifest.py",
     ".trae/agent/adapters/report.py",
     ".trae/agent/adapters/vivado.py",
     ".trae/agent/adapters/waveform.py",

@@ -34,6 +34,7 @@ from agent_waveform import (
     resolve_rwave_source_dir as get_rwave_source_dir,
     resolve_vcd_analyzer_path as get_vcd_analyzer_path,
 )
+from artifact_manifest import record_artifact_run as append_artifact_run
 from adapters.report import (
     render_target_design_spec as adapter_render_target_design_spec,
     render_target_verification_plan as adapter_render_target_verification_plan,
@@ -219,7 +220,30 @@ class DigitalICAgent:
             raise ValueError(
                 "Target {} does not declare flow: {}".format(target_name, flow)
             )
-        return self.target_handlers[target_name].run(flow, **kwargs)
+        output_dir = kwargs.get("output_dir", "outputs")
+        try:
+            result = self.target_handlers[target_name].run(flow, **kwargs)
+        except Exception as exc:
+            self.record_artifact_run(
+                target_name,
+                flow,
+                output_dir=output_dir,
+                status="FAIL",
+                error=exc,
+                options=kwargs,
+            )
+            raise
+
+        status = "PASS" if result else "FAIL"
+        self.record_artifact_run(
+            target_name,
+            flow,
+            output_dir=output_dir,
+            status=status,
+            error=None if result else "flow returned a false result",
+            options=kwargs,
+        )
+        return result
 
     def resolve_skill_path(self, skill):
         """解析技能文件路径。"""
@@ -408,6 +432,7 @@ class DigitalICAgent:
     render_target_verification_plan = adapter_render_target_verification_plan
     write_target_verification_plan = adapter_write_target_verification_plan
     create_target_scaffold = build_target_scaffold
+    record_artifact_run = append_artifact_run
 
     def resolve_vcd_analyzer_path(self):
         return get_vcd_analyzer_path(self.project_root)
