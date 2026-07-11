@@ -1,0 +1,302 @@
+[
+  {
+    "id": "design_document_cn",
+    "input": "请生成这个模块的设计文档",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "architecture_cn",
+    "input": "帮我完成缓存控制器的架构设计",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "requirements_cn",
+    "input": "先做需求分析，整理接口、时序和边界条件",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "solution_doc_cn",
+    "input": "输出一份方案文档，说明状态机和数据通路",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "ieee_doc_cn",
+    "input": "按IEEE标准整理设计说明，不要实现代码",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "interface_timing_analysis_cn",
+    "input": "请分析这个模块的接口与时序",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "uart_module_design_cn",
+    "input": "帮我设计一个UART模块",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "spec_first_no_rtl_cn",
+    "input": "只生成设计文档，不要RTL和仿真",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "architecture_english",
+    "input": "Create an architecture design document for an AXI bridge",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "requirements_english",
+    "input": "Analyze requirements and interfaces for the DMA block",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "rtl_uppercase",
+    "input": "实现 UART 的 Verilog RTL 代码",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "rtl_lowercase",
+    "input": "please write rtl for a gray counter",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "verilog_mixed_case",
+    "input": "Generate Verilog for a synchronous FIFO",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "code_implementation_cn",
+    "input": "完成代码实现，包含状态机和握手逻辑",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "simulation_cn",
+    "input": "写RTL并做普通仿真，不需要UVM",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "waveform_cn",
+    "input": "生成Testbench并导出波形",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "testbench_english",
+    "input": "Create a testbench for the arbiter RTL",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "plain_counter_defaults_rtl",
+    "input": "做一个计数器",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "module_implementation_cn",
+    "input": "帮我实现一个可配置分频器模块",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "logic_design_cn",
+    "input": "写一下握手逻辑并跑基础仿真",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "uvm_cn",
+    "input": "使用 UVM 做前仿和覆盖率验证",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "systemverilog_verification_cn",
+    "input": "请做SystemVerilog功能验证",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "presim_cn",
+    "input": "做前仿",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "functional_verification_cn",
+    "input": "请补功能验证和覆盖率计划",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "coverage_cn",
+    "input": "建立覆盖率模型并检查验证缺口",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "verification_plan_cn",
+    "input": "生成验证计划，包含断言和scoreboard",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "assertion_scoreboard_cn",
+    "input": "为这个FIFO补断言、scoreboard和功能覆盖",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "uvm_english",
+    "input": "Build a UVM verification plan for the async FIFO",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "systemverilog_english",
+    "input": "Use SystemVerilog assertions for functional verification",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "presim_english",
+    "input": "Run pre-simulation with coverage closure checks",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "design_plus_rtl_cn",
+    "input": "先生成设计文档，再实现Verilog RTL",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer"]
+  },
+  {
+    "id": "requirements_plus_rtl_cn",
+    "input": "先做需求分析，然后给出RTL代码实现",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer"]
+  },
+  {
+    "id": "architecture_plus_testbench_cn",
+    "input": "完成架构设计并写Testbench",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer"]
+  },
+  {
+    "id": "doc_plus_waveform_cn",
+    "input": "写方案文档，并通过仿真波形说明行为",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer"]
+  },
+  {
+    "id": "design_plus_verification_cn",
+    "input": "先给架构设计，再写UVM验证计划",
+    "expected_skills": ["digital-ic-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "requirements_plus_coverage_cn",
+    "input": "需求分析之后补覆盖率验证方案",
+    "expected_skills": ["digital-ic-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "rtl_plus_uvm_cn",
+    "input": "实现RTL并使用UVM验证",
+    "expected_skills": ["digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "rtl_plus_presim_cn",
+    "input": "写Verilog代码并做前仿",
+    "expected_skills": ["digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "testbench_plus_coverage_cn",
+    "input": "写Testbench，再做覆盖率收敛",
+    "expected_skills": ["digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "sv_verification_not_verilog_rtl",
+    "input": "只做SystemVerilog功能验证，不写Verilog RTL",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "full_flow_cn",
+    "input": "请完成完整设计流程",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "all_flow_cn",
+    "input": "全流程跑一遍：需求、RTL和验证都要",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "end_to_end_cn",
+    "input": "端到端完成一个异步FIFO设计",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "full_design_flow_english",
+    "input": "Run the complete design flow from requirements to RTL and verification",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "e2e_english",
+    "input": "End-to-end implementation and verification for a packet arbiter",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer", "digital-ic-verifier"]
+  },
+  {
+    "id": "no_uvm_rtl_cn",
+    "input": "不需要UVM，只做RTL",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "no_doc_rtl_cn",
+    "input": "不要设计文档，只实现RTL",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "without_uvm_english",
+    "input": "Write Verilog RTL without UVM",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "no_rtl_uvm_cn",
+    "input": "不要RTL，只做UVM验证计划",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "no_sim_design_cn",
+    "input": "不做仿真，先整理架构设计",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "exclude_verification_cn",
+    "input": "排除覆盖率验证，只生成RTL和Testbench",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "no_verilog_systemverilog_assertions",
+    "input": "No Verilog RTL, only SystemVerilog assertions",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "but_clause_rtl_only_cn",
+    "input": "我想要完整流程，但是这次只实现RTL",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "but_clause_verification_only_cn",
+    "input": "先别做代码，不过请做前仿和覆盖率",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "but_clause_design_only_english",
+    "input": "I need the whole flow but only write the architecture document now",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "casefold_rtl_english",
+    "input": "rTl implementation for a pulse synchronizer",
+    "expected_skills": ["digital-ic-rtl-designer"]
+  },
+  {
+    "id": "casefold_uvm_english",
+    "input": "uVm verification for reset sequencing",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "casefold_systemverilog_english",
+    "input": "SYSTEMVERILOG functional verification only",
+    "expected_skills": ["digital-ic-verifier"]
+  },
+  {
+    "id": "oral_design_cn",
+    "input": "帮我捋一下这个模块怎么设计",
+    "expected_skills": ["digital-ic-designer"]
+  },
+  {
+    "id": "oral_all_cn",
+    "input": "这个IP从规格到实现再到验证都帮我走完",
+    "expected_skills": ["digital-ic-designer", "digital-ic-rtl-designer", "digital-ic-verifier"]
+  }
+]
