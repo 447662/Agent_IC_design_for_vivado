@@ -959,6 +959,43 @@ def test_async_fifo_example_is_installed_by_plugin_not_core_agent_mixin():
     )
 
 
+def test_sync_fifo_and_arbiter_are_installed_by_plugins_not_core_agent_mixins():
+    source = (AGENT_DIR / "agent.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    agent_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "DigitalICAgent"
+    )
+    base_names = {
+        base.id
+        for base in agent_class.bases
+        if isinstance(base, ast.Name)
+    }
+
+    assert "agent_sync_fifo" not in imported_modules
+    assert "agent_round_robin_arbiter" not in imported_modules
+    assert "SyncFifoMixin" not in base_names
+    assert "RoundRobinArbiterMixin" not in base_names
+
+    agent = agent_module.DigitalICAgent()
+    for target_name, forbidden_method in (
+        ("sync-fifo", "write_sync_fifo_project"),
+        ("round-robin-arbiter", "write_round_robin_arbiter_project"),
+    ):
+        handler = agent.target_handlers[target_name]
+
+        assert handler.target_name == target_name
+        assert callable(handler.run)
+        assert handler.plugin is None
+        assert not hasattr(agent, forbidden_method)
+
+
 def test_target_registry_rejects_alias_collisions_between_targets(tmp_path):
     from target_registry import load_target_registry
 
