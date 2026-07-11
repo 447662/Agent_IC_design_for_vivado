@@ -54,6 +54,8 @@ class ConfiguredAgentProvider:
             raw_selected = request.context["selected_skills"]
             if not isinstance(raw_selected, (list, tuple)):
                 raise ValueError("selected_skills context must be a list or tuple")
+            if not all(isinstance(name, str) for name in raw_selected):
+                raise ValueError("selected_skills context must contain only strings")
             selected = tuple(str(name).strip() for name in raw_selected)
         else:
             selected = tuple(self._router(self._skills, request.user_input))

@@ -99,6 +99,6 @@ class SkillExecutionTool:
                 "skill_name": result.skill_name,
                 "skill_action": result.action,
                 "skill_status": result.status.value,
-                "diagnostics": list(result.diagnostics),
+                "diagnostics": tuple(result.diagnostics),
             },
         )

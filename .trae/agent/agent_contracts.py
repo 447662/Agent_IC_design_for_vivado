@@ -1,7 +1,15 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping, TypeAlias
+
+
+JsonScalar: TypeAlias = str | int | float | bool | None
+JsonObject: TypeAlias = Mapping[str, "JsonValue"]
+JsonValue: TypeAlias = JsonScalar | tuple["JsonValue", ...] | JsonObject
+PayloadMapping: TypeAlias = Mapping[str, JsonValue]
 
 
 @dataclass(frozen=True)
@@ -9,14 +17,14 @@ class AgentRequest:
     request_id: str
     user_input: str
     output_dir: Path
-    context: Mapping[str, Any] = field(default_factory=dict)
+    context: PayloadMapping = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ToolCall:
     tool_call_id: str
     tool_name: str
-    arguments: Mapping[str, Any] = field(default_factory=dict)
+    arguments: PayloadMapping = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -40,7 +48,7 @@ class ToolResult:
     artifacts: tuple[Path, ...] = ()
     output: str = ""
     error: str | None = None
-    metadata: Mapping[str, Any] = field(default_factory=dict)
+    metadata: PayloadMapping = field(default_factory=dict)
 
 
 class AgentRunStatus(str, Enum):
@@ -57,4 +65,3 @@ class AgentRun:
     tool_results: tuple[ToolResult, ...] = ()
     artifacts: tuple[Path, ...] = ()
     failure_reason: str | None = None
-
