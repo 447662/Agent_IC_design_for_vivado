@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any, Literal, NotRequired, TypedDict, cast
 import hashlib
 import json
 import os
@@ -8,15 +7,15 @@ import platform
 import re
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from history_rotation import (
     DEFAULT_ACTIVE_RECORD_LIMIT,
     build_rotation_metadata,
     rotate_json_records,
 )
-
 
 RunStatus = Literal["PASS", "FAIL"]
 ArtifactStatus = Literal["CURRENT", "MISSING", "N/A", "STALE"]
@@ -99,7 +98,7 @@ INPUT_EXCLUDED_DIRECTORIES = {
 
 
 def utc_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace(
         "+00:00",
         "Z",
     )
@@ -113,9 +112,9 @@ def normalize_json_value(value: Any) -> Any:
             str(key): normalize_json_value(item)
             for key, item in value.items()
         }
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [normalize_json_value(item) for item in value]
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, str | int | float | bool):
         return value
     return str(value)
 
@@ -125,7 +124,7 @@ def build_replay_command(flow: Any, target_name: Any, output_dir: Any, options: 
     command = [
         sys.executable,
         ".trae/agent/agent.py",
-        "--{}".format(flow),
+        f"--{flow}",
         target_name,
         "--output-dir",
         str(output_dir),
@@ -208,7 +207,7 @@ def file_digest(path: str | Path) -> str:
 
 
 def _timestamp_from_epoch(value: float) -> str:
-    return datetime.fromtimestamp(value, timezone.utc).isoformat(
+    return datetime.fromtimestamp(value, UTC).isoformat(
         timespec="milliseconds"
     ).replace("+00:00", "Z")
 
@@ -307,9 +306,7 @@ def normalize_artifact_path(project_dir: Any, artifact_path: Any) -> Any:
         return resolved_path.relative_to(project_root)
     except ValueError as exc:
         raise ValueError(
-            "runtime artifact must be inside project directory: {}".format(
-                artifact_path
-            )
+            f"runtime artifact must be inside project directory: {artifact_path}"
         ) from exc
 
 
@@ -443,7 +440,7 @@ def _latest_artifact_snapshot(manifest: Any) -> Any:
 def atomic_write_json(path: Any, value: Any) -> Any:
     path = Path(path)
     temporary_path = path.with_name(
-        ".{}.{}.tmp".format(path.name, uuid.uuid4().hex)
+        f".{path.name}.{uuid.uuid4().hex}.tmp"
     )
     temporary_path.write_text(
         json.dumps(value, ensure_ascii=False, indent=2) + "\n",
@@ -470,7 +467,7 @@ def load_runtime_manifest(manifest_path: Path, target_name: str) -> RuntimeManif
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(
-            "invalid runtime artifact manifest JSON: {}".format(manifest_path)
+            f"invalid runtime artifact manifest JSON: {manifest_path}"
         ) from exc
     if not isinstance(manifest, dict):
         raise ValueError("runtime artifact manifest must be an object")
@@ -500,7 +497,7 @@ def record_artifact_run(
 ) -> Any:
     status = str(status).upper()
     if status not in RUN_STATUSES:
-        raise ValueError("invalid runtime flow status: {}".format(status))
+        raise ValueError(f"invalid runtime flow status: {status}")
 
     target_info = dict(target_info or self.get_target(target))
     target_name = str(target_info["name"])

@@ -46,13 +46,13 @@ class ConfiguredAgentProvider:
             if not name or not action:
                 raise ValueError("Configured skills require non-empty name and action")
             if name in self._skills_by_name:
-                raise ValueError("Duplicate configured skill: {}".format(name))
+                raise ValueError(f"Duplicate configured skill: {name}")
             self._skills_by_name[name] = skill
 
     def _selected_skills(self, request: AgentRequest) -> tuple[str, ...]:
         if "selected_skills" in request.context:
             raw_selected = request.context["selected_skills"]
-            if not isinstance(raw_selected, (list, tuple)):
+            if not isinstance(raw_selected, list | tuple):
                 raise ValueError("selected_skills context must be a list or tuple")
             if not all(isinstance(name, str) for name in raw_selected):
                 raise ValueError("selected_skills context must contain only strings")
@@ -83,13 +83,13 @@ class ConfiguredAgentProvider:
             action = str(skill["action"]).strip()
             tool_calls.append(
                 ToolCall(
-                    tool_call_id="{}-skill-{}".format(request.request_id, index),
-                    tool_name="skill:{}".format(action),
+                    tool_call_id=f"{request.request_id}-skill-{index}",
+                    tool_name=f"skill:{action}",
                     arguments={"skill_name": skill_name},
                 )
             )
         return ExecutionPlan(
-            plan_id="{}-plan".format(request.request_id),
+            plan_id=f"{request.request_id}-plan",
             skill_name=selected[0],
             tool_calls=tuple(tool_calls),
         )

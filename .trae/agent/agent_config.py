@@ -5,7 +5,6 @@ import shlex
 from pathlib import Path
 from typing import Any, Literal, NoReturn, TypedDict, cast
 
-
 SkillAction = Literal["design-document", "rtl-implementation", "verification-plan"]
 ConfiguredCommand = str | list[str]
 
@@ -120,7 +119,7 @@ CLI_TOOL_FIELDS = {
 
 
 def _fail(config_path: Path, field_path: str, message: str) -> NoReturn:
-    raise ValueError("{}: {}: {}".format(config_path, field_path, message))
+    raise ValueError(f"{config_path}: {field_path}: {message}")
 
 
 def _require_object(
@@ -151,9 +150,9 @@ def _validate_fields(
     required: set[str] | None = None,
 ) -> None:
     for field in sorted(set(value) - allowed):
-        _fail(config_path, "{}.{}".format(field_path, field), "unknown field")
+        _fail(config_path, f"{field_path}.{field}", "unknown field")
     for field in sorted((required or allowed) - set(value)):
-        _fail(config_path, "{}.{}".format(field_path, field), "missing required field")
+        _fail(config_path, f"{field_path}.{field}", "missing required field")
 
 
 def _require_string(
@@ -192,7 +191,7 @@ def _require_string_list(
             _require_string(
                 config_path,
                 raw_item,
-                "{}[{}]".format(field_path, index),
+                f"{field_path}[{index}]",
             )
         )
     return items
@@ -225,7 +224,7 @@ def _validate_skills(
     skill_names: set[str] = set()
     actions: set[str] = set()
     for index, raw_skill in enumerate(skills):
-        field_path = "$.skills[{}]".format(index)
+        field_path = f"$.skills[{index}]"
         skill = _require_object(config_path, raw_skill, field_path)
         _validate_fields(config_path, skill, field_path, SKILL_FIELDS)
 
@@ -289,7 +288,7 @@ def _validate_mcp_servers(
             raw_name,
             "$.mcpServers.<name>",
         )
-        field_path = "$.mcpServers.{}".format(name)
+        field_path = f"$.mcpServers.{name}"
         server = _require_object(config_path, raw_server, field_path)
         _validate_fields(config_path, server, field_path, MCP_SERVER_FIELDS)
         _require_command(config_path, server["command"], field_path + ".command")
@@ -321,7 +320,7 @@ def _validate_cli_tools(
     tools = _require_list(config_path, raw_tools, "$.cliTools")
     capability_names: set[str] = set()
     for index, raw_tool in enumerate(tools):
-        field_path = "$.cliTools[{}]".format(index)
+        field_path = f"$.cliTools[{index}]"
         tool = _require_object(config_path, raw_tool, field_path)
         _validate_fields(config_path, tool, field_path, CLI_TOOL_FIELDS)
         name = _require_string(config_path, tool["name"], field_path + ".name")
@@ -360,10 +359,7 @@ def _validate_required_capabilities(
             if capability not in capability_names:
                 _fail(
                     config_path,
-                    "$.skills[{}].requiredCapabilities[{}]".format(
-                        skill_index,
-                        capability_index,
-                    ),
+                    f"$.skills[{skill_index}].requiredCapabilities[{capability_index}]",
                     "unknown capability",
                 )
 
@@ -399,7 +395,7 @@ def _validate_workflow(
             rule_name,
             "$.workflow.decisionRules.<name>",
         )
-        field_path = "$.workflow.decisionRules.{}".format(normalized_name)
+        field_path = f"$.workflow.decisionRules.{normalized_name}"
         rule = _require_object(config_path, raw_rule, field_path)
         _validate_fields(
             config_path,
@@ -445,9 +441,7 @@ def _validate_requirement_analysis(
     if not questions:
         _fail(config_path, "$.requirementAnalysis.questions", "must not be empty")
     for question_index, raw_question in enumerate(questions):
-        field_path = "$.requirementAnalysis.questions[{}]".format(
-            question_index
-        )
+        field_path = f"$.requirementAnalysis.questions[{question_index}]"
         question = _require_object(config_path, raw_question, field_path)
         _validate_fields(
             config_path,
@@ -468,7 +462,7 @@ def _validate_requirement_analysis(
         if not options:
             _fail(config_path, field_path + ".options", "must not be empty")
         for option_index, raw_option in enumerate(options):
-            option_path = "{}.options[{}]".format(field_path, option_index)
+            option_path = f"{field_path}.options[{option_index}]"
             option = _require_object(config_path, raw_option, option_path)
             _validate_fields(
                 config_path,

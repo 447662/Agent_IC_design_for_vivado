@@ -41,7 +41,7 @@ class SkillExecutionTool:
         skill_name: str,
     ) -> tuple[str, ...]:
         raw_selected = request.context.get("selected_skills", (skill_name,))
-        if not isinstance(raw_selected, (list, tuple)):
+        if not isinstance(raw_selected, list | tuple):
             raise ValueError("selected_skills context must be a list or tuple")
         selected = tuple(str(name).strip() for name in raw_selected)
         if not selected or any(not name for name in selected):
@@ -55,14 +55,11 @@ class SkillExecutionTool:
         try:
             skill = self.host.loaded_skills[skill_name]
         except KeyError as exc:
-            raise ValueError("Skill is not loaded: {}".format(skill_name)) from exc
-        expected_tool_name = "skill:{}".format(skill.action)
+            raise ValueError(f"Skill is not loaded: {skill_name}") from exc
+        expected_tool_name = f"skill:{skill.action}"
         if call.tool_name != expected_tool_name:
             raise ValueError(
-                "Skill tool mismatch: expected {}, got {}".format(
-                    expected_tool_name,
-                    call.tool_name,
-                )
+                f"Skill tool mismatch: expected {expected_tool_name}, got {call.tool_name}"
             )
 
         selected_skills = self._selected_skills(request, skill_name)

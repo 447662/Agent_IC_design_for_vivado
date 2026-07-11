@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 from typing import get_args, get_type_hints
 
-
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_DIR = ROOT / ".trae" / "agent"
 if str(AGENT_DIR) not in sys.path:
