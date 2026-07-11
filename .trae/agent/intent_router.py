@@ -70,6 +70,7 @@ SKILL_KEYWORD_ALIASES = {
         "基础仿真",
         "波形",
         "testbench",
+        "控制器",
         "实现一个",
         "写一下",
         "implementation",

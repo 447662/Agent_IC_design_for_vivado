@@ -273,7 +273,9 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
             SkillExecutionStatus.BLOCKED,
             (Path(request.context["design_spec_path"]), brief_path),
             "RTL implementation was not executed",
-            failure_reason="No RTL generator and deterministic RTL checker are configured",
+            failure_reason=(
+                "blocked: No RTL generator and deterministic RTL checker are configured"
+            ),
             diagnostics=(
                 "The execution brief records the requested contract only.",
             ),

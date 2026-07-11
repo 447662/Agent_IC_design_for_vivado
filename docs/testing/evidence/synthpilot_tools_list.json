@@ -1,0 +1,14 @@
+{
+  "command": [
+    "uvx",
+    "--python",
+    "F:\\My_code\\Agent_design_for_vivado\\.venv\\Scripts\\python.exe",
+    "synthpilot"
+  ],
+  "error": {
+    "message": "MCP process exited: Please set license_key in config.yaml\n\nConfig file locations:\n1. Same directory as program\n2. ~/.synthpilot/config.yaml\n\n  Get License: https://www.synthpilot.dev\n\n==================================================",
+    "type": "MCPProcessError"
+  },
+  "status": "FAIL",
+  "steps": []
+}
