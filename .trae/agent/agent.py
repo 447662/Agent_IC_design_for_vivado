@@ -44,6 +44,7 @@ for _local_module_name in (
     "agent_provider",
     "agent_execution",
     "agent_skill_tool",
+    "agent_cli_parser",
     "agent_cli",
     "agent_cli_dispatch",
     "agent_composition",

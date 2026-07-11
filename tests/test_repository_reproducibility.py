@@ -15,6 +15,7 @@ REQUIRED_TRACKED_PATHS = (
     ".trae/agent/agent_async_fifo_render.py",
     ".trae/agent/agent_async_fifo_reports.py",
     ".trae/agent/agent_async_fifo_runtime.py",
+    ".trae/agent/agent_cli_parser.py",
     ".trae/agent/agent_cli_dispatch.py",
     ".trae/agent/agent_round_robin_arbiter.py",
     ".trae/agent/agent_sync_fifo.py",
