@@ -54,6 +54,7 @@ files = [
     ".trae/agent/agent_cli_parser.py",
     ".trae/agent/agent_cli.py",
     ".trae/agent/agent_cli_dispatch.py",
+    ".trae/agent/agent_design_spec.py",
     ".trae/agent/agent_diagnostics.py",
     ".trae/agent/agent_composition.py",
     ".trae/agent/agent_entrypoint.py",

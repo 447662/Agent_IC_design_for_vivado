@@ -126,3 +126,8 @@ def test_p1_1_cli_parser_is_in_mypy_scope():
 def test_p1_1_agent_diagnostics_is_in_mypy_scope():
     config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
     assert ".trae/agent/agent_diagnostics.py" in config["tool"]["mypy"]["files"]
+
+
+def test_p1_1_agent_design_spec_is_in_mypy_scope():
+    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    assert ".trae/agent/agent_design_spec.py" in config["tool"]["mypy"]["files"]
