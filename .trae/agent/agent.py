@@ -47,6 +47,7 @@ for _local_module_name in (
     "agent_execution",
     "skill_runtime",
     "agent_skill_tool",
+    "agent_skill_listing",
     "agent_cli_parser",
     "agent_cli",
     "agent_cli_dispatch",
@@ -167,6 +168,11 @@ from skill_runtime import (
     SkillExecutionStatus,
     SkillLoader,
     SkillResultValidator,
+)
+from agent_skill_listing import (
+    list_skills as list_skills_operation,
+    recommend_skills as recommend_skills_operation,
+    resolve_skill_path as resolve_skill_path_operation,
 )
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
 from wave_visibility import (
@@ -496,7 +502,7 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
 
     def resolve_skill_path(self, skill: Any) -> Any:
         """解析技能文件路径。"""
-        return self.trae_dir / skill["path"]
+        return resolve_skill_path_operation(self, skill)
 
     def run_diagnostic(self, flow: Any=None) -> Any:
         """???????"""
@@ -504,27 +510,11 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
 
     def list_skills(self) -> Any:
         """列出当前配置的技能。"""
-        print("数字IC前端设计Agent - 技能列表")
-        print("=" * 60)
-        for skill in sorted(self.agent_config["skills"], key=lambda x: x["priority"]):
-            keywords = "、".join(skill.get("triggerKeywords", []))
-            print("{}: {}".format(skill["name"], skill["description"]))
-            print("  触发关键词: {}".format(keywords))
-            print("  优先级: {}".format(skill["priority"]))
-        return True
+        return list_skills_operation(self)
 
     def recommend_skills(self, user_input: Any) -> Any:
         """推荐合适的技能。"""
-        matched_skills = self.analyze_requirement(user_input)
-        print("\n【需求分析结果】")
-        print("用户需求: {}".format(user_input))
-        print("\n推荐技能:")
-        for skill_name in matched_skills:
-            skill = self.skill_mapping.get(skill_name)
-            if skill:
-                print("  {} {}: {}".format(self.OK, skill["name"], skill["description"]))
-
-        return matched_skills
+        return recommend_skills_operation(self, user_input)
 
     def build_project_slug(self, user_input: Any) -> Any:
         """?????????????????"""
