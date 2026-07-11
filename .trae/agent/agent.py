@@ -45,6 +45,7 @@ for _local_module_name in (
     "agent_config",
     "skill_runtime",
     "agent_skill_tool",
+    "agent_skill_execution",
     "agent_capabilities",
     "agent_skill_listing",
     "agent_workflow",
@@ -107,6 +108,14 @@ from agent_contracts import AgentRequest, AgentRun, AgentRunStatus
 from agent_execution import AgentExecutionEngine
 from agent_provider import ConfiguredAgentProvider
 from agent_skill_tool import SkillExecutionTool
+from agent_skill_execution import (
+    build_skill_action_handlers as build_skill_action_handlers_operation,
+    execute_design_document_skill as execute_design_document_skill_operation,
+    execute_rtl_implementation_skill as execute_rtl_implementation_skill_operation,
+    execute_verification_plan_skill as execute_verification_plan_skill_operation,
+    skill_result as skill_result_operation,
+    write_skill_execution_brief as write_skill_execution_brief_operation,
+)
 from agent_cli import build_requirement, parse_args, parse_seed_list
 from agent_composition import build_agent
 from agent_config import load_agent_config, normalize_configured_command
@@ -324,11 +333,7 @@ class DigitalICAgent:
         self.close()
 
     def build_skill_action_handlers(self) -> Any:
-        return {
-            "design-document": self.execute_design_document_skill,
-            "rtl-implementation": self.execute_rtl_implementation_skill,
-            "verification-plan": self.execute_verification_plan_skill,
-        }
+        return build_skill_action_handlers_operation(self)
 
     @staticmethod
     def _skill_result(
@@ -340,95 +345,27 @@ class DigitalICAgent:
         diagnostics: Any=(),
         tool_runs: Any=(),
     ) -> Any:
-        return SkillExecutionResult(
-            skill_name=request.skill.name,
-            action=request.skill.action,
-            status=status,
-            artifacts=tuple(Path(path) for path in artifacts),
-            diagnostics=tuple(str(item) for item in diagnostics),
-            tool_runs=tuple(tool_runs),
+        return skill_result_operation(
+            request,
+            status,
+            artifacts,
+            message,
             failure_reason=failure_reason,
-            message=message,
+            diagnostics=diagnostics,
+            tool_runs=tool_runs,
         )
 
     def execute_design_document_skill(self, request: Any) -> Any:
-        spec_path = Path(request.context["design_spec_path"])
-        return self._skill_result(
-            request,
-            SkillExecutionStatus.SUCCEEDED,
-            (spec_path,),
-            "Design document skill executed",
-        )
+        return execute_design_document_skill_operation(self, request)
 
     def _write_skill_execution_brief(self, request: Any, filename: Any, heading: Any) -> Any:
-        spec_path = Path(request.context["design_spec_path"])
-        output_path = request.output_dir / filename
-        output_path.write_text(
-            """# {heading}
-
-- Skill: `{skill_name}`
-- Skill title: {skill_title}
-- Skill source: `{skill_path}`
-- Skill SHA-256: `{skill_digest}`
-- Design specification: `{spec_path}`
-
-## Requirement
-
-{user_input}
-
-## Execution Contract
-
-The deterministic local executor loaded and validated the complete skill file.
-The skill content remains the authoritative operating contract for a future
-LLM-backed executor; this local executor does not fabricate an LLM result.
-""".format(
-                heading=heading,
-                skill_name=request.skill.name,
-                skill_title=request.skill.title,
-                skill_path=request.skill.path,
-                skill_digest=request.skill.content_digest,
-                spec_path=spec_path,
-                user_input=request.user_input,
-            ),
-            encoding="utf-8",
-        )
-        return output_path
+        return write_skill_execution_brief_operation(self, request, filename, heading)
 
     def execute_rtl_implementation_skill(self, request: Any) -> Any:
-        brief_path = self._write_skill_execution_brief(
-            request,
-            "rtl_implementation_brief.md",
-            "RTL Implementation Skill Execution",
-        )
-        return self._skill_result(
-            request,
-            SkillExecutionStatus.BLOCKED,
-            (Path(request.context["design_spec_path"]), brief_path),
-            "RTL implementation was not executed",
-            failure_reason=(
-                "blocked: No RTL generator and deterministic RTL checker are configured"
-            ),
-            diagnostics=(
-                "The execution brief records the requested contract only.",
-            ),
-        )
+        return execute_rtl_implementation_skill_operation(self, request)
 
     def execute_verification_plan_skill(self, request: Any) -> Any:
-        brief_path = self._write_skill_execution_brief(
-            request,
-            "verification_execution_brief.md",
-            "Verification Skill Execution",
-        )
-        return self._skill_result(
-            request,
-            SkillExecutionStatus.BLOCKED,
-            (Path(request.context["design_spec_path"]), brief_path),
-            "UVM verification was not executed",
-            failure_reason="No UVM generator and simulator run are configured",
-            diagnostics=(
-                "The execution brief is not a verification plan or simulator result.",
-            ),
-        )
+        return execute_verification_plan_skill_operation(self, request)
 
     def check_capability(self, capability: Any) -> Any:
         return check_capability_operation(self, capability)
