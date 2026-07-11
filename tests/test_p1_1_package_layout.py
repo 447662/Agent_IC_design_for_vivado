@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT / "src"
 PACKAGE_DIR = SRC_DIR / "digital_ic_agent"
 PYPROJECT_PATH = ROOT / "pyproject.toml"
+LEGACY_AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
 
 
 def _clear_imports() -> None:
@@ -54,3 +55,9 @@ def test_src_package_is_in_quality_and_coverage_scope():
 
     assert "src/digital_ic_agent" in config["tool"]["mypy"]["files"]
     assert "src/digital_ic_agent" in config["tool"]["coverage"]["run"]["source"]
+
+
+def test_legacy_core_entrypoint_no_longer_inserts_sys_path():
+    source = LEGACY_AGENT_PATH.read_text(encoding="utf-8")
+
+    assert "sys.path.insert" not in source
