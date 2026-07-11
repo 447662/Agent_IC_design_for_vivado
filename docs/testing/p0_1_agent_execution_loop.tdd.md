@@ -72,6 +72,7 @@ The GREEN router checkpoint was committed as:
 | 12 | MCP tool success persists an evidence artifact | `tests/test_agent_execution.py::test_mcp_tool_success_persists_evidence_artifact` | integration | PASS |
 | 13 | MCP protocol, timeout, invalid JSON, and process-exit errors are surfaced | `tests/test_agent_execution.py::test_stdio_mcp_client_reports_protocol_timeout_and_exit_errors` | integration | PASS |
 | 14 | MCP failures become failed tool results with non-zero return codes | `tests/test_agent_execution.py::test_mcp_failures_become_failed_tool_results` | integration | PASS |
+| 15 | Real SynthPilot evidence runner only selects clearly safe zero-required-argument tools | `tests/test_p0_1_synthpilot_evidence.py` | unit | PASS |
 
 ## Routing Eval Coverage
 
@@ -184,6 +185,12 @@ uv run --offline --frozen python scripts/p0_1_synthpilot_mcp_evidence.py
 
 Status: blocked by SynthPilot license device limit. No tool names or schemas
 were guessed, and no fake SynthPilot success is claimed.
+
+The reusable evidence runner's safe tool-selection policy is covered by
+`tests/test_p0_1_synthpilot_evidence.py`. It selects obvious zero-argument safe
+tools such as diagnostic/status/version-like tools, rejects any tool with
+required arguments, and blocks ambiguous no-argument tool lists instead of
+guessing a destructive or state-changing call.
 
 ## Current P0-1 Acceptance Status
 
