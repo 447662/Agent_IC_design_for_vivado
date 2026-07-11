@@ -1,9 +1,16 @@
 import subprocess
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, runtime_checkable
+
+
+_PLUGIN_OUTPUT_ROOT: ContextVar[Path | None] = ContextVar(
+    "plugin_output_root",
+    default=None,
+)
 
 
 @dataclass
@@ -210,31 +217,150 @@ class CommandRunner:
         self.cleanup()
 
 
+@dataclass
+class PluginServiceDenied(ValueError):
+    service: str
+    reason: str = "undeclared_service"
+    path: str | None = None
+
+    @property
+    def event(self) -> dict[str, str]:
+        event = {
+            "event": "plugin_service_denied",
+            "service": self.service,
+            "reason": self.reason,
+        }
+        if self.path is not None:
+            event["path"] = self.path
+        return event
+
+    def __str__(self) -> str:
+        return "Plugin service is not available: {}".format(self.service)
+
+
+@dataclass(frozen=True)
+class PluginServiceFacade:
+    services: "PluginServices"
+    domain: str
+
+    def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        return self.services.call(name, *args, **kwargs)
+
+
+@dataclass(frozen=True)
+class VivadoService(PluginServiceFacade):
+    pass
+
+
+@dataclass(frozen=True)
+class WaveformService(PluginServiceFacade):
+    pass
+
+
+@dataclass(frozen=True)
+class ArtifactService(PluginServiceFacade):
+    pass
+
+
 @dataclass(frozen=True)
 class PluginServices:
-    command_runner: CommandRunner
-    project_root: Path
     operations: Mapping[str, Callable[..., Any]]
+    _denials: tuple[dict[str, str], ...] = field(default_factory=tuple)
+
+    @property
+    def vivado(self) -> VivadoService:
+        return VivadoService(self, "vivado")
+
+    @property
+    def waveform(self) -> WaveformService:
+        return WaveformService(self, "waveform")
+
+    @property
+    def artifacts(self) -> ArtifactService:
+        return ArtifactService(self, "artifacts")
+
+    @property
+    def denials(self) -> tuple[dict[str, str], ...]:
+        return self._denials
+
+    @staticmethod
+    def _looks_like_output_path(name: str, value: Any) -> bool:
+        if not isinstance(value, str | Path):
+            return False
+        return name == "output_dir" or name in {"project_dir", "artifact_path"}
+
+    @staticmethod
+    def _operation_accepts_output_path(name: str) -> bool:
+        return name.startswith(
+            (
+                "analyze_",
+                "check_",
+                "launch_",
+                "open_",
+                "render_",
+                "run_",
+                "write_",
+            )
+        )
+
+    @staticmethod
+    def _is_relative_to(path: Path, root: Path) -> bool:
+        try:
+            path.resolve().relative_to(root.resolve())
+            return True
+        except ValueError:
+            return False
+
+    def _record_denial(self, denial: PluginServiceDenied) -> None:
+        object.__setattr__(self, "_denials", self._denials + (denial.event,))
+
+    def _validate_output_paths(
+        self,
+        service_name: str,
+        args: tuple[Any, ...],
+        kwargs: Mapping[str, Any],
+    ) -> None:
+        output_root = _PLUGIN_OUTPUT_ROOT.get()
+        if output_root is None:
+            return
+        candidates = [
+            value
+            for key, value in kwargs.items()
+            if self._looks_like_output_path(str(key), value)
+        ]
+        if args and self._operation_accepts_output_path(service_name):
+            candidates.append(args[0])
+        for candidate in candidates:
+            candidate_path = Path(candidate)
+            if not self._is_relative_to(candidate_path, output_root):
+                denied = PluginServiceDenied(
+                    service_name,
+                    reason="output_dir_outside_allowed_root",
+                    path=str(candidate_path),
+                )
+                self._record_denial(denied)
+                raise denied
 
     def require(self, name: str) -> Callable[..., Any]:
         try:
             return self.operations[name]
         except KeyError as exc:
-            raise ValueError(
-                "Plugin service is not available: {}".format(name)
-            ) from exc
+            denied = PluginServiceDenied(name)
+            self._record_denial(denied)
+            raise denied from exc
 
     def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
-        return self.require(name)(*args, **kwargs)
+        operation = self.require(name)
+        self._validate_output_paths(name, args, kwargs)
+        return operation(*args, **kwargs)
 
     def restrict(self, names: tuple[str, ...]) -> "PluginServices":
         allowed = {}
         for name in names:
             allowed[name] = self.require(name)
         return PluginServices(
-            command_runner=self.command_runner,
-            project_root=self.project_root,
             operations=allowed,
+            _denials=self._denials,
         )
 
 
@@ -268,4 +394,9 @@ class TargetHandler:
             raise ValueError(
                 "Target {} does not support flow: {}".format(self.target_name, flow)
             )
-        return handler(**kwargs)
+        output_dir = Path(kwargs.get("output_dir", "outputs")).resolve()
+        token = _PLUGIN_OUTPUT_ROOT.set(output_dir)
+        try:
+            return handler(**kwargs)
+        finally:
+            _PLUGIN_OUTPUT_ROOT.reset(token)

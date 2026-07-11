@@ -46,8 +46,6 @@ def _service_adapter(operation: Any) -> Any:
 
 def build_plugin_services(agent: Any) -> Any:
     return PluginServices(
-        command_runner=agent.command_runner,
-        project_root=agent.project_root,
         operations={
             name: _service_adapter(getattr(agent, name))
             for name in PLUGIN_OPERATION_NAMES

@@ -41,7 +41,6 @@ class AsyncFifoPlugin(
     def __init__(self, target_name: str, services: PluginServices):
         self.target_name = target_name
         self.services = services.restrict(ASYNC_FIFO_SERVICE_NAMES)
-        self.project_root = self.services.project_root
 
     def generate_rtl_project(
         self,
