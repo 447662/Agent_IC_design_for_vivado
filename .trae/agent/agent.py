@@ -48,6 +48,7 @@ for _local_module_name in (
     "agent_composition",
     "agent_config",
     "agent_entrypoint",
+    "report_templates",
     "agent_reports",
     "agent_waveform",
     "capability_preflight",

@@ -55,6 +55,7 @@ files = [
     ".trae/agent/agent_composition.py",
     ".trae/agent/agent_entrypoint.py",
     ".trae/agent/agent_config.py",
+    ".trae/agent/report_templates.py",
     ".trae/agent/agent_reports.py",
     ".trae/agent/agent_waveform.py",
     ".trae/agent/skill_runtime.py",
