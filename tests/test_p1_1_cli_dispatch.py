@@ -6,6 +6,8 @@ ROOT = Path(__file__).resolve().parents[1]
 AGENT_DIR = ROOT / ".trae" / "agent"
 ENTRYPOINT_PATH = AGENT_DIR / "agent_entrypoint.py"
 DISPATCH_PATH = AGENT_DIR / "agent_cli_dispatch.py"
+CLI_PATH = AGENT_DIR / "agent_cli.py"
+CLI_PARSER_PATH = AGENT_DIR / "agent_cli_parser.py"
 
 
 def _function_length(path: Path, function_name: str) -> int:
@@ -40,3 +42,11 @@ def test_cli_command_dispatch_is_split_from_entrypoint():
 def test_cli_dispatch_functions_stay_within_p1_1_size_budget():
     assert not _oversized_functions(ENTRYPOINT_PATH)
     assert not _oversized_functions(DISPATCH_PATH)
+
+
+def test_cli_parser_construction_is_split_from_parse_args():
+    cli_source = CLI_PATH.read_text(encoding="utf-8")
+
+    assert CLI_PARSER_PATH.is_file()
+    assert "from agent_cli_parser import build_parser" in cli_source
+    assert _function_length(CLI_PATH, "parse_args") <= 100
