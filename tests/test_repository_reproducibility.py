@@ -26,6 +26,7 @@ REQUIRED_TRACKED_PATHS = (
     ".trae/agent/target_handlers/round_robin_arbiter.py",
     ".trae/agent/target_handlers/sync_fifo.py",
     ".trae/agent/target_plugins.py",
+    ".trae/agent/target_service_host.py",
     "tests/test_architecture_runtime.py",
     "tests/test_config_schema.py",
     "tests/test_process_lifecycle.py",

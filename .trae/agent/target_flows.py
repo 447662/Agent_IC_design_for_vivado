@@ -44,10 +44,20 @@ def _service_adapter(operation: Any) -> Any:
     return invoke
 
 
+def _resolve_plugin_operation(agent: Any, name: str) -> Any:
+    target_services = getattr(agent, "target_services", None)
+    if target_services is not None:
+        try:
+            return getattr(target_services, name)
+        except AttributeError:
+            pass
+    return getattr(agent, name)
+
+
 def build_plugin_services(agent: Any) -> Any:
     return PluginServices(
         operations={
-            name: _service_adapter(getattr(agent, name))
+            name: _service_adapter(_resolve_plugin_operation(agent, name))
             for name in PLUGIN_OPERATION_NAMES
         },
     )

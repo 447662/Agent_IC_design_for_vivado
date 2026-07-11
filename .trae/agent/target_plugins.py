@@ -64,7 +64,7 @@ def _external_flow_runner(
         module_path = (search_path / Path(*module_name.split("."))).with_suffix(".py")
         agent_runtime_path = Path(__file__).resolve().with_name("agent_runtime.py")
         output_root = Path(kwargs.get("output_dir", "outputs")).resolve()
-        payload = {
+        payload: dict[str, Any] = {
             "module": module_name,
             "module_path": str(module_path),
             "agent_runtime_path": str(agent_runtime_path),
@@ -153,11 +153,15 @@ def _external_flow_runner(
         )
         if result.returncode != 0:
             try:
-                payload = json.loads(result.stdout.strip().splitlines()[-1])
+                denial_payload: dict[str, Any] = json.loads(
+                    result.stdout.strip().splitlines()[-1]
+                )
             except (IndexError, json.JSONDecodeError):
-                payload = {}
-            if payload.get("status") == "denied":
-                event = payload.get("event", {})
+                denial_payload = {}
+            if denial_payload.get("status") == "denied":
+                event = denial_payload.get("event", {})
+                if not isinstance(event, Mapping):
+                    event = {}
                 raise PluginServiceDenied(
                     str(event.get("service", "external_plugin")),
                     reason=str(event.get("reason", "external_plugin_denied")),
@@ -313,6 +317,8 @@ def discover_target_handler_plugins(
                     )
                 )
 
+    module_names: tuple[str, ...]
+    package_paths: tuple[str, ...]
     if search_path is not None:
         resolved_search_path = Path(search_path)
         package_dir = Path(search_path) / package_name
@@ -337,13 +343,14 @@ def discover_target_handler_plugins(
     else:
         importlib.invalidate_caches()
         package = importlib.import_module(package_name)
-        package_paths = getattr(package, "__path__", None)
-        if package_paths is None:
+        package_paths_value = getattr(package, "__path__", None)
+        if package_paths_value is None:
             raise ValueError(
                 "Target handler plugin package has no __path__: {}".format(
                     package_name
                 )
             )
+        package_paths = tuple(str(path) for path in package_paths_value)
         module_names = tuple(
             sorted(
                 item.name
@@ -370,13 +377,13 @@ def discover_target_handler_plugins(
             spec.loader.exec_module(module)
         else:
             module = importlib.import_module(module_name)
-            handler_id = getattr(module, "HANDLER_ID", None)
-            factory = getattr(module, "create_handler", None)
-            if handler_id is None and factory is None:
+            module_handler_id = getattr(module, "HANDLER_ID", None)
+            module_factory = getattr(module, "create_handler", None)
+            if module_handler_id is None and module_factory is None:
                 continue
-        handler_id = getattr(module, "HANDLER_ID", None)
-        factory = getattr(module, "create_handler", None)
-        if handler_id is None and factory is None:
+        module_handler_id = getattr(module, "HANDLER_ID", None)
+        module_factory = getattr(module, "create_handler", None)
+        if module_handler_id is None and module_factory is None:
             continue
         if module_name in manifest_handlers:
             actual_handler = str(getattr(module, "HANDLER_ID", "")).strip()

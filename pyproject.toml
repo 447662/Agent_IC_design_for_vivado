@@ -75,6 +75,7 @@ files = [
     ".trae/agent/adapters/vivado.py",
     ".trae/agent/adapters/waveform.py",
     ".trae/agent/target_registry.py",
+    ".trae/agent/target_service_host.py",
     ".trae/agent/target_plugins.py",
     ".trae/agent/target_handlers",
     ".trae/agent/target_examples",

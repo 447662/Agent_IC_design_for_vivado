@@ -33,8 +33,6 @@ from agent_contracts import AgentRequest, AgentRun, AgentRunStatus
 from agent_execution import AgentExecutionEngine
 from agent_provider import ConfiguredAgentProvider
 from agent_skill_tool import SkillExecutionTool
-from agent_round_robin_arbiter import RoundRobinArbiterMixin
-from agent_sync_fifo import SyncFifoMixin
 from agent_cli import build_requirement, parse_args, parse_seed_list
 from agent_composition import build_agent
 from agent_config import load_agent_config, normalize_configured_command
@@ -112,6 +110,7 @@ from target_registry import (
     load_target_registry as load_registered_targets,
 )
 from target_scaffolder import create_target_scaffold as build_target_scaffold
+from target_service_host import TargetServiceHost
 
 
 def _configure_text_stream(stream: Any) -> Any:
@@ -125,10 +124,7 @@ _configure_text_stream(sys.stdout)
 _configure_text_stream(sys.stderr)
 
 
-class DigitalICAgent(
-    SyncFifoMixin,
-    RoundRobinArbiterMixin,
-):
+class DigitalICAgent:
     def __init__(
         self,
         config_path: Any=None,
@@ -171,6 +167,7 @@ class DigitalICAgent(
         self.cli_tools = self.agent_config["cliTools"]
         self.targets_dir = self.base_dir / "targets"
         self.targets = self.load_target_registry()
+        self.target_services = TargetServiceHost(self)
         self.target_handlers = self.build_target_handlers()
         self.validate_target_handlers()
         self.OK = "[OK]"
