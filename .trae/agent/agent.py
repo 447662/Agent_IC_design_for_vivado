@@ -47,6 +47,7 @@ for _local_module_name in (
     "agent_cli_parser",
     "agent_cli",
     "agent_cli_dispatch",
+    "agent_diagnostics",
     "agent_composition",
     "agent_config",
     "agent_entrypoint",
@@ -99,6 +100,7 @@ from agent_cli import build_requirement, parse_args, parse_seed_list
 from agent_composition import build_agent
 from agent_config import load_agent_config, normalize_configured_command
 from agent_entrypoint import run_cli
+from agent_diagnostics import run_agent_diagnostic
 from agent_reports import (
     render_markdown_document_html as render_markdown_html_document,
 )
@@ -554,122 +556,9 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
         """解析技能文件路径。"""
         return self.trae_dir / skill["path"]
 
-    @staticmethod
-    def _diagnostic_status_text(status: Any, requirement: Any) -> Any:
-        if status is PreflightStatus.NOT_APPLICABLE:
-            return "[N/A] 当前动作不适用"
-        if status is PreflightStatus.MISSING_REQUIRED:
-            return "[NO] 缺失（必需）"
-        if status is PreflightStatus.MISSING_OPTIONAL:
-            return "[WARN] 缺失（可选，降级）"
-        if requirement == "required":
-            return "[OK] 可用（必需）"
-        if requirement == "optional":
-            return "[OK] 可用（可选）"
-        return "[OK] 可用"
-
-    def _capability_diagnostic(self, capability: Any, flow: Any=None) -> Any:
-        if flow is not None:
-            report = self.run_preflight(flow)
-            status = report.status_for(capability)
-            if capability in report.required_capabilities:
-                requirement = "required"
-            elif capability in report.optional_capabilities:
-                requirement = "optional"
-            else:
-                requirement = "not-applicable"
-            return status, requirement
-
-        required_flows = self.preflight.required_flows(capability)
-        optional_flows = self.preflight.optional_flows(capability)
-        if not required_flows and not optional_flows:
-            return PreflightStatus.NOT_APPLICABLE, "not-applicable"
-        available = self.check_capability(capability)
-        if available:
-            return (
-                PreflightStatus.AVAILABLE,
-                "required" if required_flows else "optional",
-            )
-        if required_flows:
-            return PreflightStatus.MISSING_REQUIRED, "required"
-        return PreflightStatus.MISSING_OPTIONAL, "optional"
-
     def run_diagnostic(self, flow: Any=None) -> Any:
-        """运行环境诊断。"""
-        print("=" * 60)
-        print("数字IC前端设计Agent - 环境诊断")
-        print("=" * 60)
-
-        if flow is not None:
-            print("诊断动作: {}".format(flow))
-
-        print("\n【CLI工具检查】")
-        cli_status = []
-        for tool in self.cli_tools:
-            capability = tool["name"]
-            status, requirement = self._capability_diagnostic(
-                capability,
-                flow=flow,
-            )
-            cli_status.append((capability, status))
-            print(
-                "  {}: {}".format(
-                    capability,
-                    self._diagnostic_status_text(status, requirement),
-                )
-            )
-            if status in {
-                PreflightStatus.MISSING_REQUIRED,
-                PreflightStatus.MISSING_OPTIONAL,
-            }:
-                print("     安装指南: {}".format(self.get_install_guide("cli", tool["name"])))
-
-        print("\n【MCP服务器检查】")
-        mcp_status = []
-        for name, mcp in self.mcp_servers.items():
-            status, requirement = self._capability_diagnostic(name, flow=flow)
-            mcp_status.append((name, status))
-            print(
-                "  {}: {}".format(
-                    name,
-                    self._diagnostic_status_text(status, requirement),
-                )
-            )
-            if status in {
-                PreflightStatus.MISSING_REQUIRED,
-                PreflightStatus.MISSING_OPTIONAL,
-            }:
-                print("     安装指南: {}".format(mcp.get("installGuide", "未知")))
-
-        print("\n【技能文件检查】")
-        skill_status = []
-        for skill in self.agent_config["skills"]:
-            skill_path = self.resolve_skill_path(skill)
-            exists = skill_path.exists()
-            status = self.OK + " 存在" if exists else self.NO + " 缺失"
-            skill_status.append((skill["name"], exists))
-            print("  {}: {}".format(skill["name"], status))
-
-        all_ok = (
-            all(
-                status is not PreflightStatus.MISSING_REQUIRED
-                for _, status in cli_status
-            )
-            and all(
-                status is not PreflightStatus.MISSING_REQUIRED
-                for _, status in mcp_status
-            )
-            and all(exists for _, exists in skill_status)
-        )
-
-        print("\n" + "=" * 60)
-        if all_ok:
-            print("诊断结果: " + self.OK + " 所有工具和技能均已就绪")
-        else:
-            print("诊断结果: " + self.WARN + " 部分工具未安装，请根据上述指南安装")
-        print("=" * 60)
-
-        return all_ok
+        """???????"""
+        return run_agent_diagnostic(self, flow=flow)
 
     def list_skills(self) -> Any:
         """列出当前配置的技能。"""
