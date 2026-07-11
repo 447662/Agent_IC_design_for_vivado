@@ -69,6 +69,89 @@ function Assert-FreshFile {
     }
 }
 
+function Assert-ScoreboardMarker {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectDirectory,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Markers
+    )
+
+    $evidenceFiles = @(
+        Get-ChildItem -LiteralPath $ProjectDirectory -Recurse -File |
+            Where-Object { $_.Extension -in @(".log", ".jou", ".md", ".txt") }
+    )
+    foreach ($marker in $Markers) {
+        $scoreboardMatches = @()
+        if ($evidenceFiles.Count -gt 0) {
+            $scoreboardMatches = @(
+                Select-String `
+                    -Path $evidenceFiles.FullName `
+                    -Pattern $marker `
+                    -SimpleMatch `
+                    -ErrorAction SilentlyContinue
+            )
+        }
+        if ($scoreboardMatches.Count -eq 0) {
+            throw "Real simulator output did not contain $marker"
+        }
+    }
+}
+
+function Assert-RuntimeManifest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ManifestPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedFlow,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$RequiredArtifactPaths
+    )
+
+    Assert-FreshFile -Path $ManifestPath -StartedAt $script:GateStartedAt
+    $manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding utf8 |
+        ConvertFrom-Json
+    $runs = @($manifest.runs)
+    if ($runs.Count -eq 0) {
+        throw "Runtime manifest contains no runs"
+    }
+    $latestRun = $runs[-1]
+    if ($latestRun.status -ne "PASS") {
+        throw "Latest runtime manifest status is not PASS"
+    }
+    if (-not $latestRun.run_id) {
+        throw "Latest runtime manifest run_id is missing"
+    }
+    if ($latestRun.flow -ne $ExpectedFlow) {
+        throw "Latest runtime manifest flow is not $ExpectedFlow"
+    }
+
+    $artifactByPath = @{}
+    foreach ($artifact in @($latestRun.artifacts)) {
+        if ($artifact.path) {
+            $artifactByPath[$artifact.path] = $artifact
+        }
+    }
+    foreach ($relativePath in $RequiredArtifactPaths) {
+        $manifestPath = $relativePath.Replace("\", "/")
+        if (-not $artifactByPath.ContainsKey($manifestPath)) {
+            throw "Runtime manifest does not list required artifact: $manifestPath"
+        }
+        $artifact = $artifactByPath[$manifestPath]
+        if ($artifact.status -ne "CURRENT") {
+            throw "Runtime manifest artifact is not CURRENT: $manifestPath"
+        }
+        if (-not $artifact.produced_by_run_id) {
+            throw "Runtime manifest artifact has no produced_by_run_id: $manifestPath"
+        }
+    }
+
+    return $latestRun
+}
+
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $vivadoCommand = Get-Command vivado -ErrorAction Stop
 $uvCommand = Get-Command uv -ErrorAction Stop
@@ -142,123 +225,199 @@ if (($preflightResult.Output -join "`n") -notmatch "VIVADO_PREFLIGHT_PASS") {
     throw "Vivado startup or license preflight did not report PASS"
 }
 
-$simulationStartedAt = Get-Date
 $agentPath = Join-Path $repositoryRoot ".trae\agent\agent.py"
-$simulationResult = Invoke-LoggedNativeCommand `
-    -Executable $uvExecutable `
-    -Arguments @(
-        "run", "--frozen", "python", "-B", $agentPath,
-        "--sim-rtl", "sync-fifo",
-        "--no-wave-gui",
-        "--output-dir", $runDirectory
-    ) `
-    -WorkingDirectory $repositoryRoot `
-    -LogPath (Join-Path $runDirectory "sync-fifo-agent.log")
-
-$projectDirectory = Join-Path $runDirectory "sync-fifo"
-$rtlPath = Join-Path $projectDirectory "rtl\sync_fifo.v"
-$testbenchPath = Join-Path $projectDirectory "tb\tb_sync_fifo.v"
-$vcdPath = Join-Path $projectDirectory "sim\sync_fifo_trace.vcd"
-$projectPath = Join-Path $projectDirectory "vivado_project\sync_fifo_project.xpr"
-$manifestPath = Join-Path $projectDirectory "artifacts.json"
-$simulationReportPath = Join-Path $projectDirectory "reports\sim_report.md"
-
-foreach ($requiredPath in @(
-    $rtlPath,
-    $testbenchPath,
-    $vcdPath,
-    $projectPath,
-    $manifestPath,
-    $simulationReportPath
-)) {
-    Assert-FreshFile -Path $requiredPath -StartedAt $simulationStartedAt
-}
-
-$waveDatabases = @(
-    Get-ChildItem `
-        -LiteralPath (Join-Path $projectDirectory "sim") `
-        -Filter "*.wdb" `
-        -File
+$targetGates = @(
+    [pscustomobject]@{
+        Target = "sync-fifo"
+        Rtl = "rtl\sync_fifo.v"
+        SimulationScript = "run_vivado_sync_fifo.tcl"
+        Flows = @(
+            [pscustomobject]@{
+                Name = "sim-rtl"
+                CliFlag = "--sim-rtl"
+                LogName = "sync-fifo-sim-rtl-agent.log"
+                RequiredArtifacts = @(
+                    "rtl\sync_fifo.v",
+                    "tb\tb_sync_fifo.v",
+                    "sim\sync_fifo_trace.vcd",
+                    "vivado_project\sync_fifo_project.xpr",
+                    "reports\sim_report.md",
+                    "sim\sync_fifo_smoke.wdb"
+                )
+                Markers = @("SYNC_FIFO_SCOREBOARD_PASS")
+            }
+        )
+    },
+    [pscustomobject]@{
+        Target = "async-fifo"
+        Rtl = "rtl\async_fifo.v"
+        SimulationScript = "run_vivado_async_fifo.tcl"
+        Flows = @(
+            [pscustomobject]@{
+                Name = "sim-rtl"
+                CliFlag = "--sim-rtl"
+                LogName = "async-fifo-sim-rtl-agent.log"
+                RequiredArtifacts = @(
+                    "rtl\async_fifo.v",
+                    "tb\tb_async_fifo.v",
+                    "sim\async_fifo_trace.vcd",
+                    "vivado_project\async_fifo_project.xpr",
+                    "reports\sim_report.md",
+                    "sim\async_fifo_smoke.wdb"
+                )
+                Markers = @("ASYNC_FIFO_SCOREBOARD_PASS")
+            },
+            [pscustomobject]@{
+                Name = "uvm-smoke"
+                CliFlag = "--uvm-smoke"
+                LogName = "async-fifo-uvm-smoke-agent.log"
+                RequiredArtifacts = @(
+                    "rtl\async_fifo.v",
+                    "sim\async_fifo_uvm_smoke.wdb",
+                    "reports\uvm_smoke_report.md"
+                )
+                Markers = @(
+                    "ASYNC_FIFO_UVM_SCOREBOARD_PASS",
+                    "ASYNC_FIFO_UVM_TEST_DONE"
+                )
+            },
+            [pscustomobject]@{
+                Name = "uvm-coverage"
+                CliFlag = "--uvm-coverage"
+                LogName = "async-fifo-uvm-coverage-agent.log"
+                RequiredArtifacts = @(
+                    "rtl\async_fifo.v",
+                    "sim\async_fifo_uvm_coverage.wdb",
+                    "reports\uvm_coverage_summary.md"
+                )
+                Markers = @(
+                    "ASYNC_FIFO_UVM_SCOREBOARD_PASS",
+                    "ASYNC_FIFO_UVM_TEST_DONE"
+                )
+            }
+        )
+    },
+    [pscustomobject]@{
+        Target = "round-robin-arbiter"
+        Rtl = "rtl\round_robin_arbiter.v"
+        SimulationScript = "run_vivado_round_robin_arbiter.tcl"
+        Flows = @(
+            [pscustomobject]@{
+                Name = "sim-rtl"
+                CliFlag = "--sim-rtl"
+                LogName = "round-robin-arbiter-sim-rtl-agent.log"
+                RequiredArtifacts = @(
+                    "rtl\round_robin_arbiter.v",
+                    "tb\tb_round_robin_arbiter.v",
+                    "sim\round_robin_arbiter_trace.vcd",
+                    "vivado_project\round_robin_arbiter_project.xpr",
+                    "reports\sim_report.md",
+                    "sim\round_robin_arbiter_smoke.wdb"
+                )
+                Markers = @("ROUND_ROBIN_ARBITER_SCOREBOARD_PASS")
+            }
+        )
+    }
 )
-if ($waveDatabases.Count -eq 0) {
-    throw "Simulation did not generate a WDB file"
-}
-foreach ($waveDatabase in $waveDatabases) {
-    Assert-FreshFile -Path $waveDatabase.FullName -StartedAt $simulationStartedAt
+
+$gateSummaries = @()
+foreach ($targetGate in $targetGates) {
+    $projectDirectory = Join-Path $runDirectory $targetGate.Target
+    foreach ($flowGate in $targetGate.Flows) {
+        $script:GateStartedAt = Get-Date
+        $flowResult = Invoke-LoggedNativeCommand `
+            -Executable $uvExecutable `
+            -Arguments @(
+                "run", "--frozen", "python", "-B", $agentPath,
+                $flowGate.CliFlag, $targetGate.Target,
+                "--no-wave-gui",
+                "--output-dir", $runDirectory
+            ) `
+            -WorkingDirectory $repositoryRoot `
+            -LogPath (Join-Path $runDirectory $flowGate.LogName)
+
+        foreach ($relativePath in $flowGate.RequiredArtifacts) {
+            Assert-FreshFile `
+                -Path (Join-Path $projectDirectory $relativePath) `
+                -StartedAt $script:GateStartedAt
+        }
+        $waveDatabases = @(
+            Get-ChildItem `
+                -LiteralPath (Join-Path $projectDirectory "sim") `
+                -Filter "*.wdb" `
+                -File
+        )
+        if ($waveDatabases.Count -eq 0) {
+            throw "Simulation did not generate a WDB file"
+        }
+        foreach ($waveDatabase in $waveDatabases) {
+            Assert-FreshFile `
+                -Path $waveDatabase.FullName `
+                -StartedAt $script:GateStartedAt
+        }
+
+        Assert-ScoreboardMarker `
+            -ProjectDirectory $projectDirectory `
+            -Markers $flowGate.Markers
+
+        $latestRun = Assert-RuntimeManifest `
+            -ManifestPath (Join-Path $projectDirectory "artifacts.json") `
+            -ExpectedFlow $flowGate.Name `
+            -RequiredArtifactPaths $flowGate.RequiredArtifacts
+
+        $gateSummaries += [ordered]@{
+            target = $targetGate.Target
+            flow = $flowGate.Name
+            run_id = $latestRun.run_id
+            exit_code = $flowResult.ExitCode
+            required_artifacts = $flowGate.RequiredArtifacts
+            scoreboard_markers = $flowGate.Markers
+        }
+    }
 }
 
-$evidenceFiles = @(
-    Get-ChildItem -LiteralPath $projectDirectory -Recurse -File |
-        Where-Object { $_.Extension -in @(".log", ".jou", ".md", ".txt") }
-)
-$scoreboardMatches = @()
-if ($evidenceFiles.Count -gt 0) {
-    $scoreboardMatches = @(
-        Select-String `
-            -Path $evidenceFiles.FullName `
-            -Pattern "SYNC_FIFO_SCOREBOARD_PASS" `
-            -SimpleMatch `
-            -ErrorAction SilentlyContinue
-    )
-}
-if ($scoreboardMatches.Count -eq 0) {
-    throw "Real simulator output did not contain SYNC_FIFO_SCOREBOARD_PASS"
-}
+$negativeSummaries = @()
+foreach ($negativeGate in $targetGates) {
+    $sourceProjectDirectory = Join-Path $runDirectory $negativeGate.Target
+    $negativeDirectory = Join-Path $runDirectory ("negative-syntax-" + $negativeGate.Target)
+    Copy-Item -LiteralPath $sourceProjectDirectory -Destination $negativeDirectory -Recurse
+    $negativeRtlPath = Join-Path $negativeDirectory $negativeGate.Rtl
+    Add-Content `
+        -LiteralPath $negativeRtlPath `
+        -Value "`nTHIS_TOKEN_IS_INTENTIONALLY_INVALID_VERILOG"
 
-$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding utf8 |
-    ConvertFrom-Json
-$runs = @($manifest.runs)
-if ($runs.Count -eq 0) {
-    throw "Runtime manifest contains no runs"
-}
-$latestRun = $runs[-1]
-if ($latestRun.status -ne "PASS") {
-    throw "Latest runtime manifest status is not PASS"
-}
-if (-not $latestRun.run_id) {
-    throw "Latest runtime manifest run_id is missing"
-}
-if ($latestRun.flow -ne "sim-rtl") {
-    throw "Latest runtime manifest flow is not sim-rtl"
-}
+    $negativeResult = Invoke-LoggedNativeCommand `
+        -Executable $vivadoExecutable `
+        -Arguments @(
+            "-mode", "batch",
+            "-source", $negativeGate.SimulationScript
+        ) `
+        -WorkingDirectory (Join-Path $negativeDirectory "sim") `
+        -LogPath (Join-Path $runDirectory ("negative-syntax-" + $negativeGate.Target + ".log")) `
+        -AllowFailure
 
-$negativeDirectory = Join-Path $runDirectory "negative-syntax"
-Copy-Item -LiteralPath $projectDirectory -Destination $negativeDirectory -Recurse
-$negativeRtlPath = Join-Path $negativeDirectory "rtl\sync_fifo.v"
-Add-Content `
-    -LiteralPath $negativeRtlPath `
-    -Value "`nTHIS_TOKEN_IS_INTENTIONALLY_INVALID_VERILOG"
+    if ($negativeResult.ExitCode -eq 0) {
+        throw "Vivado accepted invalid RTL syntax for $($negativeGate.Target)"
+    }
 
-$negativeResult = Invoke-LoggedNativeCommand `
-    -Executable $vivadoExecutable `
-    -Arguments @(
-        "-mode", "batch",
-        "-source", "run_vivado_sync_fifo.tcl"
-    ) `
-    -WorkingDirectory (Join-Path $negativeDirectory "sim") `
-    -LogPath (Join-Path $runDirectory "negative-syntax.log") `
-    -AllowFailure
-
-if ($negativeResult.ExitCode -eq 0) {
-    throw "Vivado accepted invalid RTL syntax"
+    $negativeSummaries += [ordered]@{
+        target = $negativeGate.Target
+        script = $negativeGate.SimulationScript
+        exit_code = $negativeResult.ExitCode
+    }
 }
 
 $summary = [ordered]@{
     status = "PASS"
-    run_id = $latestRun.run_id
     vivado_version = $versionBanner
     preflight_exit_code = $preflightResult.ExitCode
-    simulation_exit_code = $simulationResult.ExitCode
-    negative_syntax_exit_code = $negativeResult.ExitCode
-    project = $projectPath
-    vcd = $vcdPath
-    wdb = @($waveDatabases.FullName)
-    manifest = $manifestPath
+    matrix = $gateSummaries
+    negative_syntax = $negativeSummaries
 }
 $summary |
     ConvertTo-Json -Depth 5 |
     Out-File -LiteralPath (Join-Path $runDirectory "integration-summary.json") -Encoding utf8
 
 Write-Host "Vivado integration PASS"
-Write-Host "Run ID: $($latestRun.run_id)"
+Write-Host "Targets: $($targetGates.Target -join ', ')"
 Write-Host "Artifacts: $runDirectory"
