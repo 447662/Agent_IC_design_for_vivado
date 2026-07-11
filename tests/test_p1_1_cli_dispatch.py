@@ -17,6 +17,18 @@ def _function_length(path: Path, function_name: str) -> int:
     raise AssertionError("function not found: {}".format(function_name))
 
 
+def _oversized_functions(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    oversized = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            end_lineno = getattr(node, "end_lineno", node.lineno) or node.lineno
+            length = end_lineno - node.lineno + 1
+            if length > 100:
+                oversized.append("{}:{} lines={}".format(path.name, node.name, length))
+    return oversized
+
+
 def test_cli_command_dispatch_is_split_from_entrypoint():
     entrypoint_source = ENTRYPOINT_PATH.read_text(encoding="utf-8")
 
@@ -24,3 +36,7 @@ def test_cli_command_dispatch_is_split_from_entrypoint():
     assert "from agent_cli_dispatch import dispatch_cli_command" in entrypoint_source
     assert _function_length(ENTRYPOINT_PATH, "run_cli") <= 100
 
+
+def test_cli_dispatch_functions_stay_within_p1_1_size_budget():
+    assert not _oversized_functions(ENTRYPOINT_PATH)
+    assert not _oversized_functions(DISPATCH_PATH)

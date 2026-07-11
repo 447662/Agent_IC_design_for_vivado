@@ -111,3 +111,8 @@ def test_p1_1_target_service_host_is_in_mypy_scope():
 def test_p1_1_report_templates_are_in_mypy_scope():
     config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
     assert ".trae/agent/report_templates.py" in config["tool"]["mypy"]["files"]
+
+
+def test_p1_1_cli_dispatch_is_in_mypy_scope():
+    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    assert ".trae/agent/agent_cli_dispatch.py" in config["tool"]["mypy"]["files"]
