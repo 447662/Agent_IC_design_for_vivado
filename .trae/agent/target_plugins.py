@@ -64,6 +64,7 @@ def load_target_handler_plugins(
     registry: TargetHandlerRegistry,
     module_names: tuple[str, ...],
 ) -> TargetHandlerRegistry:
+    pending_plugins = []
     for module_name in module_names:
         module = importlib.import_module(module_name)
         handler_id = getattr(module, "HANDLER_ID", None)
@@ -72,7 +73,13 @@ def load_target_handler_plugins(
             raise ValueError(
                 "Invalid target handler plugin module: {}".format(module_name)
             )
-        registry.register(str(handler_id), factory, source=module_name)
+        pending_plugins.append((str(handler_id), factory, module_name))
+
+    staged_registry = TargetHandlerRegistry()
+    staged_registry._factories = dict(registry._factories)
+    for handler_id, factory, module_name in pending_plugins:
+        staged_registry.register(handler_id, factory, source=module_name)
+    registry._factories = staged_registry._factories
     return registry
 
 
