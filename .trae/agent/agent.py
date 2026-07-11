@@ -195,7 +195,14 @@ from adapters.waveform import (
 )
 from target_checks import check_rtl_project as run_rtl_project_checks
 from target_flows import (
+    build_target_registry as build_target_registry_operation,
     build_target_handlers as build_registered_target_handlers,
+    get_target as get_target_operation,
+    list_targets as list_targets_operation,
+    load_target_registry as load_target_registry_operation,
+    print_targets as print_targets_operation,
+    run_target_flow as run_target_flow_operation,
+    validate_target_handlers as validate_target_handlers_operation,
 )
 from target_registry import (
     get_target as get_registered_target,
@@ -464,122 +471,28 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
         return "未知"
 
     def build_target_registry(self) -> Any:
-        return self.load_target_registry()
+        return build_target_registry_operation(self)
 
     def load_target_registry(self, targets_dir: Any=None) -> Any:
-        targets_dir = Path(targets_dir) if targets_dir else self.targets_dir
-        return load_registered_targets(targets_dir)
+        return load_target_registry_operation(self, targets_dir)
 
     def list_targets(self) -> Any:
-        return list_registered_targets(self.targets)
+        return list_targets_operation(self)
 
     def get_target(self, target: Any) -> Any:
-        return get_registered_target(self.targets, target)
+        return get_target_operation(self, target)
 
     def print_targets(self) -> Any:
-        print("Digital IC Agent registered targets")
-        print("=" * 60)
-        for target in self.list_targets():
-            print("{} ({})".format(target["name"], target["display_name"]))
-            print("  family: {}".format(target["design_family"]))
-            print("  aliases: {}".format(", ".join(target.get("aliases", [])) or "-"))
-            print("  flows: {}".format(", ".join(target.get("flows", []))))
-            print("  note: {}".format(target.get("description", "")))
-        return True
+        return print_targets_operation(self)
 
     def build_target_handlers(self) -> Any:
-        handlers = build_registered_target_handlers(self)
-        self.target_plugins = {
-            target_name: handler.plugin
-            for target_name, handler in handlers.items()
-            if handler.plugin is not None
-        }
-        return handlers
+        return build_registered_target_handlers(self)
 
     def validate_target_handlers(self) -> Any:
-        if set(self.target_handlers) != set(self.targets):
-            missing_handlers = sorted(set(self.targets) - set(self.target_handlers))
-            unknown_handlers = sorted(set(self.target_handlers) - set(self.targets))
-            raise ValueError(
-                "Target handler registry mismatch; missing={}, unknown={}".format(
-                    missing_handlers,
-                    unknown_handlers,
-                )
-            )
-
-        for target_name, target in self.targets.items():
-            configured_flows = set(target.get("flows", []))
-            implemented_flows = set(self.target_handlers[target_name].flows)
-            if configured_flows != implemented_flows:
-                raise ValueError(
-                    "Target {} flow mismatch; configured={}, implemented={}".format(
-                        target_name,
-                        sorted(configured_flows),
-                        sorted(implemented_flows),
-                    )
-                )
-        return True
+        return validate_target_handlers_operation(self)
 
     def run_target_flow(self, target: Any, flow: Any, **kwargs: Any) -> Any:
-        target_name = self.normalize_rtl_target(target)
-        if flow not in self.targets[target_name].get("flows", []):
-            raise ValueError(
-                "Target {} does not declare flow: {}".format(target_name, flow)
-            )
-        output_dir = kwargs.get("output_dir", "outputs")
-        project_dir = Path(output_dir) / target_name
-        artifact_snapshot = snapshot_project_artifacts(project_dir)
-        preflight_report = self.run_preflight(flow)
-        if not preflight_report.ok:
-            error = "Missing required capabilities for {}: {}".format(
-                flow,
-                ", ".join(preflight_report.missing_required),
-            )
-            print(error, file=sys.stderr)
-            self.record_artifact_run(
-                target_name,
-                flow,
-                output_dir=output_dir,
-                status="FAIL",
-                error=error,
-                options=kwargs,
-                artifact_snapshot=artifact_snapshot,
-            )
-            return False
-        if preflight_report.missing_optional:
-            print(
-                "{} flow {} 将降级运行，缺少可选能力: {}".format(
-                    self.WARN,
-                    flow,
-                    ", ".join(preflight_report.missing_optional),
-                ),
-                file=sys.stderr,
-            )
-        try:
-            result = self.target_handlers[target_name].run(flow, **kwargs)
-        except Exception as exc:
-            self.record_artifact_run(
-                target_name,
-                flow,
-                output_dir=output_dir,
-                status="FAIL",
-                error=exc,
-                options=kwargs,
-                artifact_snapshot=artifact_snapshot,
-            )
-            raise
-
-        status = "PASS" if result else "FAIL"
-        self.record_artifact_run(
-            target_name,
-            flow,
-            output_dir=output_dir,
-            status=status,
-            error=None if result else "flow returned a false result",
-            options=kwargs,
-            artifact_snapshot=artifact_snapshot,
-        )
-        return result
+        return run_target_flow_operation(self, target, flow, **kwargs)
 
     def resolve_skill_path(self, skill: Any) -> Any:
         """解析技能文件路径。"""
