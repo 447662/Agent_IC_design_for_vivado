@@ -339,6 +339,27 @@ def test_target_plugins_auto_discover_without_central_mapping(tmp_path):
     assert handlers["sample-target"].run("generate-rtl") == "generate-rtl"
 
 
+def test_target_plugin_discovery_failure_does_not_partially_register_handlers(tmp_path):
+    _write_plugin_package(
+        tmp_path,
+        "partial_target_plugins",
+        {
+            "first": ("first-handler", ("generate-rtl",)),
+            "second": ("first-handler", ("generate-rtl",)),
+        },
+    )
+    registry = TargetHandlerRegistry()
+
+    with pytest.raises(ValueError, match="Duplicate target handler"):
+        discover_target_handler_plugins(
+            registry,
+            "partial_target_plugins",
+            search_path=tmp_path,
+        )
+
+    assert registry.ids() == ()
+
+
 def test_target_plugins_reject_duplicate_unknown_and_mismatched_handlers(tmp_path):
     _write_plugin_package(
         tmp_path,
