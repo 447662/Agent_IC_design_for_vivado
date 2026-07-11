@@ -152,6 +152,19 @@ Result:
 All checks passed!
 ```
 
+Latest confirmation on 2026-07-11 after deferring SynthPilot:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_architecture_runtime.py tests/test_repository_reproducibility.py --basetemp .tmp-pytest-p0-2-confirm -p no:cacheprovider -q; uv run --offline --frozen ruff check .trae/agent/agent_runtime.py .trae/agent/target_flows.py .trae/agent/target_plugins.py .trae/agent/target_examples/async_fifo.py tests/test_architecture_runtime.py
+```
+
+Result:
+
+```text
+33 passed in 4.39s
+All checks passed!
+```
+
 ## Test Specification
 
 | # | What is guaranteed | Test file or command | Test type | Result | Evidence |
@@ -171,7 +184,7 @@ All checks passed!
 | 13 | Manifest-backed external plugin flows execute through a subprocess proxy | `tests/test_architecture_runtime.py::test_manifest_external_plugin_flow_runs_through_subprocess_proxy` | integration | PASS | subprocess marker written under allowed output root |
 | 14 | External plugin subprocesses reject direct file read/write escapes | `tests/test_architecture_runtime.py::test_manifest_external_plugin_subprocess_rejects_direct_file_escape` | security/unit | PASS | `read_outside_allowed_root` and `output_dir_outside_allowed_root` asserted |
 | 15 | External plugin subprocesses reject unauthorized command execution | `tests/test_architecture_runtime.py::test_manifest_external_plugin_subprocess_rejects_unauthorized_commands` | security/unit | PASS | `unauthorized_command` asserted |
-| 16 | Final P0-2 architecture regression and Ruff checks are green | `tests/test_architecture_runtime.py tests/test_repository_reproducibility.py` plus Ruff | regression/quality | PASS | `32 passed in 4.71s`; `All checks passed!` |
+| 16 | Final P0-2 architecture regression and Ruff checks are green | `tests/test_architecture_runtime.py tests/test_repository_reproducibility.py` plus Ruff | regression/quality | PASS | `33 passed in 4.39s`; `All checks passed!` |
 
 ## Known Gaps
 

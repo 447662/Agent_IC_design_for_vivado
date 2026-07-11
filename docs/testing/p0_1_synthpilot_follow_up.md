@@ -4,6 +4,9 @@
 
 SynthPilot is temporarily deferred while P0-2 proceeds.
 
+As of 2026-07-11, P0-2 has been re-confirmed green without claiming SynthPilot
+real MCP completion. SynthPilot remains a follow-up item only.
+
 The repository has a real MCP evidence runner at
 `scripts/p0_1_synthpilot_mcp_evidence.py`, but the real SynthPilot process exits
 before MCP `initialize`.
@@ -40,4 +43,3 @@ Expected follow-up evidence:
 - The evidence runner selects only a clearly safe zero-required-argument tool.
 - One safe real `tools/call` succeeds or fails with a tool-level diagnostic rather
   than a process-start/license failure.
-
