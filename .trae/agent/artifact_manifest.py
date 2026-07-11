@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Literal, NotRequired, TypedDict, cast
 import hashlib
 import json
 import os
@@ -14,6 +16,56 @@ from history_rotation import (
     build_rotation_metadata,
     rotate_json_records,
 )
+
+
+RunStatus = Literal["PASS", "FAIL"]
+ArtifactStatus = Literal["CURRENT", "MISSING", "N/A", "STALE"]
+
+
+class ArtifactFingerprint(TypedDict):
+    sha256: str
+    size_bytes: int
+    created_at: str
+    modified_at: str
+
+
+class ArtifactEntry(ArtifactFingerprint, total=False):
+    id: str
+    path: str
+    declared_status: str
+    status: ArtifactStatus
+    exists: bool
+    observed_at: str
+    produced_by_run_id: str | None
+
+
+class RuntimeRun(TypedDict):
+    run_id: str
+    flow: str
+    status: RunStatus
+    recorded_at: str
+    command: list[str]
+    command_digest: str
+    options: dict[str, Any]
+    tools: dict[str, dict[str, Any]]
+    input_files: dict[str, ArtifactFingerprint]
+    input_digest: str
+    artifacts: list[ArtifactEntry]
+    error: str | None
+
+
+class RotationHistory(TypedDict):
+    active_limit: int
+    archive_path: str
+    archived_runs: int
+
+
+class RuntimeManifest(TypedDict):
+    schema_version: int
+    target: str
+    updated_at: str | None
+    runs: list[RuntimeRun]
+    history: NotRequired[RotationHistory]
 
 
 SCHEMA_VERSION = 1
@@ -46,7 +98,7 @@ INPUT_EXCLUDED_DIRECTORIES = {
 }
 
 
-def utc_timestamp() -> Any:
+def utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
         "+00:00",
         "Z",
@@ -147,7 +199,7 @@ def json_digest(value: Any) -> Any:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def file_digest(path: Any) -> Any:
+def file_digest(path: str | Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -155,13 +207,13 @@ def file_digest(path: Any) -> Any:
     return digest.hexdigest()
 
 
-def _timestamp_from_epoch(value: Any) -> Any:
+def _timestamp_from_epoch(value: float) -> str:
     return datetime.fromtimestamp(value, timezone.utc).isoformat(
         timespec="milliseconds"
     ).replace("+00:00", "Z")
 
 
-def file_fingerprint(path: Any) -> Any:
+def file_fingerprint(path: str | Path) -> ArtifactFingerprint:
     path = Path(path)
     stat = path.stat()
     return {
@@ -172,7 +224,7 @@ def file_fingerprint(path: Any) -> Any:
     }
 
 
-def snapshot_project_artifacts(project_dir: Any) -> Any:
+def snapshot_project_artifacts(project_dir: str | Path) -> dict[str, ArtifactFingerprint]:
     project_root = Path(project_dir).resolve()
     if not project_root.is_dir():
         return {}
@@ -235,7 +287,7 @@ def build_run_input_digest(options: Any, command: Any, tools: Any, input_files: 
     )
 
 
-def artifact_status(declared_status: Any, exists: Any, is_current: Any=False) -> Any:
+def artifact_status(declared_status: str, exists: bool, is_current: bool = False) -> ArtifactStatus:
     if declared_status == "N/A":
         return "N/A"
     if not exists:
@@ -405,7 +457,7 @@ def atomic_write_json(path: Any, value: Any) -> Any:
         raise
 
 
-def load_runtime_manifest(manifest_path: Any, target_name: Any) -> Any:
+def load_runtime_manifest(manifest_path: Path, target_name: str) -> RuntimeManifest:
     if not manifest_path.exists():
         return {
             "schema_version": SCHEMA_VERSION,
@@ -428,7 +480,7 @@ def load_runtime_manifest(manifest_path: Any, target_name: Any) -> Any:
         raise ValueError("runtime artifact manifest target mismatch")
     if not isinstance(manifest.get("runs"), list):
         raise ValueError("runtime artifact manifest runs must be a list")
-    return manifest
+    return cast(RuntimeManifest, manifest)
 
 
 def record_artifact_run(
@@ -451,7 +503,7 @@ def record_artifact_run(
         raise ValueError("invalid runtime flow status: {}".format(status))
 
     target_info = dict(target_info or self.get_target(target))
-    target_name = target_info["name"]
+    target_name = str(target_info["name"])
     output_dir = Path(output_dir)
     project_dir = Path(project_dir or (output_dir / target_name))
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -477,10 +529,10 @@ def record_artifact_run(
         else _latest_artifact_snapshot(manifest)
     )
 
-    run = {
+    run = cast(RuntimeRun, {
         "run_id": run_id,
         "flow": str(flow),
-        "status": status,
+        "status": cast(RunStatus, status),
         "recorded_at": recorded_at,
         "command": replay_command,
         "command_digest": json_digest(replay_command),
@@ -503,14 +555,14 @@ def record_artifact_run(
             extra_artifacts=extra_artifacts,
         ),
         "error": str(error) if error else None,
-    }
+    })
     manifest["runs"].append(run)
     active_runs, archive_path, archived_runs = rotate_json_records(
         manifest["runs"],
         manifest_path,
         active_limit=max_active_runs,
     )
-    manifest["runs"] = active_runs
+    manifest["runs"] = cast(list[RuntimeRun], active_runs)
     history = build_rotation_metadata(
         manifest.get("history"),
         active_limit=max_active_runs,
@@ -521,7 +573,7 @@ def record_artifact_run(
     if history is None:
         manifest.pop("history", None)
     else:
-        manifest["history"] = history
+        manifest["history"] = cast(RotationHistory, history)
     manifest["updated_at"] = recorded_at
     atomic_write_json(manifest_path, manifest)
     return manifest_path
