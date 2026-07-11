@@ -14,9 +14,7 @@ import hashlib
 import html
 import json
 import os
-import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -47,6 +45,7 @@ for _local_module_name in (
     "agent_execution",
     "skill_runtime",
     "agent_skill_tool",
+    "agent_capabilities",
     "agent_skill_listing",
     "agent_workflow",
     "agent_cli_parser",
@@ -112,6 +111,15 @@ from agent_cli import build_requirement, parse_args, parse_seed_list
 from agent_composition import build_agent
 from agent_config import load_agent_config, normalize_configured_command
 from agent_entrypoint import run_cli
+from agent_capabilities import (
+    check_capability as check_capability_operation,
+    check_cli_tool as check_cli_tool_operation,
+    check_mcp_server as check_mcp_server_operation,
+    get_install_guide as get_install_guide_operation,
+    normalize_command as normalize_command_operation,
+    run_preflight as run_preflight_operation,
+)
+from agent_capabilities import subprocess as _capability_subprocess
 from agent_design_spec import (
     build_default_project_slug as _build_default_project_slug,
     render_default_design_spec,
@@ -221,6 +229,9 @@ from target_registry import (
 )
 from target_scaffolder import create_target_scaffold as build_target_scaffold
 from target_service_host import TargetServiceHost
+
+
+subprocess = _capability_subprocess
 
 
 def _configure_text_stream(stream: Any) -> Any:
@@ -406,63 +417,26 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
         )
 
     def check_capability(self, capability: Any) -> Any:
-        if capability == "synthpilot":
-            return self.check_mcp_server("synthpilot")
-        for tool in self.cli_tools:
-            if tool["name"] == capability:
-                return self.check_cli_tool(tool["name"], tool["checkCommand"])
-        return False
+        return check_capability_operation(self, capability)
 
     def run_preflight(self, flow: Any) -> Any:
-        return self.preflight.evaluate(flow, self.check_capability)
+        return run_preflight_operation(self, flow)
 
     def load_config(self) -> Any:
         """加载Agent配置文件。"""
         return load_agent_config(self.config_path)
 
     def normalize_command(self, command: Any) -> Any:
-        """将配置中的命令转换为 subprocess 可执行的参数列表。"""
-        return normalize_configured_command(command)
+        """将配置中的命令转换为可执行参数列表。"""
+        return normalize_command_operation(self, command)
 
     def check_cli_tool(self, tool_name: Any, check_command: Any) -> Any:
         """检查CLI工具是否安装。"""
-        try:
-            command = self.normalize_command(check_command)
-            if tool_name == "vivado" and command and command[0] == "vivado":
-                vivado_command = self.resolve_vivado_command()
-                if vivado_command:
-                    command[0] = vivado_command
-            result = self.command_runner.run(command, capture_output=True, text=True, timeout=30, check=False)
-            if result.returncode == 0:
-                return True
-            if tool_name == "vivado":
-                version_text = "{}\n{}".format(
-                    result.stdout or "",
-                    result.stderr or "",
-                )
-                return bool(
-                    re.search(
-                        r"\bVivado\s+v?\d{4}\.\d+\b",
-                        version_text,
-                        re.IGNORECASE,
-                    )
-                )
-            return False
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError):
-            return False
+        return check_cli_tool_operation(self, tool_name, check_command)
 
     def check_mcp_server(self, mcp_name: Any) -> Any:
         """检查MCP服务器是否可用。"""
-        mcp = self.mcp_servers.get(mcp_name)
-        if not mcp:
-            return False
-
-        try:
-            command = [mcp["command"], *mcp.get("args", []), "--version"]
-            result = self.command_runner.run(command, capture_output=True, text=True, timeout=30, check=False)
-            return result.returncode == 0
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-            return False
+        return check_mcp_server_operation(self, mcp_name)
 
     def analyze_requirement(self, user_input: Any) -> Any:
         """分析用户需求，匹配技能。"""
@@ -470,15 +444,7 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
 
     def get_install_guide(self, tool_type: Any, tool_name: Any) -> Any:
         """获取工具安装指南。"""
-        if tool_type == "mcp":
-            mcp = self.mcp_servers.get(tool_name)
-            return mcp.get("installGuide", "未知") if mcp else "未知"
-        if tool_type == "cli":
-            for tool in self.cli_tools:
-                if tool["name"] == tool_name:
-                    return tool.get("installGuide", "未知")
-            return "未知"
-        return "未知"
+        return get_install_guide_operation(self, tool_type, tool_name)
 
     def build_target_registry(self) -> Any:
         return build_target_registry_operation(self)
