@@ -1,7 +1,9 @@
 import copy
+import inspect
 import json
 import sys
 from pathlib import Path
+from typing import get_args, get_type_hints
 
 import pytest
 
@@ -15,6 +17,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 from agent_composition import build_agent  # noqa: E402
+import agent_config  # noqa: E402
 from agent_config import load_agent_config  # noqa: E402
 from target_registry import load_target_registry  # noqa: E402
 
@@ -52,6 +55,33 @@ def test_agent_config_schema_accepts_current_configuration():
         "rtl-implementation",
         "verification-plan",
     ]
+
+
+def test_agent_config_exposes_typed_contracts():
+    hints = get_type_hints(agent_config.load_agent_config)
+    signature = inspect.signature(agent_config.load_agent_config)
+
+    assert hints["config_path"] == str | Path
+    assert hints["return"] is agent_config.AgentConfig
+    assert signature.return_annotation == "AgentConfig"
+    assert agent_config.SkillAction.__name__ == "Literal"
+    assert set(get_args(agent_config.SkillAction)) == {
+        "design-document",
+        "rtl-implementation",
+        "verification-plan",
+    }
+    assert set(agent_config.AgentConfig.__annotations__) == {
+        "name",
+        "version",
+        "description",
+        "author",
+        "createdDate",
+        "skills",
+        "mcpServers",
+        "cliTools",
+        "workflow",
+        "requirementAnalysis",
+    }
 
 
 @pytest.mark.parametrize(

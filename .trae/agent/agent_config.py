@@ -1,7 +1,76 @@
+from __future__ import annotations
+
 import json
 import shlex
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import Any, Literal, NoReturn, TypedDict, cast
+
+
+SkillAction = Literal["design-document", "rtl-implementation", "verification-plan"]
+ConfiguredCommand = str | list[str]
+
+
+class SkillConfig(TypedDict):
+    name: str
+    path: str
+    description: str
+    action: SkillAction
+    requiredCapabilities: list[str]
+    triggerKeywords: list[str]
+    priority: int
+
+
+class MCPServerConfig(TypedDict):
+    command: ConfiguredCommand
+    args: list[str]
+    description: str
+    required: bool
+    installGuide: str
+
+
+class CLIToolConfig(TypedDict):
+    name: str
+    description: str
+    required: bool
+    checkCommand: ConfiguredCommand
+    installGuide: str
+
+
+class WorkflowRuleConfig(TypedDict):
+    condition: str
+    skill: str
+
+
+class WorkflowConfig(TypedDict):
+    steps: list[str]
+    decisionRules: dict[str, WorkflowRuleConfig]
+
+
+class RequirementOptionConfig(TypedDict):
+    label: str
+    skill: str
+
+
+class RequirementQuestionConfig(TypedDict):
+    question: str
+    options: list[RequirementOptionConfig]
+
+
+class RequirementAnalysisConfig(TypedDict):
+    questions: list[RequirementQuestionConfig]
+
+
+class AgentConfig(TypedDict):
+    name: str
+    version: str
+    description: str
+    author: str
+    createdDate: str
+    skills: list[SkillConfig]
+    mcpServers: dict[str, MCPServerConfig]
+    cliTools: list[CLIToolConfig]
+    workflow: WorkflowConfig
+    requirementAnalysis: RequirementAnalysisConfig
 
 
 ALLOWED_ACTIONS = {
@@ -421,7 +490,7 @@ def _validate_requirement_analysis(
                 _fail(config_path, option_path + ".skill", "unknown skill")
 
 
-def load_agent_config(config_path: Any) -> dict[str, Any]:
+def load_agent_config(config_path: str | Path) -> AgentConfig:
     resolved_path = Path(config_path)
     with resolved_path.open("r", encoding="utf-8") as config_file:
         raw_config = json.load(config_file)
@@ -453,7 +522,7 @@ def load_agent_config(config_path: Any) -> dict[str, Any]:
         config["requirementAnalysis"],
         skill_names,
     )
-    return config
+    return cast(AgentConfig, config)
 
 
 def normalize_configured_command(command: Any) -> list[str]:
