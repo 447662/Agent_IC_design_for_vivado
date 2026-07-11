@@ -22,83 +22,22 @@ from uuid import uuid4
 AGENT_MODULE_DIR = Path(__file__).resolve().parent
 
 
-def _load_local_module(module_name: str, relative_path: str | None = None) -> None:
+def _load_bootstrap_module() -> Any:
+    module_name = "agent_bootstrap"
     if module_name in sys.modules:
-        return
-    module_path = AGENT_MODULE_DIR / (relative_path or "{}.py".format(module_name))
+        return sys.modules[module_name]
+    module_path = AGENT_MODULE_DIR / "agent_bootstrap.py"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
-        raise ImportError("Cannot load local agent module: {}".format(module_path))
+        raise ImportError("Cannot load local agent bootstrap: {}".format(module_path))
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
+    return module
 
 
-for _local_module_name in (
-    "history_rotation",
-    "agent_contracts",
-    "intent_router",
-    "mcp_client",
-    "agent_runtime",
-    "agent_provider",
-    "agent_execution",
-    "agent_config",
-    "skill_runtime",
-    "agent_skill_tool",
-    "agent_skill_execution",
-    "agent_capabilities",
-    "agent_skill_listing",
-    "agent_workflow",
-    "agent_cli_parser",
-    "agent_cli",
-    "agent_cli_dispatch",
-    "agent_design_spec",
-    "capability_preflight",
-    "agent_diagnostics",
-    "agent_composition",
-    "agent_entrypoint",
-    "report_templates",
-    "agent_reports",
-    "agent_waveform",
-    "agent_sim_smoke",
-    "coverage_gates",
-    "artifact_manifest",
-    "xcrg_coverage",
-    "coverage_recommendations",
-    "coverage_closure",
-    "coverage_history",
-    "environment_report",
-    "failure_archive",
-    "intent_router",
-    "project_overview",
-    "skill_runtime",
-    "waveform_samples",
-    "wave_visibility",
-    "target_checks",
-    "agent_runtime_facades",
-    "target_plugins",
-    "target_registry",
-    "target_scaffolder",
-    "agent_sync_fifo",
-    "agent_round_robin_arbiter",
-    "agent_async_fifo_render",
-    "agent_async_fifo_reports",
-    "agent_async_fifo_runtime",
-    "target_service_host",
-    "target_flows",
-):
-    _load_local_module(_local_module_name)
-for _adapter_module_name in ("report", "vivado", "waveform"):
-    _load_local_module(
-        "adapters.{}".format(_adapter_module_name),
-        "adapters/{}.py".format(_adapter_module_name),
-    )
-_load_local_module("target_examples.async_fifo", "target_examples/async_fifo.py")
-for _handler_module_name in ("async_fifo", "round_robin_arbiter", "sync_fifo"):
-    _load_local_module(
-        "target_handlers.{}".format(_handler_module_name),
-        "target_handlers/{}.py".format(_handler_module_name),
-    )
+load_local_modules = _load_bootstrap_module().load_local_modules
+load_local_modules(AGENT_MODULE_DIR)
 
 from agent_runtime import (
     CommandRunner,
@@ -137,6 +76,12 @@ from agent_design_spec import (
 from agent_diagnostics import run_agent_diagnostic
 from agent_reports import (
     render_markdown_document_html as render_markdown_html_document,
+)
+from agent_document_facades import (
+    build_project_slug as build_project_slug_operation,
+    generate_design_spec as generate_design_spec_operation,
+    render_design_spec as render_design_spec_operation,
+    render_markdown_document_html as render_markdown_document_html_operation,
 )
 from agent_waveform import (
     analyze_waveform as analyze_waveform_flow,
@@ -439,30 +384,26 @@ class DigitalICAgent:
 
     def build_project_slug(self, user_input: Any) -> Any:
         """?????????????????"""
-        return _build_default_project_slug(user_input)
+        return build_project_slug_operation(self, user_input)
 
     def render_design_spec(self, user_input: Any, matched_skills: Any) -> Any:
         """???????????"""
-        return render_default_design_spec(
-            user_input,
-            matched_skills,
-            self.skill_mapping,
-        )
+        return render_design_spec_operation(self, user_input, matched_skills)
 
     def generate_design_spec(self, user_input: Any, matched_skills: Any, output_dir: Any) -> Any:
         """?? Markdown ???????"""
-        return write_default_design_spec(
-            user_input,
-            matched_skills,
-            output_dir,
-            self.skill_mapping,
-        )
+        return generate_design_spec_operation(self, user_input, matched_skills, output_dir)
 
     target_spec_catalog = adapter_target_spec_catalog
     target_scenario_catalog = adapter_target_scenario_catalog
+    _default_project_slug_builder = staticmethod(_build_default_project_slug)
+    _default_design_spec_renderer = staticmethod(render_default_design_spec)
+    _default_design_spec_writer = staticmethod(write_default_design_spec)
+    _markdown_document_html_renderer = staticmethod(render_markdown_html_document)
 
     def render_markdown_document_html(self, title: Any, markdown_text: Any, variant: Any="doc") -> Any:
-        return render_markdown_html_document(
+        return render_markdown_document_html_operation(
+            self,
             title,
             markdown_text,
             variant=variant,
