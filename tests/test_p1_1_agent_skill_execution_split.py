@@ -23,11 +23,13 @@ def test_agent_skill_execution_handlers_are_split_from_core_agent():
     agent_source = AGENT_PATH.read_text(encoding="utf-8")
 
     assert SKILL_EXECUTION_PATH.is_file()
-    assert "from agent_skill_execution import" in agent_source
-    assert "build_skill_action_handlers as build_skill_action_handlers_operation" in agent_source
-    assert "execute_design_document_skill as execute_design_document_skill_operation" in agent_source
-    assert "execute_rtl_implementation_skill as execute_rtl_implementation_skill_operation" in agent_source
-    assert "execute_verification_plan_skill as execute_verification_plan_skill_operation" in agent_source
+    assert "import agent_skill_execution as skill_execution" in agent_source
+    assert "skill_execution.build_skill_action_handlers(" in agent_source
+    assert "skill_execution.skill_result(" in agent_source
+    assert "skill_execution.write_skill_execution_brief(" in agent_source
+    assert "skill_execution.execute_design_document_skill(" in agent_source
+    assert "skill_execution.execute_rtl_implementation_skill(" in agent_source
+    assert "skill_execution.execute_verification_plan_skill(" in agent_source
 
     for method_name in (
         "build_skill_action_handlers",
@@ -41,4 +43,3 @@ def test_agent_skill_execution_handlers_are_split_from_core_agent():
         assert "SkillExecutionResult(" not in method_source
         assert "write_text(" not in method_source
         assert method_source.count("return ") == 1
-

@@ -23,12 +23,11 @@ def test_agent_default_workflow_is_split_from_core_agent():
     agent_source = AGENT_PATH.read_text(encoding="utf-8")
 
     assert WORKFLOW_PATH.is_file()
-    assert "from agent_workflow import" in agent_source
-    assert "execute_workflow as execute_workflow_operation" in agent_source
+    assert "import agent_workflow as workflow" in agent_source
+    assert "workflow.execute_workflow(" in agent_source
 
     method_source = _class_method_source(AGENT_PATH, "DigitalICAgent", "execute_workflow")
     assert "AgentRequest(" not in method_source
     assert "agent_execution_engine.run" not in method_source
     assert "print(" not in method_source
     assert method_source.count("return ") == 1
-

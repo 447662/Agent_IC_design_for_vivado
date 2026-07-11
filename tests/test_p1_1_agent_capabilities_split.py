@@ -23,12 +23,12 @@ def test_agent_capability_checks_are_split_from_core_agent():
     agent_source = AGENT_PATH.read_text(encoding="utf-8")
 
     assert CAPABILITIES_PATH.is_file()
-    assert "from agent_capabilities import" in agent_source
-    assert "check_capability as check_capability_operation" in agent_source
-    assert "check_cli_tool as check_cli_tool_operation" in agent_source
-    assert "check_mcp_server as check_mcp_server_operation" in agent_source
-    assert "get_install_guide as get_install_guide_operation" in agent_source
-    assert "run_preflight as run_preflight_operation" in agent_source
+    assert "import agent_capabilities as capabilities" in agent_source
+    assert "capabilities.check_capability(" in agent_source
+    assert "capabilities.check_cli_tool(" in agent_source
+    assert "capabilities.check_mcp_server(" in agent_source
+    assert "capabilities.get_install_guide(" in agent_source
+    assert "capabilities.run_preflight(" in agent_source
 
     for method_name in (
         "check_capability",
@@ -42,4 +42,3 @@ def test_agent_capability_checks_are_split_from_core_agent():
         assert "subprocess" not in method_source
         assert "re.search" not in method_source
         assert method_source.count("return ") == 1
-

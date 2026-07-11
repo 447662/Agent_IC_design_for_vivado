@@ -23,12 +23,12 @@ def test_agent_runtime_facades_are_split_from_core_agent():
     agent_source = AGENT_PATH.read_text(encoding="utf-8")
 
     assert RUNTIME_FACADES_PATH.is_file()
-    assert "from agent_runtime_facades import" in agent_source
-    assert "refresh_project_overview as refresh_project_overview_operation" in agent_source
-    assert "record_artifact_run as record_artifact_run_operation" in agent_source
-    assert "resolve_rwave_command as resolve_rwave_command_operation" in agent_source
-    assert "check_rtl_project as check_rtl_project_operation" in agent_source
-    assert "run_uvm_coverage as run_uvm_coverage_operation" in agent_source
+    assert "import agent_runtime_facades as runtime_facades" in agent_source
+    assert "runtime_facades.refresh_project_overview(" in agent_source
+    assert "runtime_facades.record_artifact_run(" in agent_source
+    assert "runtime_facades.resolve_rwave_command(" in agent_source
+    assert "runtime_facades.check_rtl_project(" in agent_source
+    assert "runtime_facades.run_uvm_coverage(" in agent_source
 
     for method_name in (
         "refresh_project_overview",

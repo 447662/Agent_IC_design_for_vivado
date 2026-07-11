@@ -23,11 +23,11 @@ def test_agent_document_facades_are_split_from_core_agent():
     agent_source = AGENT_PATH.read_text(encoding="utf-8")
 
     assert DOCUMENT_FACADES_PATH.is_file()
-    assert "from agent_document_facades import" in agent_source
-    assert "build_project_slug as build_project_slug_operation" in agent_source
-    assert "render_design_spec as render_design_spec_operation" in agent_source
-    assert "generate_design_spec as generate_design_spec_operation" in agent_source
-    assert "render_markdown_document_html as render_markdown_document_html_operation" in agent_source
+    assert "import agent_document_facades as document_facades" in agent_source
+    assert "document_facades.build_project_slug(" in agent_source
+    assert "document_facades.render_design_spec(" in agent_source
+    assert "document_facades.generate_design_spec(" in agent_source
+    assert "document_facades.render_markdown_document_html(" in agent_source
 
     for method_name in (
         "build_project_slug",
@@ -40,4 +40,3 @@ def test_agent_document_facades_are_split_from_core_agent():
         assert "write_default_design_spec(" not in method_source
         assert "render_markdown_html_document(" not in method_source
         assert method_source.count("return ") == 1
-
