@@ -125,3 +125,110 @@ Success: no issues found in 54 source files
   by their historical top-level names.
 - The report-template split and hard module/function size gates remain active
   P1-1 follow-up work.
+
+## Follow-up: Legacy Entrypoint Path Bootstrap Removal
+
+### RED Evidence
+
+Command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_1_package_layout.py::test_legacy_core_entrypoint_no_longer_inserts_sys_path --basetemp .tmp-pytest-p1-1-syspath-red -p no:cacheprovider -q
+```
+
+Result:
+
+```text
+FAILED tests/test_p1_1_package_layout.py::test_legacy_core_entrypoint_no_longer_inserts_sys_path
+AssertionError: assert 'sys.path.insert' not in source
+1 failed in 0.07s
+```
+
+### GREEN Evidence
+
+Focused command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_1_package_layout.py::test_legacy_core_entrypoint_no_longer_inserts_sys_path tests/test_p1_1_package_layout.py::test_src_package_exports_core_agent_entrypoints_without_path_insertion --basetemp .tmp-pytest-p1-1-syspath-green -p no:cacheprovider -q
+```
+
+Focused result:
+
+```text
+2 passed in 0.09s
+```
+
+Legacy CLI smoke command:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen python -B .trae/agent/agent.py --list-targets
+```
+
+Legacy CLI smoke result:
+
+```text
+Digital IC Agent registered targets
+async-fifo
+round-robin-arbiter
+sync-fifo
+```
+
+New package CLI smoke command:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; $env:PYTHONPATH='F:\My_code\Agent_design_for_vivado\src'; uv run --offline --frozen python -B -m digital_ic_agent --list-targets
+```
+
+New package CLI smoke result:
+
+```text
+Digital IC Agent registered targets
+async-fifo
+round-robin-arbiter
+sync-fifo
+```
+
+Regression command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_1_package_layout.py tests/test_architecture_runtime.py tests/test_repository_reproducibility.py tests/test_quality_config.py --basetemp .tmp-pytest-p1-1-syspath-final -p no:cacheprovider -q
+```
+
+Regression result:
+
+```text
+44 passed in 7.72s
+```
+
+Ruff command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen ruff check .trae/agent/agent.py src/digital_ic_agent tests/test_p1_1_package_layout.py
+```
+
+Ruff result:
+
+```text
+All checks passed!
+```
+
+Mypy command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen mypy
+```
+
+Mypy result:
+
+```text
+Success: no issues found in 54 source files
+```
+
+### Additional Guarantees
+
+| # | What is guaranteed | Test file or command | Test type | Result | Evidence |
+|---|--------------------|----------------------|-----------|--------|----------|
+| 9 | Legacy `.trae/agent/agent.py` no longer contains `sys.path.insert` | `tests/test_p1_1_package_layout.py::test_legacy_core_entrypoint_no_longer_inserts_sys_path` | architecture/static | PASS | `2 passed in 0.09s` |
+| 10 | Legacy script entrypoint still lists all registered targets after path bootstrap removal | legacy CLI smoke command | CLI smoke | PASS | target list printed |
+| 11 | New `python -m digital_ic_agent` entrypoint still lists all registered targets | package CLI smoke command | CLI smoke | PASS | target list printed |
+| 12 | Package layout, architecture, reproducibility, and quality tests stay green after bootstrap removal | syspath final pytest command | regression | PASS | `44 passed in 7.72s` |

@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------
 
 from typing import Any
+import importlib.util
 import hashlib
 import html
 import json
@@ -22,8 +23,66 @@ from uuid import uuid4
 
 
 AGENT_MODULE_DIR = Path(__file__).resolve().parent
-if str(AGENT_MODULE_DIR) not in sys.path:
-    sys.path.insert(0, str(AGENT_MODULE_DIR))
+
+
+def _load_local_module(module_name: str, relative_path: str | None = None) -> None:
+    if module_name in sys.modules:
+        return
+    module_path = AGENT_MODULE_DIR / (relative_path or "{}.py".format(module_name))
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError("Cannot load local agent module: {}".format(module_path))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+
+
+for _local_module_name in (
+    "history_rotation",
+    "agent_contracts",
+    "agent_runtime",
+    "agent_provider",
+    "agent_execution",
+    "agent_skill_tool",
+    "agent_cli",
+    "agent_composition",
+    "agent_config",
+    "agent_entrypoint",
+    "agent_reports",
+    "agent_waveform",
+    "capability_preflight",
+    "artifact_manifest",
+    "coverage_closure",
+    "coverage_gates",
+    "coverage_history",
+    "environment_report",
+    "failure_archive",
+    "intent_router",
+    "project_overview",
+    "skill_runtime",
+    "waveform_samples",
+    "wave_visibility",
+    "target_checks",
+    "target_plugins",
+    "target_flows",
+    "target_registry",
+    "target_scaffolder",
+    "agent_sync_fifo",
+    "agent_round_robin_arbiter",
+    "target_service_host",
+):
+    _load_local_module(_local_module_name)
+for _adapter_module_name in ("report", "vivado", "waveform"):
+    _load_local_module(
+        "adapters.{}".format(_adapter_module_name),
+        "adapters/{}.py".format(_adapter_module_name),
+    )
+_load_local_module("target_examples.async_fifo", "target_examples/async_fifo.py")
+for _handler_module_name in ("async_fifo", "round_robin_arbiter", "sync_fifo"):
+    _load_local_module(
+        "target_handlers.{}".format(_handler_module_name),
+        "target_handlers/{}.py".format(_handler_module_name),
+    )
 
 from agent_runtime import (
     CommandRunner,
