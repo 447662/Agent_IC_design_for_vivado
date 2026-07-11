@@ -7,8 +7,8 @@ tool-call execution, result validation, artifact evidence, deterministic offline
 provider support, and natural-language skill-routing evals.
 
 This report records current evidence only. It does not claim P0-1 is complete,
-because the real SynthPilot MCP server exits before `initialize` when no
-`license_key` is configured.
+because the real SynthPilot MCP server exits before `initialize` when license
+verification fails due to the current license device limit.
 
 ## User Journeys
 
@@ -126,8 +126,7 @@ user-level tools directory. The retry set these local directories:
 - `UV_TOOL_DIR=.tmp\uv-tools`
 - `UV_TOOL_BIN_DIR=.tmp\uv-tool-bin`
 
-After that, the real SynthPilot program started but exited before MCP
-`initialize` with:
+The first real SynthPilot run exited before MCP `initialize` with:
 
 ```text
 Please set license_key in config.yaml
@@ -141,6 +140,29 @@ Non-secret configuration probing found no SynthPilot config file at:
 
 - `F:\My_code\Agent_design_for_vivado\config.yaml`
 - `C:\Users\ycy123\.synthpilot\config.yaml`
+
+After the user provided a SynthPilot license key, activation wrote the key to:
+
+```text
+C:\Users\ycy123\.synthpilot\config.yaml
+```
+
+The key value is intentionally not stored in this repository or printed in this
+report. A non-secret config probe confirms:
+
+- `F:\My_code\Agent_design_for_vivado\config.yaml`: absent
+- `C:\Users\ycy123\.synthpilot\config.yaml`: present, contains a non-placeholder
+  `license_key`
+
+The real MCP evidence script was rerun after activation. SynthPilot now exits
+before MCP `initialize` with license verification failure:
+
+```text
+SynthPilot - License Verification Failed
+
+Device limit reached (1). Run `synthpilot deactivate` on an old device to free a slot,
+or contact support.
+```
 
 The preserved evidence file is:
 
@@ -160,8 +182,8 @@ Current rerun command:
 uv run --offline --frozen python scripts/p0_1_synthpilot_mcp_evidence.py
 ```
 
-Status: blocked by missing SynthPilot license configuration. No tool names or
-schemas were guessed, and no fake SynthPilot success is claimed.
+Status: blocked by SynthPilot license device limit. No tool names or schemas
+were guessed, and no fake SynthPilot success is claimed.
 
 ## Current P0-1 Acceptance Status
 
@@ -176,18 +198,18 @@ schemas were guessed, and no fake SynthPilot success is claimed.
 | At least 50 natural-language evals | PASS | 60-case fixture |
 | Skill-selection accuracy >= 95% | PASS | 60/60, 100% |
 | Error-success rate 0 | PASS for covered contracts | Full local suite and execution tests PASS |
-| Real SynthPilot initialize, tools/list, tool call | BLOCKED | Real process exits before `initialize`; missing `license_key` |
+| Real SynthPilot initialize, tools/list, tool call | BLOCKED | Real process exits before `initialize`; license verification fails with device limit reached |
 
 ## Known Gap
 
-P0-1 cannot be declared complete until a valid SynthPilot `license_key` is
-available in one of SynthPilot's supported config locations and the real MCP
+P0-1 cannot be declared complete until the SynthPilot license device limit is
+cleared, or another valid license slot is made available, and the real MCP
 server completes:
 
 1. `initialize`
 2. `tools/list`
 3. one safe, non-destructive `tools/call` selected from the real tool schema
 
-After license configuration is available, rerun the real SynthPilot evidence
-script and append the successful request, response, return status, and artifact
-evidence to this report.
+After the license verification issue is cleared, rerun the real SynthPilot
+evidence script and append the successful request, response, return status, and
+artifact evidence to this report.

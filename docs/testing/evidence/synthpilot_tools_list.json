@@ -6,7 +6,7 @@
     "synthpilot"
   ],
   "error": {
-    "message": "MCP process exited: Please set license_key in config.yaml\n\nConfig file locations:\n1. Same directory as program\n2. ~/.synthpilot/config.yaml\n\n  Get License: https://www.synthpilot.dev\n\n==================================================",
+    "message": "MCP process exited: ==================================================\n  SynthPilot - License Verification Failed\n==================================================\n\n  Device limit reached (1). Run `synthpilot deactivate` on an old device to free a slot, or contact support.\n\n  Get License: https://www.synthpilot.dev\n\n==================================================",
     "type": "MCPProcessError"
   },
   "safe_tool_selection": null,
