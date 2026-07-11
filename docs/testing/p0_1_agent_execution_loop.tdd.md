@@ -148,6 +148,18 @@ The preserved evidence file is:
 docs/testing/evidence/synthpilot_tools_list.json
 ```
 
+The reusable evidence collector is:
+
+```text
+scripts/p0_1_synthpilot_mcp_evidence.py
+```
+
+Current rerun command:
+
+```text
+uv run --offline --frozen python scripts/p0_1_synthpilot_mcp_evidence.py
+```
+
 Status: blocked by missing SynthPilot license configuration. No tool names or
 schemas were guessed, and no fake SynthPilot success is claimed.
 

@@ -9,6 +9,7 @@
     "message": "MCP process exited: Please set license_key in config.yaml\n\nConfig file locations:\n1. Same directory as program\n2. ~/.synthpilot/config.yaml\n\n  Get License: https://www.synthpilot.dev\n\n==================================================",
     "type": "MCPProcessError"
   },
+  "safe_tool_selection": null,
   "status": "FAIL",
   "steps": []
 }
