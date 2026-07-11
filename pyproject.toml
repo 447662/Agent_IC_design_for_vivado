@@ -62,6 +62,7 @@ files = [
     ".trae/agent/report_templates.py",
     ".trae/agent/agent_reports.py",
     ".trae/agent/agent_waveform.py",
+    ".trae/agent/agent_sim_smoke.py",
     ".trae/agent/skill_runtime.py",
     ".trae/agent/capability_preflight.py",
     ".trae/agent/intent_router.py",
