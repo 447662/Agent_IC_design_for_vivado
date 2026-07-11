@@ -48,6 +48,7 @@ for _local_module_name in (
     "skill_runtime",
     "agent_skill_tool",
     "agent_skill_listing",
+    "agent_workflow",
     "agent_cli_parser",
     "agent_cli",
     "agent_cli_dispatch",
@@ -173,6 +174,9 @@ from agent_skill_listing import (
     list_skills as list_skills_operation,
     recommend_skills as recommend_skills_operation,
     resolve_skill_path as resolve_skill_path_operation,
+)
+from agent_workflow import (
+    execute_workflow as execute_workflow_operation,
 )
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
 from wave_visibility import (
@@ -810,72 +814,12 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
 
     def execute_workflow(self, user_input: Any, output_dir: Any="outputs", skip_tool_check: Any=False) -> Any:
         """执行完整工作流。"""
-        print("=" * 60)
-        print("数字IC前端设计Agent")
-        print("=" * 60)
-
-        print("\n【步骤1/4: 需求分析】")
-        matched_skills = self.recommend_skills(user_input)
-        try:
-            loaded_skills = [self.loaded_skills[name] for name in matched_skills]
-        except KeyError as exc:
-            print("技能未加载: {}".format(exc), file=sys.stderr)
-            return False
-
-        if skip_tool_check:
-            print("\n【步骤2/4: 工具检查】")
-            print(self.WARN + " 已根据 --no-tool-check 跳过外部工具检查")
-        else:
-            print("\n【步骤2/4: 工具检查】")
-            for skill in loaded_skills:
-                report = self.run_preflight(skill.action)
-                if not report.ok:
-                    print(
-                        "\n{} 技能 {} 缺少能力: {}".format(
-                            self.WARN,
-                            skill.name,
-                            ", ".join(report.missing_required),
-                        )
-                    )
-                    return False
-            print(self.OK + " 当前技能动作所需能力已就绪")
-
-        print("\n【步骤3/4: 执行计划】")
-        request = AgentRequest(
-            request_id=uuid4().hex,
-            user_input=str(user_input),
-            output_dir=Path(output_dir),
-            context={"selected_skills": tuple(matched_skills)},
+        return execute_workflow_operation(
+            self,
+            user_input,
+            output_dir=output_dir,
+            skip_tool_check=skip_tool_check,
         )
-        print("计划请求: {}".format(request.request_id))
-
-        print("\n【步骤4/4: 工具执行与结果验证】")
-        self.last_agent_run = self.agent_execution_engine.run(request)
-        if self.last_agent_run.status is not AgentRunStatus.SUCCEEDED:
-            print(
-                "Agent 执行失败: {}".format(
-                    self.last_agent_run.failure_reason or "unknown failure"
-                ),
-                file=sys.stderr,
-            )
-            return False
-        for result in self.last_agent_run.tool_results:
-            print(
-                "{} {} -> {}".format(
-                    self.OK,
-                    result.tool_name,
-                    ", ".join(str(path) for path in result.artifacts),
-                )
-            )
-
-        print("\n【后续建议】")
-        print("请补充文档中的人工确认项，再进入 RTL 实现或 UVM 验证阶段。")
-
-        print("\n" + "=" * 60)
-        print("工作流执行完成")
-        print("=" * 60)
-
-        return True
 
 
 def create_agent() -> Any:
