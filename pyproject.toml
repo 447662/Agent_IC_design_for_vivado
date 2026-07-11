@@ -38,6 +38,7 @@ select = ["E4", "E7", "E9", "F"]
 [tool.mypy]
 python_version = "3.11"
 files = [
+    "src/digital_ic_agent",
     ".trae/agent/agent.py",
     ".trae/agent/agent_contracts.py",
     ".trae/agent/agent_execution.py",
@@ -95,7 +96,7 @@ exclude = "(outputs|VCD_ANALYZER-main|RWaveAnalyzer-main|docs/tools_archive)"
 
 [tool.coverage.run]
 branch = true
-source = [".trae/agent"]
+source = [".trae/agent", "src/digital_ic_agent"]
 
 [tool.coverage.report]
 fail_under = 68
