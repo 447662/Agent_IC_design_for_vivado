@@ -120,6 +120,8 @@ from agent_reports import (
     render_markdown_document_html as render_markdown_html_document,
 )
 from agent_waveform import (
+    analyze_vcd as analyze_vcd_flow,
+    analyze_waveform as analyze_waveform_flow,
     resolve_rwave_command as get_rwave_command,
     resolve_rwave_source_dir as get_rwave_source_dir,
     resolve_vcd_analyzer_path as get_vcd_analyzer_path,
@@ -697,80 +699,15 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
         waveform_backend: Any="auto",
         report_title: Any="波形分析报告",
     ) -> Any:
-        waveform_file = Path(waveform_path)
-        waveform_format = waveform_file.suffix.lstrip(".").upper()
-        if waveform_format not in {"VCD", "FST", "GHW"}:
-            print(
-                "Unsupported waveform format: {}".format(
-                    waveform_file.suffix or "<none>"
-                ),
-                file=sys.stderr,
-            )
-            return False
-        if not waveform_file.exists():
-            print("Waveform file not found: {}".format(waveform_file), file=sys.stderr)
-            return False
-
-        try:
-            info = self.run_waveform_analyzer_json(
-                "info",
-                waveform_file,
-                backend=waveform_backend,
-            )
-            search_result = None
-            if condition:
-                search_args = [
-                    "search",
-                    waveform_file,
-                    "--condition",
-                    condition,
-                    "--limit",
-                    limit,
-                ]
-                if show:
-                    search_args.extend(["--show", show])
-                search_result = self.run_waveform_analyzer_json(*search_args, backend=waveform_backend)
-        except (FileNotFoundError, RuntimeError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
-            return False
-
-        print(report_title)
-        print("=" * 60)
-        print("文件: {}".format(waveform_file))
-        print("格式: {}".format(waveform_format))
-        print("Backend: {}".format(info.get("_waveform_backend", "unknown")))
-        print("信号数量: {}".format(info.get("signal_count", "unknown")))
-        print("时间范围: {} - {}".format(info.get("time_min_h", "unknown"), info.get("time_max_h", "unknown")))
-        print("持续时间: {}".format(info.get("duration_h", "unknown")))
-        print("Timescale: {}".format(info.get("timescale", "unknown")))
-        scopes = info.get("scopes") or []
-        if scopes:
-            print("Scopes: {}".format(", ".join(scopes[:8])))
-
-        if search_result is not None:
-            print("\n条件搜索")
-            print("- 条件: {}".format(condition))
-            if show:
-                print("- 观察信号: {}".format(show))
-            print("- 模式: {}".format(search_result.get("mode", "unknown")))
-            print("- 命中数量: {}".format(search_result.get("total", search_result.get("shown", "unknown"))))
-
-            rows = (
-                search_result.get("segments")
-                or search_result.get("intervals")
-                or search_result.get("events")
-                or []
-            )
-            for index, row in enumerate(rows[: int(limit)], start=1):
-                begin = row.get("begin_h") or row.get("time_h") or row.get("at_h") or "unknown"
-                end = row.get("end_h")
-                values = row.get("values") or {}
-                if end:
-                    print("  {}. {} -> {} {}".format(index, begin, end, values))
-                else:
-                    print("  {}. {} {}".format(index, begin, values))
-
-        return True
+        return analyze_waveform_flow(
+            self,
+            waveform_path,
+            condition,
+            show,
+            limit,
+            waveform_backend,
+            report_title,
+        )
 
     def analyze_vcd(
         self,
@@ -780,59 +717,7 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
         limit: Any=20,
         waveform_backend: Any="auto",
     ) -> Any:
-        vcd_file = Path(vcd_path)
-        if not vcd_file.exists():
-            print("VCD file not found: {}".format(vcd_file), file=sys.stderr)
-            return False
-        return self.analyze_waveform(
-            vcd_file,
-            condition=condition,
-            show=show,
-            limit=limit,
-            waveform_backend=waveform_backend,
-            report_title="VCD 分析报告",
-        )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return analyze_vcd_flow(self, vcd_path, condition, show, limit, waveform_backend)
 
     def check_rtl_project(
         self,
@@ -863,6 +748,7 @@ LLM-backed executor; this local executor does not fabricate an LLM result.
             rtl_markers=rtl_markers,
             tb_markers=tb_markers,
         )
+
 
 
 
