@@ -8,6 +8,7 @@ RUNNER_SCRIPT_PATH = (
 )
 PREFLIGHT_SCRIPT_PATH = ROOT / ".github" / "scripts" / "vivado-preflight.tcl"
 RULESET_PATH = ROOT / ".github" / "branch-protection" / "vivado-release-gate.json"
+RUNNER_SECURITY_PATH = ROOT / ".github" / "branch-protection" / "vivado-runner-security.md"
 
 
 def test_vivado_integration_workflow_uses_controlled_self_hosted_runner():
@@ -28,6 +29,24 @@ def test_vivado_integration_workflow_uses_controlled_self_hosted_runner():
         in workflow
     )
     assert "if: always()" in workflow
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in workflow
+    assert "github.event.pull_request.author_association" in workflow
+    for trusted_association in ("OWNER", "MEMBER", "COLLABORATOR"):
+        assert trusted_association in workflow
+    assert "persist-credentials: false" in workflow
+    assert "clean: true" in workflow
+
+
+def test_vivado_runner_security_contract_requires_protected_ephemeral_execution():
+    assert RUNNER_SECURITY_PATH.is_file()
+    contract = RUNNER_SECURITY_PATH.read_text(encoding="utf-8")
+
+    assert "vivado-trusted-runner" in contract
+    assert "required reviewers" in contract
+    assert "fork" in contract.casefold()
+    assert "ephemeral" in contract.casefold()
+    assert "clean workspace" in contract.casefold()
+    assert "persist-credentials: false" in contract
 
 
 def test_vivado_required_context_is_emitted_for_every_pull_request_state():

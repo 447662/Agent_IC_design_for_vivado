@@ -58,6 +58,25 @@ def test_agent_errors_expose_structured_categories_and_exit_codes():
         assert category in str(error)
 
 
+def test_sensitive_data_redaction_handles_key_variants_nested_values_and_text():
+    secret_values = ("api-secret", "access-secret", "bearer-secret", "password-secret")
+    sanitized = agent_errors.sanitize_details(
+        {
+            "apiKey": secret_values[0],
+            "nested": {"access-token": secret_values[1]},
+            "message": (
+                "request failed Authorization: Bearer {} password={}"
+            ).format(secret_values[2], secret_values[3]),
+        }
+    )
+    serialized = json.dumps(sanitized, sort_keys=True)
+
+    assert all(secret not in serialized for secret in secret_values)
+    assert sanitized["apiKey"] == "***"
+    assert sanitized["nested"] == {"access-token": "***"}
+    assert "Bearer ***" in sanitized["message"]
+
+
 @pytest.mark.parametrize(
     ("error", "expected_exit_code"),
     (

@@ -346,6 +346,46 @@ def test_mcp_tool_success_persists_evidence_artifact(tmp_path):
     assert '"value": 7' in run.artifacts[0].read_text(encoding="utf-8")
 
 
+def test_mcp_tool_redacts_arguments_results_output_and_metadata(tmp_path):
+    secret = "mcp-super-secret"
+    call = ToolCall(
+        tool_call_id="mcp-call-sensitive",
+        tool_name="echo",
+        arguments={"access_token": secret, "value": 7},
+    )
+    provider = DeterministicProvider(planner=lambda _request: _plan(call))
+
+    with _client(tmp_path) as client:
+        run = AgentExecutionEngine(provider, {"echo": MCPToolExecutor(client)}).run(
+            _request(tmp_path)
+        )
+
+    serialized = "\n".join(
+        (
+            run.artifacts[0].read_text(encoding="utf-8"),
+            run.tool_results[0].output,
+            repr(run.tool_results[0].metadata),
+            str(run.failure_reason),
+        )
+    )
+    assert secret not in serialized
+    assert "***" in serialized
+
+
+def test_engine_redacts_sensitive_exception_text(tmp_path):
+    secret = "exception-secret"
+    provider = DeterministicProvider(planner=lambda _request: _plan(_call()))
+
+    def fail(_call, _request):
+        raise RuntimeError("Authorization: Bearer {}".format(secret))
+
+    run = AgentExecutionEngine(provider, {"write-rtl": fail}).run(_request(tmp_path))
+
+    assert run.status is AgentRunStatus.FAILED
+    assert secret not in str(run.failure_reason)
+    assert secret not in str(run.tool_results[0].error)
+
+
 @pytest.mark.parametrize(
     ("mode", "error_type", "message"),
     [

@@ -77,3 +77,16 @@ def test_p2_eval_fixture_artifact_cases_require_manifest_lineage():
     for case in artifact_cases:
         assert case["required_artifacts"]
         assert {"run_id", "artifacts"} <= set(case["required_manifest_fields"])
+
+
+def test_p2_executable_eval_cases_define_independent_scenarios():
+    payload = _load_eval_cases()
+    executable_domains = {"tool_selection", "failure_handling"}
+
+    for suite in payload["suites"]:
+        if suite["domain"] not in executable_domains:
+            continue
+        for case in suite["cases"]:
+            assert case["scenario"]["operation"]
+            assert "observed" not in case
+            assert "actual" not in case

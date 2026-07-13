@@ -99,6 +99,7 @@ def test_mcp_notifications_do_not_reset_request_deadline(tmp_path):
     with _client(tmp_path, "notification-timeout", timeout=0.08) as client:
         with pytest.raises(MCPTimeoutError, match=r"initialize.*id=1"):
             client.initialize()
+        assert client._process is None
 
     assert time.monotonic() - started < 0.5
 

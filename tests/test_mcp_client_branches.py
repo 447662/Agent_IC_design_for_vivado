@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import time
@@ -26,6 +27,33 @@ def test_mcp_client_rejects_empty_command_and_nonpositive_timeout():
         StdioMCPClient(())
     with pytest.raises(ValueError, match="must be positive"):
         StdioMCPClient(("server",), request_timeout=0)
+
+
+def test_mcp_client_builds_an_explicit_minimal_child_environment(monkeypatch):
+    monkeypatch.setenv("MCP_SENTINEL_SECRET", "must-not-leak")
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+    client = StdioMCPClient(("server",))
+
+    child_environment = client._build_child_environment()
+
+    assert "PATH" in child_environment
+    assert "MCP_SENTINEL_SECRET" not in child_environment
+
+
+def test_mcp_client_rejects_oversized_messages_and_pending_response_flood():
+    client = StdioMCPClient(
+        ("server",),
+        max_message_bytes=64,
+        max_pending_responses=1,
+    )
+    client._messages.put("x" * 65)
+    with pytest.raises(MCPProtocolError, match="message size limit"):
+        client._wait_for_response(1, "tools/list", time.monotonic() + 1)
+
+    client._messages.put('{"jsonrpc":"2.0","id":2,"result":{}}')
+    client._messages.put('{"jsonrpc":"2.0","id":3,"result":{}}')
+    with pytest.raises(MCPProtocolError, match="pending response limit"):
+        client._wait_for_response(1, "tools/list", time.monotonic() + 1)
 
 
 @pytest.mark.parametrize(
@@ -67,6 +95,24 @@ def test_mcp_readers_handle_missing_process_streams():
     assert client._messages.get_nowait() is mcp_client._EOF
     client._read_stderr()
     assert client._stderr_lines == []
+
+
+def test_mcp_stderr_is_bounded_and_sanitized():
+    class StderrProcess:
+        stdout = None
+        stderr = iter(
+            (
+                "first\n",
+                "Authorization: Bearer stderr-secret\n",
+                "last\n",
+            )
+        )
+
+    client = StdioMCPClient(("server",), max_stderr_lines=2)
+    client._process = StderrProcess()
+    client._read_stderr()
+
+    assert list(client._stderr_lines) == ["Authorization: Bearer ***", "last"]
 
 
 class ExitedProcess:

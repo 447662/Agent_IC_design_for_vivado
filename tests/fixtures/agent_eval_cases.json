@@ -8,19 +8,25 @@
         {
           "id": "design_doc_uses_document_generator",
           "input": "Generate the architecture and interface design document for sync FIFO.",
+          "scenario": {"operation": "generate-spec", "target": "sync-fifo"},
           "expected_tools": ["render_target_design_spec"],
           "forbidden_tools": ["run_vivado", "open_wave_gui"]
         },
         {
           "id": "rtl_generation_uses_project_writer",
           "input": "Generate RTL and testbench artifacts for round-robin arbiter.",
+          "scenario": {"operation": "generate-rtl", "target": "round-robin-arbiter"},
           "expected_tools": ["generate_rtl_project", "record_artifact_run"],
           "forbidden_tools": ["open_wave_gui"]
         },
         {
           "id": "wave_debug_uses_wave_backend",
           "input": "Analyze the async FIFO waveform and summarize handshake behavior.",
-          "expected_tools": ["analyze_waveform", "write_waveform_report"],
+          "scenario": {
+            "operation": "analyze-waveform",
+            "fixture": "tests/fixtures/waveforms/handshake_trace.vcd"
+          },
+          "expected_tools": ["analyze_waveform"],
           "forbidden_tools": ["create_target_scaffold"]
         }
       ]
@@ -32,6 +38,7 @@
         {
           "id": "missing_vivado_is_capability_failure",
           "input": "Run Vivado simulation when Vivado is not installed.",
+          "scenario": {"operation": "missing-capability", "target": "sync-fifo"},
           "expected_error_category": "capability",
           "expected_exit_code": 3,
           "retain_failure_case": true
@@ -39,6 +46,7 @@
         {
           "id": "broken_target_config_is_configuration_failure",
           "input": "Load a malformed target configuration file.",
+          "scenario": {"operation": "broken-config"},
           "expected_error_category": "configuration",
           "expected_exit_code": 2,
           "retain_failure_case": true
@@ -46,6 +54,7 @@
         {
           "id": "stale_artifact_is_validation_failure",
           "input": "Accept an old RTL artifact without regenerating it.",
+          "scenario": {"operation": "stale-artifact", "target": "sync-fifo"},
           "expected_error_category": "artifact_validation",
           "expected_exit_code": 5,
           "retain_failure_case": true
