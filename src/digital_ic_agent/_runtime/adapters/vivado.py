@@ -1,6 +1,6 @@
 import os
 import shutil
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 
@@ -18,14 +18,24 @@ def normalize_vivado_command(command: Any) -> str | None:
     if not command_text:
         return None
 
+    windows_path = PureWindowsPath(command_text)
+    if (
+        windows_path.drive
+        and windows_path.name.lower() == "vivado.exe"
+        and windows_path.parent.name.lower() == "win64.o"
+        and windows_path.parent.parent.name.lower() == "unwrapped"
+    ):
+        windows_wrapped_command = windows_path.parent.parent.parent / "vivado.bat"
+        return str(windows_wrapped_command)
+
     command_path = Path(command_text)
     if (
         command_path.name.lower() == "vivado.exe"
         and command_path.parent.name.lower() == "win64.o"
         and command_path.parent.parent.name.lower() == "unwrapped"
     ):
-        wrapped_command = command_path.parent.parent.parent / "vivado.bat"
-        return str(wrapped_command)
+        native_wrapped_command = command_path.parent.parent.parent / "vivado.bat"
+        return str(native_wrapped_command)
 
     return command_text
 

@@ -1,7 +1,7 @@
 import importlib.util
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +14,16 @@ if str(AGENT_DIR) not in sys.path:
 
 def load_agent_module():
     return importlib.import_module("digital_ic_agent._runtime.agent")
+
+def test_normalize_vivado_command_handles_windows_path_on_posix(monkeypatch):
+    from digital_ic_agent._runtime.adapters import vivado as vivado_adapter
+
+    monkeypatch.setattr(vivado_adapter, "Path", PurePosixPath)
+
+    assert vivado_adapter.normalize_vivado_command(
+        r"D:\vivado\2025.2\Vivado\bin\unwrapped\win64.o\vivado.exe"
+    ) == r"D:\vivado\2025.2\Vivado\bin\vivado.bat"
+
 
 def test_resolve_vivado_command_uses_configured_command(monkeypatch):
     module = load_agent_module()

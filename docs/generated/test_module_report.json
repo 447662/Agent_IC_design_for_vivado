@@ -51,7 +51,7 @@
     },
     {
       "path": "tests/test_agent_vivado_diagnostics.py",
-      "lines": 66,
+      "lines": 76,
       "status": "OK"
     },
     {
@@ -126,7 +126,7 @@
     },
     {
       "path": "tests/test_external_plugin_discovery.py",
-      "lines": 341,
+      "lines": 339,
       "status": "OK"
     },
     {
@@ -331,7 +331,7 @@
     },
     {
       "path": "tests/test_skill_target_execution.py",
-      "lines": 122,
+      "lines": 121,
       "status": "OK"
     },
     {
