@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-from typing import Any, TYPE_CHECKING
 import html
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from artifact_manifest import extract_tool_version
 from coverage_gates import (
@@ -19,6 +19,21 @@ from wave_visibility import (
 )
 
 AGENT_MODULE_DIR = Path(__file__).resolve().parent
+PathLike = str | Path
+
+
+class CompletedProcessLike(Protocol):
+    returncode: int
+
+
+class AsyncFifoWcfgSummary(TypedDict):
+    path: Path
+    exists: bool
+    object_count: int
+    required_objects: list[str]
+    present_required: list[str]
+    missing_required: list[str]
+    valid: bool
 
 
 class AsyncFifoReportMixin:
@@ -41,7 +56,15 @@ class AsyncFifoReportMixin:
         resolve_async_fifo_wave_db: Any
         write_target_dashboard: Any
 
-    def write_async_fifo_sim_report(self, project_dir: Any, vcd_path: Any, wave_db_path: Any, sim_result: Any=None, project_result: Any=None, limit: Any=20) -> Any:
+    def write_async_fifo_sim_report(
+        self,
+        project_dir: PathLike,
+        vcd_path: PathLike,
+        wave_db_path: PathLike,
+        sim_result: CompletedProcessLike | None = None,
+        project_result: CompletedProcessLike | None = None,
+        limit: int = 20,
+    ) -> Path:
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
@@ -125,11 +148,11 @@ class AsyncFifoReportMixin:
         )
         return report_path
 
-    def parse_async_fifo_wcfg_summary(self, project_dir: Any) -> Any:
+    def parse_async_fifo_wcfg_summary(self, project_dir: PathLike) -> AsyncFifoWcfgSummary:
         project_dir = Path(project_dir)
         wcfg_path = project_dir / "sim" / "async_fifo_debug.wcfg"
-        required_objects = self.async_fifo_required_wcfg_objects()
-        summary = {
+        required_objects = list(self.async_fifo_required_wcfg_objects())
+        summary: AsyncFifoWcfgSummary = {
             "path": wcfg_path,
             "exists": wcfg_path.exists(),
             "object_count": 0,
@@ -852,7 +875,7 @@ class AsyncFifoReportMixin:
                 tokens.append(token)
 
         coverage_types = []
-        if any("sbct" == token or "sbct" in token.split() for token in tokens):
+        if any(token == "sbct" or "sbct" in token.split() for token in tokens):
             coverage_types = ["statement", "branch", "condition", "toggle"]
 
         database_name = ""

@@ -965,6 +965,9 @@ cd $script_dir
 set timestamp [clock format [clock seconds] -format "%Y%m%d_%H%M%S"]
 set snapshot async_fifo_smoke_$timestamp
 set wave_db async_fifo_smoke_$timestamp.wdb
+set fixed_wdb async_fifo_smoke.wdb
+if {[file exists async_fifo_trace.vcd]} { file delete -force async_fifo_trace.vcd }
+if {[file exists $fixed_wdb]} { file delete -force $fixed_wdb }
 exec xvlog -sv ../rtl/async_fifo.v ../tb/tb_async_fifo.v
 exec xelab tb_async_fifo -debug typical -s $snapshot
 set run_fh [open run_async_fifo_wave.tcl w]
@@ -981,6 +984,7 @@ if {![file exists $wave_db]} {
     puts stderr "Simulation did not generate $wave_db"
     exit 1
 }
+file copy -force $wave_db $fixed_wdb
 set latest_fh [open latest_async_fifo_wdb.txt w]
 puts $latest_fh $wave_db
 close $latest_fh

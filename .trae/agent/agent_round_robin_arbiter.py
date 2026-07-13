@@ -1,8 +1,89 @@
 # -*- coding: utf-8 -*-
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, TextIO
 import html
 import sys
 from pathlib import Path
+
+
+def build_round_robin_arbiter_error_lines(message: str, hint: str | None = None) -> list[str]:
+    lines = [message]
+    if hint:
+        lines.append(hint)
+    return lines
+
+
+def build_round_robin_arbiter_vcd_analysis_lines(
+    analysis: dict[str, Any],
+    limit: int = 20,
+    report_path: Any = None,
+) -> list[str]:
+    vcd_path = analysis["vcd_path"]
+    info = analysis["info"]
+    grant_events = analysis["grant_events"]
+    fairness_events = analysis["fairness_events"]
+    lines = [
+        "Round-Robin Arbiter VCD analysis",
+        "=" * 60,
+        "File: {}".format(vcd_path),
+        "Signals: {}".format(info.get("signal_count", "unknown")),
+        "Backend: {}".format(info.get("_waveform_backend", "unknown")),
+        "Time range: {} - {}".format(
+            info.get("time_min_h", "unknown"),
+            info.get("time_max_h", "unknown"),
+        ),
+        "Duration: {}".format(info.get("duration_h", "unknown")),
+        "Timescale: {}".format(info.get("timescale", "unknown")),
+        "Grant events: {}".format(
+            grant_events.get("total", grant_events.get("shown", "unknown"))
+        ),
+        "Fairness checkpoints: {}".format(
+            fairness_events.get("total", fairness_events.get("shown", "unknown"))
+        ),
+    ]
+
+    for title, result in [("Grants", grant_events), ("Fairness", fairness_events)]:
+        rows = result.get("segments") or result.get("intervals") or result.get("events") or []
+        lines.append("\n{}".format(title))
+        for index, row in enumerate(rows[: int(limit)], start=1):
+            begin = row.get("begin_h") or row.get("time_h") or row.get("at_h") or "unknown"
+            end = row.get("end_h")
+            values = row.get("values") or {}
+            if end:
+                lines.append("  {}. {} -> {} {}".format(index, begin, end, values))
+            else:
+                lines.append("  {}. {} {}".format(index, begin, values))
+
+    if report_path is not None:
+        lines.append("Simulation report refreshed: {}".format(report_path))
+    return lines
+
+
+def build_round_robin_arbiter_sim_completed_lines(
+    project_dir: Any,
+    vcd_path: Any,
+    wave_db_path: Any,
+    project_warning: str | None,
+    report_path: Any,
+) -> list[str]:
+    lines = [
+        "Round-Robin Arbiter simulation completed",
+        "Generated VCD: {}".format(vcd_path),
+        "Generated WDB: {}".format(wave_db_path),
+    ]
+    if project_warning is None:
+        lines.append(
+            "Vivado project: {}".format(
+                project_dir / "vivado_project" / "round_robin_arbiter_project.xpr"
+            )
+        )
+    lines.append("Simulation report: {}".format(report_path))
+    return lines
+
+
+def emit_round_robin_arbiter_lines(lines: list[str], stream: TextIO | None = None) -> None:
+    target_stream = stream or sys.stdout
+    for line in lines:
+        print(line, file=target_stream)
 
 
 class RoundRobinArbiterMixin:
@@ -65,50 +146,36 @@ class RoundRobinArbiterMixin:
                 waveform_backend=waveform_backend,
             )
         except FileNotFoundError as exc:
-            print(str(exc), file=sys.stderr)
-            print("Run --sim-rtl round-robin-arbiter first, or check --output-dir.", file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    str(exc),
+                    "Run --sim-rtl round-robin-arbiter first, or check --output-dir.",
+                ),
+                stream=sys.stderr,
+            )
             return False
         except RuntimeError as exc:
-            print(str(exc), file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(str(exc)),
+                stream=sys.stderr,
+            )
             return False
-
-        vcd_path = analysis["vcd_path"]
-        info = analysis["info"]
-        grant_events = analysis["grant_events"]
-        fairness_events = analysis["fairness_events"]
-
-        print("Round-Robin Arbiter VCD analysis")
-        print("=" * 60)
-        print("File: {}".format(vcd_path))
-        print("Signals: {}".format(info.get("signal_count", "unknown")))
-        print("Backend: {}".format(info.get("_waveform_backend", "unknown")))
-        print("Time range: {} - {}".format(info.get("time_min_h", "unknown"), info.get("time_max_h", "unknown")))
-        print("Duration: {}".format(info.get("duration_h", "unknown")))
-        print("Timescale: {}".format(info.get("timescale", "unknown")))
-        print("Grant events: {}".format(grant_events.get("total", grant_events.get("shown", "unknown"))))
-        print("Fairness checkpoints: {}".format(fairness_events.get("total", fairness_events.get("shown", "unknown"))))
-
-        for title, result in [("Grants", grant_events), ("Fairness", fairness_events)]:
-            rows = result.get("segments") or result.get("intervals") or result.get("events") or []
-            print("\n{}".format(title))
-            for index, row in enumerate(rows[: int(limit)], start=1):
-                begin = row.get("begin_h") or row.get("time_h") or row.get("at_h") or "unknown"
-                end = row.get("end_h")
-                values = row.get("values") or {}
-                if end:
-                    print("  {}. {} -> {} {}".format(index, begin, end, values))
-                else:
-                    print("  {}. {} {}".format(index, begin, values))
 
         project_dir = Path(output_dir) / "round-robin-arbiter"
         report_path = self.write_round_robin_arbiter_sim_report(
             project_dir=project_dir,
-            vcd_path=vcd_path,
+            vcd_path=analysis["vcd_path"],
             wave_db_path=self.resolve_round_robin_arbiter_wave_db(project_dir / "sim"),
             analysis=analysis,
             limit=limit,
         )
-        print("Simulation report refreshed: {}".format(report_path))
+        emit_round_robin_arbiter_lines(
+            build_round_robin_arbiter_vcd_analysis_lines(
+                analysis,
+                limit=int(limit),
+                report_path=report_path,
+            )
+        )
         return True
 
     def write_round_robin_arbiter_sim_report(
@@ -647,22 +714,41 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
         gui_script_path = sim_dir / "open_round_robin_arbiter_project_gui.tcl"
 
         if not xpr_path.exists():
-            print("Vivado project not found: {}".format(xpr_path), file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    "Vivado project not found: {}".format(xpr_path)
+                ),
+                stream=sys.stderr,
+            )
             return False
         if not wave_db_path.exists():
-            print("Vivado waveform database not found: {}".format(wave_db_path), file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    "Vivado waveform database not found: {}".format(wave_db_path)
+                ),
+                stream=sys.stderr,
+            )
             return False
         if not gui_script_path.exists():
             gui_script_path.write_text(self.render_round_robin_arbiter_open_project_gui_script(), encoding="utf-8")
 
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
-            print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    "Vivado command not found; cannot open waveform GUI."
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
-        print("Vivado project GUI launched: {}".format(xpr_path))
-        print("Vivado waveform database: {}".format(wave_db_path))
+        emit_round_robin_arbiter_lines(
+            [
+                "Vivado project GUI launched: {}".format(xpr_path),
+                "Vivado waveform database: {}".format(wave_db_path),
+            ]
+        )
         return True
 
     def run_round_robin_arbiter_vivado_sim(self, output_dir: Any="outputs", open_wave_gui: Any=True) -> Any:
@@ -670,7 +756,10 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
         sim_dir = project_dir / "sim"
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
-            print("Vivado command not found.", file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines("Vivado command not found."),
+                stream=sys.stderr,
+            )
             return False
 
         sim_result = self.run_vivado_batch(
@@ -679,16 +768,33 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             sim_dir,
         )
         if sim_result.returncode != 0:
-            print(sim_result.stderr.strip() or sim_result.stdout.strip() or "round-robin arbiter simulation failed", file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    sim_result.stderr.strip()
+                    or sim_result.stdout.strip()
+                    or "round-robin arbiter simulation failed"
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         vcd_path = sim_dir / "round_robin_arbiter_trace.vcd"
         wave_db_path = self.resolve_round_robin_arbiter_wave_db(sim_dir)
         if not vcd_path.exists():
-            print("Simulation did not generate VCD: {}".format(vcd_path), file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    "Simulation did not generate VCD: {}".format(vcd_path)
+                ),
+                stream=sys.stderr,
+            )
             return False
         if not wave_db_path.exists():
-            print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    "Simulation did not generate WDB: {}".format(wave_db_path)
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         project_result = self.run_vivado_batch(
@@ -701,13 +807,6 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
         if project_result.returncode != 0:
             project_warning = project_result.stderr.strip() or project_result.stdout.strip() or "Vivado project generation failed"
 
-        print("Round-Robin Arbiter simulation completed")
-        print("Generated VCD: {}".format(vcd_path))
-        print("Generated WDB: {}".format(wave_db_path))
-        if project_warning is None:
-            print("Vivado project: {}".format(project_dir / "vivado_project" / "round_robin_arbiter_project.xpr"))
-        else:
-            print("Vivado project warning: {}".format(project_warning), file=sys.stderr)
         report_path = self.write_round_robin_arbiter_sim_report(
             project_dir=project_dir,
             vcd_path=vcd_path,
@@ -715,7 +814,22 @@ vivado -mode gui -source open_round_robin_arbiter_project_gui.tcl
             sim_result=sim_result,
             project_result=project_result,
         )
-        print("Simulation report: {}".format(report_path))
+        emit_round_robin_arbiter_lines(
+            build_round_robin_arbiter_sim_completed_lines(
+                project_dir,
+                vcd_path,
+                wave_db_path,
+                project_warning,
+                report_path,
+            )
+        )
+        if project_warning is not None:
+            emit_round_robin_arbiter_lines(
+                build_round_robin_arbiter_error_lines(
+                    "Vivado project warning: {}".format(project_warning)
+                ),
+                stream=sys.stderr,
+            )
         if open_wave_gui and project_warning is None:
             self.open_round_robin_arbiter_project_gui(project_dir)
         return True

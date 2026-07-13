@@ -1,11 +1,109 @@
-from typing import Any
+from collections.abc import Callable, Mapping
 import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Protocol, TextIO
 
 
-def resolve_vcd_analyzer_path(project_root: Any) -> Any:
+class WaveformAnalysisAgent(Protocol):
+    def run_waveform_analyzer_json(
+        self,
+        *args: object,
+        backend: str = "auto",
+    ) -> Mapping[str, object]:
+        ...
+
+    def analyze_waveform(
+        self,
+        waveform_path: str | Path,
+        condition: str | None = None,
+        show: str | None = None,
+        limit: int = 20,
+        waveform_backend: str = "auto",
+        report_title: str = "波形分析报告",
+    ) -> bool:
+        ...
+
+
+def build_waveform_report_lines(
+    report_title: str,
+    waveform_file: str | Path,
+    waveform_format: str,
+    info: Mapping[str, object],
+    search_result: Mapping[str, object] | None = None,
+    condition: str | None = None,
+    show: str | None = None,
+    limit: int = 20,
+) -> list[str]:
+    lines = [
+        str(report_title),
+        "=" * 60,
+        "文件: {}".format(waveform_file),
+        "格式: {}".format(waveform_format),
+        "Backend: {}".format(info.get("_waveform_backend", "unknown")),
+        "信号数量: {}".format(info.get("signal_count", "unknown")),
+        "时间范围: {} - {}".format(
+            info.get("time_min_h", "unknown"),
+            info.get("time_max_h", "unknown"),
+        ),
+        "持续时间: {}".format(info.get("duration_h", "unknown")),
+        "Timescale: {}".format(info.get("timescale", "unknown")),
+    ]
+    scopes = info.get("scopes") or []
+    if isinstance(scopes, list | tuple):
+        lines.append("Scopes: {}".format(", ".join(str(scope) for scope in scopes[:8])))
+
+    if search_result is not None:
+        lines.append("")
+        lines.append("条件搜索")
+        lines.append("- 条件: {}".format(condition))
+        if show:
+            lines.append("- 观察信号: {}".format(show))
+        lines.append("- 模式: {}".format(search_result.get("mode", "unknown")))
+        lines.append(
+            "- 命中数量: {}".format(
+                search_result.get("total", search_result.get("shown", "unknown"))
+            )
+        )
+
+        rows = (
+            search_result.get("segments")
+            or search_result.get("intervals")
+            or search_result.get("events")
+            or []
+        )
+        if not isinstance(rows, list | tuple):
+            rows = []
+        for index, row in enumerate(rows[: int(limit)], start=1):
+            if not isinstance(row, Mapping):
+                continue
+            begin = (
+                row.get("begin_h")
+                or row.get("time_h")
+                or row.get("at_h")
+                or "unknown"
+            )
+            end = row.get("end_h")
+            values = row.get("values") or {}
+            if end:
+                lines.append("  {}. {} -> {} {}".format(index, begin, end, values))
+            else:
+                lines.append("  {}. {} {}".format(index, begin, values))
+    return lines
+
+
+def build_waveform_error_lines(message: str) -> list[str]:
+    return [message]
+
+
+def emit_waveform_lines(lines: list[str], stream: TextIO | None = None) -> None:
+    target_stream = stream or sys.stdout
+    for line in lines:
+        print(line, file=target_stream)
+
+
+def resolve_vcd_analyzer_path(project_root: str | Path) -> Path:
     return (
         Path(project_root)
         / "VCD_ANALYZER-main"
@@ -14,7 +112,7 @@ def resolve_vcd_analyzer_path(project_root: Any) -> Any:
     )
 
 
-def resolve_rwave_source_dir(project_root: Any) -> Any:
+def resolve_rwave_source_dir(project_root: str | Path) -> Path | None:
     project_root = Path(project_root)
     candidates = [
         project_root / "RWaveAnalyzer-main" / "RWaveAnalyzer-main",
@@ -36,11 +134,11 @@ def resolve_rwave_source_dir(project_root: Any) -> Any:
 
 
 def resolve_rwave_command(
-    project_root: Any,
-    env: Any=None,
-    which: Any=None,
-    source_dir_resolver: Any=None,
-) -> Any:
+    project_root: str | Path,
+    env: Mapping[str, str] | None = None,
+    which: Callable[[str], str | None] | None = None,
+    source_dir_resolver: Callable[[], Path | None] | None = None,
+) -> str | None:
     env = os.environ if env is None else env
     which = shutil.which if which is None else which
 
@@ -73,24 +171,29 @@ def resolve_rwave_command(
 
 
 def analyze_waveform(
-    agent: Any,
-    waveform_path: Any,
-    condition: Any = None,
-    show: Any = None,
-    limit: Any = 20,
-    waveform_backend: Any = "auto",
-    report_title: Any = "波形分析报告",
-) -> Any:
+    agent: WaveformAnalysisAgent,
+    waveform_path: str | Path,
+    condition: str | None = None,
+    show: str | None = None,
+    limit: int = 20,
+    waveform_backend: str = "auto",
+    report_title: str = "波形分析报告",
+) -> bool:
     waveform_file = Path(waveform_path)
     waveform_format = waveform_file.suffix.lstrip(".").upper()
     if waveform_format not in {"VCD", "FST", "GHW"}:
-        print(
-            "Unsupported waveform format: {}".format(waveform_file.suffix or "<none>"),
-            file=sys.stderr,
+        emit_waveform_lines(
+            build_waveform_error_lines(
+                "Unsupported waveform format: {}".format(waveform_file.suffix or "<none>")
+            ),
+            stream=sys.stderr,
         )
         return False
     if not waveform_file.exists():
-        print("Waveform file not found: {}".format(waveform_file), file=sys.stderr)
+        emit_waveform_lines(
+            build_waveform_error_lines("Waveform file not found: {}".format(waveform_file)),
+            stream=sys.stderr,
+        )
         return False
 
     try:
@@ -116,73 +219,39 @@ def analyze_waveform(
                 backend=waveform_backend,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
+        emit_waveform_lines(build_waveform_error_lines(str(exc)), stream=sys.stderr)
         return False
 
-    print(report_title)
-    print("=" * 60)
-    print("文件: {}".format(waveform_file))
-    print("格式: {}".format(waveform_format))
-    print("Backend: {}".format(info.get("_waveform_backend", "unknown")))
-    print("信号数量: {}".format(info.get("signal_count", "unknown")))
-    print(
-        "时间范围: {} - {}".format(
-            info.get("time_min_h", "unknown"),
-            info.get("time_max_h", "unknown"),
+    emit_waveform_lines(
+        build_waveform_report_lines(
+            report_title,
+            waveform_file,
+            waveform_format,
+            info,
+            search_result=search_result,
+            condition=condition,
+            show=show,
+            limit=limit,
         )
     )
-    print("持续时间: {}".format(info.get("duration_h", "unknown")))
-    print("Timescale: {}".format(info.get("timescale", "unknown")))
-    scopes = info.get("scopes") or []
-    if scopes:
-        print("Scopes: {}".format(", ".join(scopes[:8])))
-
-    if search_result is not None:
-        print("\n条件搜索")
-        print("- 条件: {}".format(condition))
-        if show:
-            print("- 观察信号: {}".format(show))
-        print("- 模式: {}".format(search_result.get("mode", "unknown")))
-        print(
-            "- 命中数量: {}".format(
-                search_result.get("total", search_result.get("shown", "unknown"))
-            )
-        )
-
-        rows = (
-            search_result.get("segments")
-            or search_result.get("intervals")
-            or search_result.get("events")
-            or []
-        )
-        for index, row in enumerate(rows[: int(limit)], start=1):
-            begin = (
-                row.get("begin_h")
-                or row.get("time_h")
-                or row.get("at_h")
-                or "unknown"
-            )
-            end = row.get("end_h")
-            values = row.get("values") or {}
-            if end:
-                print("  {}. {} -> {} {}".format(index, begin, end, values))
-            else:
-                print("  {}. {} {}".format(index, begin, values))
 
     return True
 
 
 def analyze_vcd(
-    agent: Any,
-    vcd_path: Any,
-    condition: Any = None,
-    show: Any = None,
-    limit: Any = 20,
-    waveform_backend: Any = "auto",
-) -> Any:
+    agent: WaveformAnalysisAgent,
+    vcd_path: str | Path,
+    condition: str | None = None,
+    show: str | None = None,
+    limit: int = 20,
+    waveform_backend: str = "auto",
+) -> bool:
     vcd_file = Path(vcd_path)
     if not vcd_file.exists():
-        print("VCD file not found: {}".format(vcd_file), file=sys.stderr)
+        emit_waveform_lines(
+            build_waveform_error_lines("VCD file not found: {}".format(vcd_file)),
+            stream=sys.stderr,
+        )
         return False
     return agent.analyze_waveform(
         vcd_file,

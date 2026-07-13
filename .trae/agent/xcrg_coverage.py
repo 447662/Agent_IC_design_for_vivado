@@ -184,7 +184,7 @@ def _row_map(table: _Table) -> list[dict[str, _Cell]]:
     return [
         {
             header: cell
-            for header, cell in zip(headers, row)
+            for header, cell in zip(headers, row, strict=False)
             if header
         }
         for row in rows[1:]

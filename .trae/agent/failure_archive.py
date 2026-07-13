@@ -1,7 +1,7 @@
 import json
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
@@ -10,7 +10,7 @@ SCHEMA_VERSION = 1
 
 
 def utc_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace(
         "+00:00",
         "Z",
     )

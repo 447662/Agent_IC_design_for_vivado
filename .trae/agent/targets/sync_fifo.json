@@ -55,6 +55,7 @@
     {"id": "testbench", "path": "tb/tb_sync_fifo.v", "status": "PASS"},
     {"id": "vivado_sim", "path": "sim/run_vivado_sync_fifo.tcl", "status": "PASS"},
     {"id": "sim_report", "path": "reports/sim_report.md", "status": "PASS"},
+    {"id": "vivado_project", "path": "vivado_project/sync_fifo_project.xpr", "status": "PASS"},
     {"id": "wave_vcd", "path": "sim/sync_fifo_trace.vcd", "status": "PASS"},
     {"id": "wave_wdb", "path": "sim/sync_fifo_smoke.wdb", "status": "PASS"},
     {"id": "coverage_summary", "path": "reports/uvm_coverage_summary.md", "status": "N/A"}

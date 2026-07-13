@@ -2,7 +2,7 @@ import html
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -96,7 +96,7 @@ def parse_coverage_scores(
 
 
 def _utc_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+    return datetime.now(UTC).isoformat(timespec="seconds").replace(
         "+00:00",
         "Z",
     )

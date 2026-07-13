@@ -1,22 +1,49 @@
-from typing import Any
+import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 
-DEFAULT_VIVADO_CANDIDATES = (
-    Path(r"D:\vivado\2025.2\Vivado\bin\vivado.bat"),
-    Path(r"D:\vivado\2025.2\Vivado\bin\unwrapped\win64.o\vivado.exe"),
+VIVADO_COMMAND_ENV_VARS = (
+    "DIGITAL_IC_AGENT_VIVADO",
+    "VIVADO_PATH",
 )
 
 
+def normalize_vivado_command(command: Any) -> str | None:
+    if command is None:
+        return None
+
+    command_text = str(command).strip()
+    if not command_text:
+        return None
+
+    command_path = Path(command_text)
+    if (
+        command_path.name.lower() == "vivado.exe"
+        and command_path.parent.name.lower() == "win64.o"
+        and command_path.parent.parent.name.lower() == "unwrapped"
+    ):
+        wrapped_command = command_path.parent.parent.parent / "vivado.bat"
+        return str(wrapped_command)
+
+    return command_text
+
+
 def resolve_vivado_command(self: Any) -> Any:
+    configured_command = normalize_vivado_command(getattr(self, "vivado_command", None))
+    if configured_command:
+        return configured_command
+
+    for env_name in VIVADO_COMMAND_ENV_VARS:
+        env_command = normalize_vivado_command(os.environ.get(env_name))
+        if env_command:
+            return env_command
+
     vivado_on_path = shutil.which("vivado")
     if vivado_on_path:
-        return vivado_on_path
+        return normalize_vivado_command(vivado_on_path)
 
-    for candidate in DEFAULT_VIVADO_CANDIDATES:
-        if candidate.exists():
-            return str(candidate)
     return None
 
 

@@ -124,9 +124,13 @@
     {"id": "testbench", "path": "tb/tb_async_fifo.v", "status": "PASS"},
     {"id": "vivado_sim", "path": "sim/run_vivado_async_fifo.tcl", "status": "PASS"},
     {"id": "sim_report", "path": "reports/sim_report.md", "status": "PASS"},
+    {"id": "vivado_project", "path": "vivado_project/async_fifo_project.xpr", "status": "PASS"},
     {"id": "wave_vcd", "path": "sim/async_fifo_trace.vcd", "status": "PASS"},
     {"id": "wave_wdb", "path": "sim/async_fifo_smoke.wdb", "status": "PASS"},
-    {"id": "coverage_summary", "path": "reports/uvm_coverage_summary.md", "status": "PASS"}
+    {"id": "uvm_smoke_report", "path": "reports/uvm_smoke_report.md", "status": "PASS"},
+    {"id": "uvm_smoke_wdb", "path": "sim/async_fifo_uvm_smoke.wdb", "status": "PASS"},
+    {"id": "coverage_summary", "path": "reports/uvm_coverage_summary.md", "status": "PASS"},
+    {"id": "uvm_coverage_wdb", "path": "sim/async_fifo_uvm_coverage.wdb", "status": "PASS"}
   ],
   "notes": [
     "P5 通用文档生成默认保留 Vivado/xsim 和 WDB GUI 波形闭环。"

@@ -1,10 +1,156 @@
 # -*- coding: utf-8 -*-
-from typing import Any, TYPE_CHECKING
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, TextIO, TypedDict, cast
 
 from wave_visibility import render_wave_open_probe_tcl
+
+
+PathLike = str | os.PathLike[str]
+
+
+class WaveEventRow(TypedDict, total=False):
+    time_h: str
+    begin_h: str
+    end_h: str
+    at_h: str
+    values: dict[str, object]
+
+
+class WaveSearchResult(TypedDict, total=False):
+    total: int
+    shown: int
+    events: list[WaveEventRow]
+    segments: list[WaveEventRow]
+    intervals: list[WaveEventRow]
+
+
+class WaveInfo(TypedDict, total=False):
+    signal_count: int
+    time_min_h: str
+    time_max_h: str
+    duration_h: str
+    timescale: str
+    _waveform_backend: str
+
+
+class AsyncFifoVcdAnalysis(TypedDict):
+    vcd_path: Path
+    info: WaveInfo
+    write_events: WaveSearchResult
+    read_events: WaveSearchResult
+
+
+def build_async_fifo_error_lines(message: str, hint: str | None = None) -> list[str]:
+    lines = [message]
+    if hint:
+        lines.append(hint)
+    return lines
+
+
+def build_async_fifo_vcd_analysis_lines(
+    analysis: AsyncFifoVcdAnalysis,
+    limit: int = 20,
+) -> list[str]:
+    vcd_path = analysis["vcd_path"]
+    info = analysis["info"]
+    write_events = analysis["write_events"]
+    read_events = analysis["read_events"]
+    lines = [
+        "Async FIFO VCD analysis",
+        "=" * 60,
+        "File: {}".format(vcd_path),
+        "Signals: {}".format(info.get("signal_count", "unknown")),
+        "Backend: {}".format(info.get("_waveform_backend", "unknown")),
+        "Time range: {} - {}".format(
+            info.get("time_min_h", "unknown"),
+            info.get("time_max_h", "unknown"),
+        ),
+        "Duration: {}".format(info.get("duration_h", "unknown")),
+        "Timescale: {}".format(info.get("timescale", "unknown")),
+        "Write handshakes: {}".format(
+            write_events.get("total", write_events.get("shown", "unknown"))
+        ),
+        "Read handshakes: {}".format(
+            read_events.get("total", read_events.get("shown", "unknown"))
+        ),
+    ]
+
+    for title, result in [("Writes", write_events), ("Reads", read_events)]:
+        rows = result.get("segments") or result.get("intervals") or result.get("events") or []
+        lines.append("\n{}".format(title))
+        for index, row in enumerate(rows[: int(limit)], start=1):
+            begin = row.get("begin_h") or row.get("time_h") or row.get("at_h") or "unknown"
+            end = row.get("end_h")
+            values = row.get("values") or {}
+            if end:
+                lines.append("  {}. {} -> {} {}".format(index, begin, end, values))
+            else:
+                lines.append("  {}. {} {}".format(index, begin, values))
+    return lines
+
+
+def build_async_fifo_rtl_check_lines(checks: list[tuple[str, bool, Path]]) -> list[str]:
+    lines = [
+        "Async FIFO RTL check",
+        "=" * 60,
+    ]
+    for label, passed, path in checks:
+        lines.append("[{}] {}: {}".format("OK" if passed else "NO", label, path))
+    return lines
+
+
+def build_async_fifo_sim_completed_lines(
+    project_dir: Any,
+    vcd_path: Any,
+    wave_db_path: Any,
+    report_path: Any,
+) -> list[str]:
+    return [
+        "Async FIFO simulation completed",
+        "Generated VCD: {}".format(vcd_path),
+        "Generated WDB: {}".format(wave_db_path),
+        "Vivado project: {}".format(project_dir / "vivado_project" / "async_fifo_project.xpr"),
+        "Simulation report: {}".format(report_path),
+    ]
+
+
+def build_async_fifo_uvm_smoke_completed_lines(report: dict[str, Any]) -> list[str]:
+    return [
+        "Async FIFO UVM smoke completed",
+        "UVM log: {}".format(report["log_path"]),
+        "Generated WDB: {}".format(report["wdb_path"]),
+        "UVM smoke report: {}".format(report["markdown_path"]),
+    ]
+
+
+def build_async_fifo_uvm_coverage_completed_lines(
+    report: dict[str, Any],
+    summary_report: dict[str, Any],
+    functional_report: dict[str, Any],
+) -> list[str]:
+    return [
+        "Async FIFO UVM coverage completed",
+        "UVM log: {}".format(report["log_path"]),
+        "Generated WDB: {}".format(report["wdb_path"]),
+        "Coverage DB: {}".format(report["code_cov_dir"]),
+        "UVM coverage report: {}".format(report["markdown_path"]),
+        "UVM coverage summary: {}".format(summary_report["markdown_path"]),
+        "UVM functional coverage report: {}".format(functional_report["markdown_path"]),
+    ]
+
+
+def emit_async_fifo_lines(lines: list[str], stream: TextIO | None = None) -> None:
+    target_stream = stream or sys.stdout
+    for line in lines:
+        print(line, file=target_stream)
+
+
+class AsyncFifoRegressionCase(TypedDict):
+    name: str
+    data_width: int
+    addr_width: int
 
 
 class AsyncFifoRuntimeMixin:
@@ -38,10 +184,14 @@ class AsyncFifoRuntimeMixin:
         write_async_fifo_wave_screenshot_report: Any
         write_async_fifo_wave_visibility_report: Any
 
-    def resolve_async_fifo_vcd_path(self, output_dir: Any="outputs") -> Any:
+    def resolve_async_fifo_vcd_path(self, output_dir: PathLike = "outputs") -> Path:
         return Path(output_dir) / "async-fifo" / "sim" / "async_fifo_trace.vcd"
 
-    def collect_async_fifo_vcd_analysis_with_rwave_batch(self, vcd_path: Any, limit: Any=20) -> Any:
+    def collect_async_fifo_vcd_analysis_with_rwave_batch(
+        self,
+        vcd_path: PathLike,
+        limit: int = 20,
+    ) -> AsyncFifoVcdAnalysis:
         command_lines = [
             "info #info",
             (
@@ -59,13 +209,18 @@ class AsyncFifoRuntimeMixin:
         ]
         batch = self.run_rwave_batch_json(vcd_path, command_lines)
         return {
-            "vcd_path": vcd_path,
-            "info": batch["info"],
-            "write_events": batch["write_events"],
-            "read_events": batch["read_events"],
+            "vcd_path": Path(vcd_path),
+            "info": cast(WaveInfo, batch["info"]),
+            "write_events": cast(WaveSearchResult, batch["write_events"]),
+            "read_events": cast(WaveSearchResult, batch["read_events"]),
         }
 
-    def collect_async_fifo_vcd_analysis(self, output_dir: Any="outputs", limit: Any=20, waveform_backend: Any="auto") -> Any:
+    def collect_async_fifo_vcd_analysis(
+        self,
+        output_dir: PathLike = "outputs",
+        limit: int = 20,
+        waveform_backend: str = "auto",
+    ) -> AsyncFifoVcdAnalysis:
         vcd_path = self.resolve_async_fifo_vcd_path(output_dir)
         if not vcd_path.exists():
             raise FileNotFoundError("Async FIFO VCD file not found: {}".format(vcd_path))
@@ -110,12 +265,17 @@ class AsyncFifoRuntimeMixin:
         )
         return {
             "vcd_path": vcd_path,
-            "info": info,
-            "write_events": write_events,
-            "read_events": read_events,
+            "info": cast(WaveInfo, info),
+            "write_events": cast(WaveSearchResult, write_events),
+            "read_events": cast(WaveSearchResult, read_events),
         }
 
-    def analyze_async_fifo_vcd(self, output_dir: Any="outputs", limit: Any=20, waveform_backend: Any="auto") -> Any:
+    def analyze_async_fifo_vcd(
+        self,
+        output_dir: PathLike = "outputs",
+        limit: int = 20,
+        waveform_backend: str = "auto",
+    ) -> bool:
         try:
             analysis = self.collect_async_fifo_vcd_analysis(
                 output_dir=output_dir,
@@ -123,44 +283,23 @@ class AsyncFifoRuntimeMixin:
                 waveform_backend=waveform_backend,
             )
         except FileNotFoundError as exc:
-            print(str(exc), file=sys.stderr)
-            print("Run --sim-rtl async-fifo first, or check --output-dir.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    str(exc),
+                    "Run --sim-rtl async-fifo first, or check --output-dir.",
+                ),
+                stream=sys.stderr,
+            )
             return False
         except RuntimeError as exc:
-            print(str(exc), file=sys.stderr)
+            emit_async_fifo_lines(build_async_fifo_error_lines(str(exc)), stream=sys.stderr)
             return False
 
-        vcd_path = analysis["vcd_path"]
-        info = analysis["info"]
-        write_events = analysis["write_events"]
-        read_events = analysis["read_events"]
-
-        print("Async FIFO VCD analysis")
-        print("=" * 60)
-        print("File: {}".format(vcd_path))
-        print("Signals: {}".format(info.get("signal_count", "unknown")))
-        print("Backend: {}".format(info.get("_waveform_backend", "unknown")))
-        print("Time range: {} - {}".format(info.get("time_min_h", "unknown"), info.get("time_max_h", "unknown")))
-        print("Duration: {}".format(info.get("duration_h", "unknown")))
-        print("Timescale: {}".format(info.get("timescale", "unknown")))
-        print("Write handshakes: {}".format(write_events.get("total", write_events.get("shown", "unknown"))))
-        print("Read handshakes: {}".format(read_events.get("total", read_events.get("shown", "unknown"))))
-
-        for title, result in [("Writes", write_events), ("Reads", read_events)]:
-            rows = result.get("segments") or result.get("intervals") or result.get("events") or []
-            print("\n{}".format(title))
-            for index, row in enumerate(rows[: int(limit)], start=1):
-                begin = row.get("begin_h") or row.get("time_h") or row.get("at_h") or "unknown"
-                end = row.get("end_h")
-                values = row.get("values") or {}
-                if end:
-                    print("  {}. {} -> {} {}".format(index, begin, end, values))
-                else:
-                    print("  {}. {} {}".format(index, begin, values))
+        emit_async_fifo_lines(build_async_fifo_vcd_analysis_lines(analysis, limit=int(limit)))
 
         return True
 
-    def async_fifo_required_wcfg_objects(self) -> Any:
+    def async_fifo_required_wcfg_objects(self) -> list[str]:
         return [
             "/tb_async_fifo/scenario_id",
             "/tb_async_fifo/wr_clk",
@@ -171,7 +310,7 @@ class AsyncFifoRuntimeMixin:
             "/tb_async_fifo/dut/empty_reg",
         ]
 
-    def async_fifo_regression_cases(self) -> Any:
+    def async_fifo_regression_cases(self) -> list[AsyncFifoRegressionCase]:
         return [
             {"name": "dw8_aw4", "data_width": 8, "addr_width": 4},
             {"name": "dw16_aw4", "data_width": 16, "addr_width": 4},
@@ -257,11 +396,9 @@ class AsyncFifoRuntimeMixin:
                 ("TB fatal on scoreboard fail", "ASYNC_FIFO_SCOREBOARD_FAIL" in tb and "$fatal" in tb, tb_path),
             ])
 
-        print("Async FIFO RTL check")
-        print("=" * 60)
         ok = True
+        emit_async_fifo_lines(build_async_fifo_rtl_check_lines(checks))
         for label, passed, path in checks:
-            print("[{}] {}: {}".format("OK" if passed else "NO", label, path))
             ok = ok and passed
         return ok
 
@@ -273,10 +410,18 @@ class AsyncFifoRuntimeMixin:
         gui_script_path = sim_dir / "open_async_fifo_project_gui.tcl"
 
         if not xpr_path.exists():
-            print("Vivado project not found: {}".format(xpr_path), file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines("Vivado project not found: {}".format(xpr_path)),
+                stream=sys.stderr,
+            )
             return False
         if not wave_db_path.exists():
-            print("Vivado waveform database not found: {}".format(wave_db_path), file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    "Vivado waveform database not found: {}".format(wave_db_path)
+                ),
+                stream=sys.stderr,
+            )
             return False
         gui_script_path.write_text(
             self.render_async_fifo_open_project_gui_script(),
@@ -285,12 +430,21 @@ class AsyncFifoRuntimeMixin:
 
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
-            print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    "Vivado command not found; cannot open waveform GUI."
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
-        print("Vivado project GUI launched: {}".format(xpr_path))
-        print("Vivado waveform database: {}".format(wave_db_path))
+        emit_async_fifo_lines(
+            [
+                "Vivado project GUI launched: {}".format(xpr_path),
+                "Vivado waveform database: {}".format(wave_db_path),
+            ]
+        )
         return True
 
     def open_async_fifo_uvm_wave_gui(self, project_dir: Any, wave_kind: Any="coverage") -> Any:
@@ -327,18 +481,32 @@ __WAVE_OPEN_PROBE__
         )
 
         if not wave_db_path.exists():
-            print("Vivado UVM waveform database not found: {}".format(wave_db_path), file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    "Vivado UVM waveform database not found: {}".format(wave_db_path)
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
-            print("Vivado command not found; cannot open UVM waveform GUI.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    "Vivado command not found; cannot open UVM waveform GUI."
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         self.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
         screenshot_report = self.write_async_fifo_uvm_wave_screenshot_report(project_dir, wave_kind=wave_kind)
-        print("Vivado UVM waveform GUI launched: {}".format(wave_db_path))
-        print("UVM waveform screenshot report: {}".format(screenshot_report["markdown_path"]))
+        emit_async_fifo_lines(
+            [
+                "Vivado UVM waveform GUI launched: {}".format(wave_db_path),
+                "UVM waveform screenshot report: {}".format(screenshot_report["markdown_path"]),
+            ]
+        )
         return True
 
     def resolve_async_fifo_wave_db(self, sim_dir: Any) -> Any:
@@ -370,7 +538,10 @@ __WAVE_OPEN_PROBE__
         sim_dir = project_dir / "sim"
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
-            print("Vivado command not found.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines("Vivado command not found."),
+                stream=sys.stderr,
+            )
             return False
 
         sim_result = self.run_vivado_batch(
@@ -379,16 +550,29 @@ __WAVE_OPEN_PROBE__
             sim_dir,
         )
         if sim_result.returncode != 0:
-            print(sim_result.stderr.strip() or sim_result.stdout.strip() or "async FIFO simulation failed", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    sim_result.stderr.strip()
+                    or sim_result.stdout.strip()
+                    or "async FIFO simulation failed"
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         vcd_path = sim_dir / "async_fifo_trace.vcd"
         wave_db_path = self.resolve_async_fifo_wave_db(sim_dir)
         if not vcd_path.exists():
-            print("Simulation did not generate VCD: {}".format(vcd_path), file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines("Simulation did not generate VCD: {}".format(vcd_path)),
+                stream=sys.stderr,
+            )
             return False
         if not wave_db_path.exists():
-            print("Simulation did not generate WDB: {}".format(wave_db_path), file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines("Simulation did not generate WDB: {}".format(wave_db_path)),
+                stream=sys.stderr,
+            )
             return False
 
         project_result = self.run_vivado_batch(
@@ -398,13 +582,16 @@ __WAVE_OPEN_PROBE__
             extra_args=["-nojournal", "-nolog", "-notrace"],
         )
         if project_result.returncode != 0:
-            print(project_result.stderr.strip() or project_result.stdout.strip() or "Vivado project generation failed", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    project_result.stderr.strip()
+                    or project_result.stdout.strip()
+                    or "Vivado project generation failed"
+                ),
+                stream=sys.stderr,
+            )
             return False
 
-        print("Async FIFO simulation completed")
-        print("Generated VCD: {}".format(vcd_path))
-        print("Generated WDB: {}".format(wave_db_path))
-        print("Vivado project: {}".format(project_dir / "vivado_project" / "async_fifo_project.xpr"))
         report_path = self.write_async_fifo_sim_report(
             project_dir=project_dir,
             vcd_path=vcd_path,
@@ -412,7 +599,14 @@ __WAVE_OPEN_PROBE__
             sim_result=sim_result,
             project_result=project_result,
         )
-        print("Simulation report: {}".format(report_path))
+        emit_async_fifo_lines(
+            build_async_fifo_sim_completed_lines(
+                project_dir,
+                vcd_path,
+                wave_db_path,
+                report_path,
+            )
+        )
         if open_wave_gui:
             self.open_async_fifo_project_gui(project_dir)
         return True
@@ -460,7 +654,10 @@ __WAVE_OPEN_PROBE__
         sim_dir = project_dir / "sim"
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
-            print("Vivado command not found.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines("Vivado command not found."),
+                stream=sys.stderr,
+            )
             return False
 
         sim_result = self.run_vivado_batch(
@@ -470,18 +667,27 @@ __WAVE_OPEN_PROBE__
         )
         if sim_result.returncode != 0:
             self.write_async_fifo_uvm_smoke_report(project_dir, sim_result=sim_result)
-            print(sim_result.stderr.strip() or sim_result.stdout.strip() or "async FIFO UVM smoke failed", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    sim_result.stderr.strip()
+                    or sim_result.stdout.strip()
+                    or "async FIFO UVM smoke failed"
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         report = self.write_async_fifo_uvm_smoke_report(project_dir, sim_result=sim_result)
         if not report["passed"]:
-            print("UVM smoke markers were not found in the simulation log.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    "UVM smoke markers were not found in the simulation log."
+                ),
+                stream=sys.stderr,
+            )
             return False
 
-        print("Async FIFO UVM smoke completed")
-        print("UVM log: {}".format(report["log_path"]))
-        print("Generated WDB: {}".format(report["wdb_path"]))
-        print("UVM smoke report: {}".format(report["markdown_path"]))
+        emit_async_fifo_lines(build_async_fifo_uvm_smoke_completed_lines(report))
         if open_wave_gui:
             self.open_async_fifo_project_gui(project_dir)
         return True
@@ -510,7 +716,10 @@ __WAVE_OPEN_PROBE__
         sim_dir = project_dir / "sim"
         vivado_command = self.resolve_vivado_command()
         if not vivado_command:
-            print("Vivado command not found.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines("Vivado command not found."),
+                stream=sys.stderr,
+            )
             return False
 
         env = None
@@ -541,7 +750,14 @@ __WAVE_OPEN_PROBE__
                 seed=seed,
             )
             self.write_async_fifo_reports_index(project_dir)
-            print(sim_result.stderr.strip() or sim_result.stdout.strip() or "async FIFO UVM coverage failed", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    sim_result.stderr.strip()
+                    or sim_result.stdout.strip()
+                    or "async FIFO UVM coverage failed"
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         functional_report = self.write_async_fifo_uvm_functional_coverage_report(project_dir)
@@ -567,7 +783,12 @@ __WAVE_OPEN_PROBE__
                 seed=seed,
             )
             self.write_async_fifo_reports_index(project_dir)
-            print("UVM coverage markers or xsim.codeCov database were not found.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    "UVM coverage markers or xsim.codeCov database were not found."
+                ),
+                stream=sys.stderr,
+            )
             return False
         functional_log = ""
         if functional_report["log_path"].exists():
@@ -581,7 +802,10 @@ __WAVE_OPEN_PROBE__
                 seed=seed,
             )
             self.write_async_fifo_reports_index(project_dir)
-            print("UVM assertion failure marker was found.", file=sys.stderr)
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines("UVM assertion failure marker was found."),
+                stream=sys.stderr,
+            )
             return False
         if not summary_report["coverage_gate_passed"]:
             self.write_async_fifo_coverage_history(
@@ -592,8 +816,13 @@ __WAVE_OPEN_PROBE__
                 seed=seed,
             )
             self.write_async_fifo_reports_index(project_dir)
-            print("UVM coverage threshold gate failed.", file=sys.stderr)
-            print("UVM coverage summary: {}".format(summary_report["markdown_path"]))
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(
+                    "UVM coverage threshold gate failed.",
+                    "UVM coverage summary: {}".format(summary_report["markdown_path"]),
+                ),
+                stream=sys.stderr,
+            )
             return False
 
         self.write_async_fifo_coverage_history(
@@ -604,13 +833,13 @@ __WAVE_OPEN_PROBE__
             seed=seed,
         )
         self.write_async_fifo_reports_index(project_dir)
-        print("Async FIFO UVM coverage completed")
-        print("UVM log: {}".format(report["log_path"]))
-        print("Generated WDB: {}".format(report["wdb_path"]))
-        print("Coverage DB: {}".format(report["code_cov_dir"]))
-        print("UVM coverage report: {}".format(report["markdown_path"]))
-        print("UVM coverage summary: {}".format(summary_report["markdown_path"]))
-        print("UVM functional coverage report: {}".format(functional_report["markdown_path"]))
+        emit_async_fifo_lines(
+            build_async_fifo_uvm_coverage_completed_lines(
+                report,
+                summary_report,
+                functional_report,
+            )
+        )
         return True
 
     def run_async_fifo_uvm_random_regression(self, output_dir: Any="outputs", seeds: Any=None) -> Any:

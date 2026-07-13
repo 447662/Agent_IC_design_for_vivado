@@ -55,6 +55,7 @@
     {"id": "testbench", "path": "tb/tb_round_robin_arbiter.v", "status": "PASS"},
     {"id": "vivado_sim", "path": "sim/run_vivado_round_robin_arbiter.tcl", "status": "PASS"},
     {"id": "sim_report", "path": "reports/sim_report.md", "status": "PASS"},
+    {"id": "vivado_project", "path": "vivado_project/round_robin_arbiter_project.xpr", "status": "PASS"},
     {"id": "wave_vcd", "path": "sim/round_robin_arbiter_trace.vcd", "status": "PASS"},
     {"id": "wave_wdb", "path": "sim/round_robin_arbiter_smoke.wdb", "status": "PASS"},
     {"id": "coverage_summary", "path": "reports/uvm_coverage_summary.md", "status": "N/A"}

@@ -1,10 +1,141 @@
-from typing import Any
 import shutil
 import sys
 from pathlib import Path
+from collections.abc import Sequence
+from typing import Protocol, TextIO
 
 
-def write_smoke_loop_vcd(output_dir: Any) -> Any:
+class CompletedProcessLike(Protocol):
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class CommandRunnerLike(Protocol):
+    def run(
+        self,
+        command: Sequence[str | Path],
+        **kwargs: object,
+    ) -> CompletedProcessLike:
+        ...
+
+
+class SimulatorDetector(Protocol):
+    def resolve_vivado_command(self) -> str | None:
+        ...
+
+
+class SmokeLoopAgent(Protocol):
+    def write_smoke_loop_vcd(self, output_dir: str | Path) -> Path:
+        ...
+
+    def analyze_vcd(
+        self,
+        vcd_path: str | Path,
+        condition: str | None = None,
+        show: str | None = None,
+        limit: int = 20,
+        waveform_backend: str = "auto",
+    ) -> bool:
+        ...
+
+
+class IcarusSmokeAgent(SmokeLoopAgent, Protocol):
+    @property
+    def command_runner(self) -> CommandRunnerLike:
+        ...
+
+    def write_sim_smoke_sources(self, output_dir: str | Path) -> tuple[Path, Path, Path, Path]:
+        ...
+
+
+class VivadoGuiAgent(SimulatorDetector, Protocol):
+    def launch_vivado_gui(
+        self,
+        vivado_command: str,
+        script_name: str,
+        working_dir: str | Path,
+    ) -> object:
+        ...
+
+
+class VivadoSmokeAgent(SmokeLoopAgent, VivadoGuiAgent, Protocol):
+    def write_sim_smoke_sources(self, output_dir: str | Path) -> tuple[Path, Path, Path, Path]:
+        ...
+
+    def write_vivado_sim_script(
+        self,
+        sim_dir: str | Path,
+        rtl_path: str | Path,
+        tb_path: str | Path,
+        vcd_path: str | Path,
+    ) -> Path:
+        ...
+
+    def run_vivado_batch(
+        self,
+        vivado_command: str,
+        script_name: str,
+        working_dir: str | Path,
+    ) -> CompletedProcessLike:
+        ...
+
+    def open_vivado_wave_gui(self, sim_dir: str | Path, vcd_path: str | Path) -> bool:
+        ...
+
+
+class SimSmokeAgent(IcarusSmokeAgent, VivadoSmokeAgent, Protocol):
+    def detect_simulator(self) -> str | None:
+        ...
+
+    def run_vivado_sim_smoke(
+        self,
+        output_dir: str | Path,
+        limit: int = 20,
+        open_wave_gui: bool = True,
+        waveform_backend: str = "auto",
+    ) -> bool:
+        ...
+
+    def run_icarus_sim_smoke(
+        self,
+        output_dir: str | Path,
+        limit: int = 20,
+        waveform_backend: str = "auto",
+    ) -> bool:
+        ...
+
+
+def emit_lines(lines: list[str], stream: TextIO | None = None) -> None:
+    target_stream = stream or sys.stdout
+    for line in lines:
+        print(line, file=target_stream)
+
+
+def build_smoke_loop_start_lines() -> list[str]:
+    return ["Smoke loop: generating built-in handshake VCD"]
+
+
+def build_generated_vcd_lines(vcd_path: str | Path) -> list[str]:
+    return ["Generated VCD: {}".format(vcd_path)]
+
+
+def build_sim_smoke_completed_lines() -> list[str]:
+    return ["Simulation smoke completed"]
+
+
+def build_sim_smoke_success_lines(simulator: str, vcd_path: str | Path) -> list[str]:
+    return [
+        "Simulator: {}".format(simulator),
+        *build_generated_vcd_lines(vcd_path),
+    ]
+
+
+def build_sim_smoke_error_lines(message: str) -> list[str]:
+    return [message]
+
+
+def write_smoke_loop_vcd(output_dir: str | Path) -> Path:
     smoke_dir = Path(output_dir) / "smoke-loop"
     smoke_dir.mkdir(parents=True, exist_ok=True)
     vcd_path = smoke_dir / "handshake_trace.vcd"
@@ -51,14 +182,14 @@ b01010101 $
 
 
 def run_smoke_loop(
-    agent: Any,
-    output_dir: Any="outputs",
-    limit: Any=20,
-    waveform_backend: Any="auto",
-) -> Any:
-    print("Smoke loop: generating built-in handshake VCD")
+    agent: SmokeLoopAgent,
+    output_dir: str | Path = "outputs",
+    limit: int = 20,
+    waveform_backend: str = "auto",
+) -> bool:
+    emit_lines(build_smoke_loop_start_lines())
     vcd_path = agent.write_smoke_loop_vcd(output_dir)
-    print("Generated VCD: {}".format(vcd_path))
+    emit_lines(build_generated_vcd_lines(vcd_path))
     ok = agent.analyze_vcd(
         vcd_path,
         condition="tb.valid=1,tb.ready=1",
@@ -67,11 +198,11 @@ def run_smoke_loop(
         waveform_backend=waveform_backend,
     )
     if ok:
-        print("Smoke loop completed")
+        emit_lines(["Smoke loop completed"])
     return ok
 
 
-def detect_simulator(agent: Any) -> Any:
+def detect_simulator(agent: SimulatorDetector) -> str | None:
     if agent.resolve_vivado_command():
         return "vivado"
     if shutil.which("iverilog") and shutil.which("vvp"):
@@ -81,7 +212,7 @@ def detect_simulator(agent: Any) -> Any:
     return None
 
 
-def write_sim_smoke_sources(output_dir: Any) -> Any:
+def write_sim_smoke_sources(output_dir: str | Path) -> tuple[Path, Path, Path, Path]:
     sim_dir = Path(output_dir) / "sim-smoke"
     sim_dir.mkdir(parents=True, exist_ok=True)
 
@@ -170,11 +301,11 @@ endmodule
 
 
 def run_icarus_sim_smoke(
-    agent: Any,
-    output_dir: Any,
-    limit: Any=20,
-    waveform_backend: Any="auto",
-) -> Any:
+    agent: IcarusSmokeAgent,
+    output_dir: str | Path,
+    limit: int = 20,
+    waveform_backend: str = "auto",
+) -> bool:
     sim_dir, rtl_path, tb_path, vcd_path = agent.write_sim_smoke_sources(output_dir)
     sim_out = sim_dir / "handshake_smoke.vvp"
 
@@ -187,7 +318,12 @@ def run_icarus_sim_smoke(
         check=False,
     )
     if compile_result.returncode != 0:
-        print(compile_result.stderr.strip() or "iverilog compile failed", file=sys.stderr)
+        emit_lines(
+            build_sim_smoke_error_lines(
+                compile_result.stderr.strip() or "iverilog compile failed"
+            ),
+            stream=sys.stderr,
+        )
         return False
 
     run_result = agent.command_runner.run(
@@ -199,15 +335,20 @@ def run_icarus_sim_smoke(
         check=False,
     )
     if run_result.returncode != 0:
-        print(run_result.stderr.strip() or "vvp simulation failed", file=sys.stderr)
+        emit_lines(
+            build_sim_smoke_error_lines(run_result.stderr.strip() or "vvp simulation failed"),
+            stream=sys.stderr,
+        )
         return False
 
     if not vcd_path.exists():
-        print("Simulation did not generate VCD: {}".format(vcd_path), file=sys.stderr)
+        emit_lines(
+            build_sim_smoke_error_lines("Simulation did not generate VCD: {}".format(vcd_path)),
+            stream=sys.stderr,
+        )
         return False
 
-    print("Simulator: icarus")
-    print("Generated VCD: {}".format(vcd_path))
+    emit_lines(build_sim_smoke_success_lines("icarus", vcd_path))
     ok = agent.analyze_vcd(
         vcd_path,
         condition="tb.valid=1,tb.ready=1",
@@ -216,11 +357,16 @@ def run_icarus_sim_smoke(
         waveform_backend=waveform_backend,
     )
     if ok:
-        print("Simulation smoke completed")
+        emit_lines(build_sim_smoke_completed_lines())
     return ok
 
 
-def write_vivado_sim_script(sim_dir: Any, rtl_path: Any, tb_path: Any, vcd_path: Any) -> Any:
+def write_vivado_sim_script(
+    sim_dir: str | Path,
+    rtl_path: str | Path,
+    tb_path: str | Path,
+    vcd_path: str | Path,
+) -> Path:
     script_path = Path(sim_dir) / "run_vivado_sim.tcl"
     script_path.write_text(
         """set script_dir [file dirname [file normalize [info script]]]
@@ -240,7 +386,11 @@ exit 0
     return script_path
 
 
-def open_vivado_wave_gui(agent: Any, sim_dir: Any, vcd_path: Any) -> Any:
+def open_vivado_wave_gui(
+    agent: VivadoGuiAgent,
+    sim_dir: str | Path,
+    vcd_path: str | Path,
+) -> bool:
     wave_db_path = Path(sim_dir) / "handshake_smoke.wdb"
     gui_script_path = Path(sim_dir) / "open_vivado_wave.tcl"
     gui_script_path.write_text(
@@ -259,31 +409,44 @@ add_wave -r /*
     )
 
     if not wave_db_path.exists():
-        print("Vivado waveform database not found: {}".format(wave_db_path), file=sys.stderr)
+        emit_lines(
+            build_sim_smoke_error_lines(
+                "Vivado waveform database not found: {}".format(wave_db_path)
+            ),
+            stream=sys.stderr,
+        )
         return False
 
     vivado_command = agent.resolve_vivado_command()
     if not vivado_command:
-        print("Vivado command not found; cannot open waveform GUI.", file=sys.stderr)
+        emit_lines(
+            build_sim_smoke_error_lines(
+                "Vivado command not found; cannot open waveform GUI."
+            ),
+            stream=sys.stderr,
+        )
         return False
 
     agent.launch_vivado_gui(vivado_command, gui_script_path.name, sim_dir)
-    print("Vivado waveform GUI launched: {}".format(wave_db_path))
+    emit_lines(["Vivado waveform GUI launched: {}".format(wave_db_path)])
     return True
 
 
 def run_vivado_sim_smoke(
-    agent: Any,
-    output_dir: Any,
-    limit: Any=20,
-    open_wave_gui: Any=True,
-    waveform_backend: Any="auto",
-) -> Any:
+    agent: VivadoSmokeAgent,
+    output_dir: str | Path,
+    limit: int = 20,
+    open_wave_gui: bool = True,
+    waveform_backend: str = "auto",
+) -> bool:
     sim_dir, rtl_path, tb_path, vcd_path = agent.write_sim_smoke_sources(output_dir)
     script_path = agent.write_vivado_sim_script(sim_dir, rtl_path, tb_path, vcd_path)
     vivado_command = agent.resolve_vivado_command()
     if not vivado_command:
-        print("Vivado command not found.", file=sys.stderr)
+        emit_lines(
+            build_sim_smoke_error_lines("Vivado command not found."),
+            stream=sys.stderr,
+        )
         return False
 
     result = agent.run_vivado_batch(
@@ -292,18 +455,22 @@ def run_vivado_sim_smoke(
         sim_dir,
     )
     if result.returncode != 0:
-        print(
-            result.stderr.strip() or result.stdout.strip() or "vivado simulation failed",
-            file=sys.stderr,
+        emit_lines(
+            build_sim_smoke_error_lines(
+                result.stderr.strip() or result.stdout.strip() or "vivado simulation failed"
+            ),
+            stream=sys.stderr,
         )
         return False
 
     if not vcd_path.exists():
-        print("Simulation did not generate VCD: {}".format(vcd_path), file=sys.stderr)
+        emit_lines(
+            build_sim_smoke_error_lines("Simulation did not generate VCD: {}".format(vcd_path)),
+            stream=sys.stderr,
+        )
         return False
 
-    print("Simulator: vivado")
-    print("Generated VCD: {}".format(vcd_path))
+    emit_lines(build_sim_smoke_success_lines("vivado", vcd_path))
     ok = agent.analyze_vcd(
         vcd_path,
         condition="tb.valid=1,tb.ready=1",
@@ -312,25 +479,27 @@ def run_vivado_sim_smoke(
         waveform_backend=waveform_backend,
     )
     if ok:
-        print("Simulation smoke completed")
+        emit_lines(build_sim_smoke_completed_lines())
         if open_wave_gui:
             agent.open_vivado_wave_gui(sim_dir, vcd_path)
     return ok
 
 
 def run_sim_smoke(
-    agent: Any,
-    output_dir: Any="outputs",
-    limit: Any=20,
-    open_wave_gui: Any=True,
-    waveform_backend: Any="auto",
-) -> Any:
+    agent: SimSmokeAgent,
+    output_dir: str | Path = "outputs",
+    limit: int = 20,
+    open_wave_gui: bool = True,
+    waveform_backend: str = "auto",
+) -> bool:
     simulator = agent.detect_simulator()
     if simulator is None:
-        print(
-            "No supported Verilog simulator found. Install iverilog/vvp, verilator, or vivado; "
-            "use --smoke-loop for the built-in VCD fallback.",
-            file=sys.stderr,
+        emit_lines(
+            build_sim_smoke_error_lines(
+                "No supported Verilog simulator found. Install iverilog/vvp, verilator, or vivado; "
+                "use --smoke-loop for the built-in VCD fallback."
+            ),
+            stream=sys.stderr,
         )
         return False
     if simulator == "vivado":
@@ -347,16 +516,18 @@ def run_sim_smoke(
             waveform_backend=waveform_backend,
         )
 
-    print(
-        "{} detected, but sim smoke currently supports only Vivado or iverilog/vvp.".format(
-            simulator
+    emit_lines(
+        build_sim_smoke_error_lines(
+            "{} detected, but sim smoke currently supports only Vivado or iverilog/vvp.".format(
+                simulator
+            )
         ),
-        file=sys.stderr,
+        stream=sys.stderr,
     )
     return False
 
 
-def render_vivado_tclstore_bootstrap() -> Any:
+def render_vivado_tclstore_bootstrap() -> str:
     return """proc source_pkg_index {index_file} {
     if {[file exists $index_file]} {
         set old_dir_exists [info exists ::dir]
