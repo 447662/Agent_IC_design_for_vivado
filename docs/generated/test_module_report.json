@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "line_limit": 1000,
+  "module_count": 69,
+  "over_limit_count": 0,
+  "modules": [
+    {
+      "path": "tests/test_agent_adapters.py",
+      "lines": 210,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_cli_routing.py",
+      "lines": 200,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_evaluation.py",
+      "lines": 76,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_execution.py",
+      "lines": 387,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_runtime_boundaries.py",
+      "lines": 266,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_sim_smoke_runtime.py",
+      "lines": 305,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_vivado_diagnostics.py",
+      "lines": 74,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_waveform_runtime.py",
+      "lines": 182,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_workflow_contract.py",
+      "lines": 159,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_artifact_manifest.py",
+      "lines": 491,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_async_fifo_plugin_contract.py",
+      "lines": 211,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_async_fifo_reports.py",
+      "lines": 254,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_async_fifo_rtl_flow.py",
+      "lines": 559,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_async_fifo_uvm_wave.py",
+      "lines": 206,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_async_fifo_vcd_analysis.py",
+      "lines": 245,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_config_schema.py",
+      "lines": 193,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_coverage_closure.py",
+      "lines": 546,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_coverage_history.py",
+      "lines": 274,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_coverage_recommendations.py",
+      "lines": 439,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_environment_report.py",
+      "lines": 240,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_failure_archive.py",
+      "lines": 192,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p0_1_synthpilot_evidence.py",
+      "lines": 101,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_bootstrap_split.py",
+      "lines": 24,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_capabilities_split.py",
+      "lines": 44,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_design_spec.py",
+      "lines": 32,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_diagnostics.py",
+      "lines": 184,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_document_facades_split.py",
+      "lines": 42,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_runtime_facades_split.py",
+      "lines": 64,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_sim_smoke.py",
+      "lines": 49,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_skill_execution_split.py",
+      "lines": 45,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_skill_listing.py",
+      "lines": 34,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_target_flow.py",
+      "lines": 274,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_waveform_analysis.py",
+      "lines": 43,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_agent_workflow_split.py",
+      "lines": 33,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_cli_dispatch.py",
+      "lines": 52,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_package_layout.py",
+      "lines": 74,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_1_report_rendering.py",
+      "lines": 55,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_2_agent_contracts_typed_payloads.py",
+      "lines": 37,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_2_artifact_manifest_typed_contract.py",
+      "lines": 136,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_3_async_fifo_typed_contracts.py",
+      "lines": 243,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p1_3_error_model.py",
+      "lines": 823,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p2_agent_eval_cases.py",
+      "lines": 79,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p2_agent_eval_report.py",
+      "lines": 85,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p2_auto_quality_docs.py",
+      "lines": 213,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_p2_test_module_report.py",
+      "lines": 122,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_plugin_security_boundary.py",
+      "lines": 700,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_process_lifecycle.py",
+      "lines": 257,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_project_documentation_status.py",
+      "lines": 54,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_project_overview.py",
+      "lines": 271,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_project_text_encoding.py",
+      "lines": 20,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_quality_config.py",
+      "lines": 305,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_repository_reproducibility.py",
+      "lines": 134,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_skill_runtime_contract.py",
+      "lines": 270,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_sync_fifo_round_robin_rtl_flow.py",
+      "lines": 205,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_sync_fifo_round_robin_runtime.py",
+      "lines": 571,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_sync_fifo_round_robin_vcd_analysis.py",
+      "lines": 280,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_target_dashboard.py",
+      "lines": 275,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_target_flow_runtime.py",
+      "lines": 42,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_target_plugin_registry.py",
+      "lines": 381,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_target_registry_runtime.py",
+      "lines": 172,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_target_registry_scaffolder.py",
+      "lines": 306,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_target_report_rendering.py",
+      "lines": 148,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_uvm_coverage_runtime.py",
+      "lines": 549,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_uvm_coverage_summary.py",
+      "lines": 237,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_uvm_smoke_regression.py",
+      "lines": 286,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_vivado_integration_workflow.py",
+      "lines": 217,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_wave_visibility.py",
+      "lines": 359,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_waveform_samples.py",
+      "lines": 183,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_xcrg_coverage.py",
+      "lines": 226,
+      "status": "OK"
+    }
+  ],
+  "split_candidates": [],
+  "deletion_verification": [],
+  "unmigrated_tests": [],
+  "unfinished_items": [],
+  "status": "PASS"
+}

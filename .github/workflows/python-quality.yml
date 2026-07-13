@@ -18,15 +18,15 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
 
       - name: Install frozen development dependencies
         run: uv sync --frozen --group dev
@@ -47,7 +47,57 @@ jobs:
       - name: Pytest with coverage
         run: >-
           uv run --frozen pytest tests
+          --junitxml .tmp/pytest-results.xml
           --cov=.trae/agent
           --cov-report=term-missing
-          --cov-report=xml
+          --cov-report=xml:coverage.xml
           --basetemp .tmp-pytest
+
+      - name: Generate quality summary
+        if: ${{ !cancelled() }}
+        run: >-
+          uv run --frozen python scripts/generate_quality_summary.py
+          --junitxml .tmp/pytest-results.xml
+          --coverage-xml coverage.xml
+          --readme README.md
+          --output-dir docs/generated
+          --write-readme
+
+      - name: Generate agent evaluation report
+        if: ${{ !cancelled() }}
+        run: >-
+          uv run --frozen python scripts/generate_agent_eval_report.py
+          --eval-cases tests/fixtures/agent_eval_cases.json
+          --output-dir docs/generated
+
+      - name: Generate test module size report
+        if: ${{ !cancelled() }}
+        run: >-
+          uv run --frozen python scripts/generate_test_module_report.py
+          --tests-dir tests
+          --line-limit 1000
+          --output-dir docs/generated
+
+      - name: Verify generated quality reports
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          test -s docs/generated/quality_summary.md
+          test -s docs/generated/capability_matrix.md
+          test -s docs/generated/agent_eval_report.json
+          test -s docs/generated/agent_eval_report.md
+          test -s docs/generated/test_module_report.json
+          test -s docs/generated/test_module_report.md
+          test -s coverage.xml
+          test -s .tmp/pytest-results.xml
+
+      - name: Upload generated quality reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: digital-ic-agent-generated-quality-${{ matrix.python-version }}
+          path: |
+            docs/generated
+            coverage.xml
+            .tmp/pytest-results.xml
+          if-no-files-found: error

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "suite_count": 4,
+  "case_count": 10,
+  "domains": {
+    "tool_selection": {
+      "case_count": 3,
+      "description": "Tool choice expectations stay outside implementation code."
+    },
+    "failure_handling": {
+      "case_count": 3,
+      "description": "Failure examples are retained as explicit eval cases."
+    },
+    "artifact_authenticity": {
+      "case_count": 2,
+      "description": "Success requires fresh artifacts with manifest lineage."
+    },
+    "multi_target_consistency": {
+      "case_count": 2,
+      "description": "Targets expose consistent flow and metadata contracts."
+    }
+  },
+  "duplicate_case_ids": [],
+  "retained_failure_cases": 3,
+  "targets": [
+    "async-fifo",
+    "round-robin-arbiter",
+    "sync-fifo"
+  ],
+  "status": "PASS"
+}

@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "suites": [
+    {
+      "domain": "tool_selection",
+      "description": "Tool choice expectations stay outside implementation code.",
+      "cases": [
+        {
+          "id": "design_doc_uses_document_generator",
+          "input": "Generate the architecture and interface design document for sync FIFO.",
+          "expected_tools": ["render_target_design_spec"],
+          "forbidden_tools": ["run_vivado", "open_wave_gui"]
+        },
+        {
+          "id": "rtl_generation_uses_project_writer",
+          "input": "Generate RTL and testbench artifacts for round-robin arbiter.",
+          "expected_tools": ["generate_rtl_project", "record_artifact_run"],
+          "forbidden_tools": ["open_wave_gui"]
+        },
+        {
+          "id": "wave_debug_uses_wave_backend",
+          "input": "Analyze the async FIFO waveform and summarize handshake behavior.",
+          "expected_tools": ["analyze_waveform", "write_waveform_report"],
+          "forbidden_tools": ["create_target_scaffold"]
+        }
+      ]
+    },
+    {
+      "domain": "failure_handling",
+      "description": "Failure examples are retained as explicit eval cases.",
+      "cases": [
+        {
+          "id": "missing_vivado_is_capability_failure",
+          "input": "Run Vivado simulation when Vivado is not installed.",
+          "expected_error_category": "capability",
+          "expected_exit_code": 3,
+          "retain_failure_case": true
+        },
+        {
+          "id": "broken_target_config_is_configuration_failure",
+          "input": "Load a malformed target configuration file.",
+          "expected_error_category": "configuration",
+          "expected_exit_code": 2,
+          "retain_failure_case": true
+        },
+        {
+          "id": "stale_artifact_is_validation_failure",
+          "input": "Accept an old RTL artifact without regenerating it.",
+          "expected_error_category": "artifact_validation",
+          "expected_exit_code": 5,
+          "retain_failure_case": true
+        }
+      ]
+    },
+    {
+      "domain": "artifact_authenticity",
+      "description": "Success requires fresh artifacts with manifest lineage.",
+      "cases": [
+        {
+          "id": "generated_rtl_has_run_lineage",
+          "target": "sync-fifo",
+          "flow": "generate-rtl",
+          "required_artifacts": ["rtl", "tb", "design_spec", "verification_plan"],
+          "required_manifest_fields": ["run_id", "recorded_at", "artifacts", "tools"]
+        },
+        {
+          "id": "simulated_project_has_waveform_lineage",
+          "target": "async-fifo",
+          "flow": "sim-rtl",
+          "required_artifacts": ["vivado_project", "wave_wdb", "sim_report"],
+          "required_manifest_fields": ["run_id", "status", "artifacts", "inputs"]
+        }
+      ]
+    },
+    {
+      "domain": "multi_target_consistency",
+      "description": "Targets expose consistent flow and metadata contracts.",
+      "cases": [
+        {
+          "id": "core_targets_share_generation_flow",
+          "targets": ["async-fifo", "sync-fifo", "round-robin-arbiter"],
+          "required_flows": ["generate-rtl", "sim-rtl", "analyze-rtl-vcd"],
+          "required_metadata": ["parameters", "interfaces", "checks", "artifact_manifest"]
+        },
+        {
+          "id": "fifo_targets_share_fifo_family_contract",
+          "targets": ["async-fifo", "sync-fifo"],
+          "expected_design_family": "fifo",
+          "required_metadata": ["scenario_catalog", "coverage_metrics"]
+        }
+      ]
+    }
+  ]
+}
