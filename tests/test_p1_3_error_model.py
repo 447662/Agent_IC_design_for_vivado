@@ -9,14 +9,14 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-import agent_errors  # noqa: E402
-import agent_sim_smoke  # noqa: E402
-import agent_waveform  # noqa: E402
+from digital_ic_agent._runtime import agent_errors  # noqa: E402
+from digital_ic_agent._runtime import agent_sim_smoke  # noqa: E402
+from digital_ic_agent._runtime import agent_waveform  # noqa: E402
 
 
 def _function_source(path: Path, function_name: str) -> str:
@@ -72,7 +72,7 @@ def test_cli_boolean_flow_uses_structured_agent_error_exit_code(
     expected_exit_code: int,
     capsys: pytest.CaptureFixture[str],
 ):
-    import agent_cli_dispatch  # noqa: E402
+    from digital_ic_agent._runtime import agent_cli_dispatch  # noqa: E402
 
     def fail() -> bool:
         raise error
@@ -92,7 +92,7 @@ def test_cli_boolean_flow_uses_structured_agent_error_exit_code(
 
 
 def test_target_flow_capability_failure_records_structured_manifest_error(tmp_path, monkeypatch):
-    from agent import DigitalICAgent
+    from digital_ic_agent._runtime.agent import DigitalICAgent
 
     agent = DigitalICAgent()
     monkeypatch.setattr(
@@ -126,8 +126,8 @@ def test_target_flow_capability_failure_records_structured_manifest_error(tmp_pa
 
 
 def test_target_flow_handler_exception_records_tool_execution_error(tmp_path):
-    import artifact_manifest  # noqa: E402
-    import target_flows  # noqa: E402
+    from digital_ic_agent._runtime import artifact_manifest  # noqa: E402
+    from digital_ic_agent._runtime import target_flows  # noqa: E402
 
     class PreflightReport:
         ok = True
@@ -187,8 +187,8 @@ def test_target_flow_handler_exception_records_tool_execution_error(tmp_path):
 
 
 def test_target_flow_false_result_records_tool_execution_error(tmp_path):
-    import artifact_manifest  # noqa: E402
-    import target_flows  # noqa: E402
+    from digital_ic_agent._runtime import artifact_manifest  # noqa: E402
+    from digital_ic_agent._runtime import target_flows  # noqa: E402
 
     class PreflightReport:
         ok = True
@@ -250,7 +250,7 @@ def test_target_flow_false_result_records_tool_execution_error(tmp_path):
 
 
 def test_artifact_manifest_runtime_run_tracks_optional_error_fields():
-    import artifact_manifest
+    from digital_ic_agent._runtime import artifact_manifest
 
     annotations = get_type_hints(artifact_manifest.RuntimeRun)
 
@@ -449,7 +449,7 @@ def test_round_robin_vcd_analysis_emits_through_helper_only():
 
 def test_async_fifo_vcd_analysis_emits_through_helper_only():
     flow_source = _function_source(
-        AGENT_DIR / "agent_async_fifo_runtime.py",
+        AGENT_DIR / "agent_async_fifo_analysis.py",
         "analyze_async_fifo_vcd",
     )
     assert "print(" not in flow_source
@@ -482,7 +482,7 @@ def test_agent_workflow_execute_workflow_emits_through_helper_only():
 
 def test_async_fifo_rtl_check_emits_through_helper_only():
     flow_source = _function_source(
-        AGENT_DIR / "agent_async_fifo_runtime.py",
+        AGENT_DIR / "agent_async_fifo_analysis.py",
         "check_async_fifo_rtl",
     )
     assert "print(" not in flow_source
@@ -493,7 +493,7 @@ def test_async_fifo_gui_open_flows_emit_through_helper_only():
         "open_async_fifo_project_gui",
         "open_async_fifo_uvm_wave_gui",
     ):
-        flow_source = _function_source(AGENT_DIR / "agent_async_fifo_runtime.py", function_name)
+        flow_source = _function_source(AGENT_DIR / "agent_async_fifo_analysis.py", function_name)
         assert "print(" not in flow_source
 
 
@@ -523,7 +523,7 @@ def test_sync_fifo_and_round_robin_vivado_sim_flows_emit_through_helper_only():
 
 def test_async_fifo_vivado_sim_flow_emits_through_helper_only():
     flow_source = _function_source(
-        AGENT_DIR / "agent_async_fifo_runtime.py",
+        AGENT_DIR / "agent_async_fifo_flows.py",
         "run_async_fifo_vivado_sim",
     )
     assert "print(" not in flow_source
@@ -531,7 +531,7 @@ def test_async_fifo_vivado_sim_flow_emits_through_helper_only():
 
 def test_async_fifo_uvm_smoke_flow_emits_through_helper_only():
     flow_source = _function_source(
-        AGENT_DIR / "agent_async_fifo_runtime.py",
+        AGENT_DIR / "agent_async_fifo_flows.py",
         "run_async_fifo_uvm_smoke",
     )
     assert "print(" not in flow_source
@@ -539,7 +539,7 @@ def test_async_fifo_uvm_smoke_flow_emits_through_helper_only():
 
 def test_async_fifo_uvm_coverage_flow_emits_through_helper_only():
     flow_source = _function_source(
-        AGENT_DIR / "agent_async_fifo_runtime.py",
+        AGENT_DIR / "agent_async_fifo_flows.py",
         "run_async_fifo_uvm_coverage",
     )
     assert "print(" not in flow_source
@@ -547,16 +547,16 @@ def test_async_fifo_uvm_coverage_flow_emits_through_helper_only():
 
 def test_non_cli_print_calls_are_limited_to_output_emitters():
     allowed_print_functions = {
-        ("agent_async_fifo_runtime.py", "emit_async_fifo_lines"),
+        ("agent_async_fifo_runtime_support.py", "emit_async_fifo_lines"),
         ("agent_composition.py", "emit_agent_composition_lines"),
-        ("agent_round_robin_arbiter.py", "emit_round_robin_arbiter_lines"),
         ("agent_sim_smoke.py", "emit_lines"),
         ("agent_skill_listing.py", "emit_skill_listing_lines"),
-        ("agent_sync_fifo.py", "emit_sync_fifo_lines"),
+        ("target_flow_messages.py", "emit_round_robin_arbiter_lines"),
+        ("target_flow_messages.py", "emit_sync_fifo_lines"),
         ("agent_waveform.py", "emit_waveform_lines"),
-            ("agent_workflow.py", "emit_workflow_lines"),
-            ("plugin_guard_runner.py", "_emit_payload"),
-        }
+        ("agent_workflow.py", "emit_workflow_lines"),
+        ("plugin_guard_runner.py", "_emit_payload"),
+    }
     allowed_cli_modules = {
         "agent_cli.py",
         "agent_cli_dispatch.py",
@@ -597,7 +597,7 @@ def test_non_cli_print_calls_are_limited_to_output_emitters():
 
 
 def test_observability_json_event_redacts_and_truncates_details(tmp_path):
-    import agent_observability  # noqa: E402
+    from digital_ic_agent._runtime import agent_observability  # noqa: E402
 
     event = agent_observability.build_observability_event(
         run_id="run-123",
@@ -644,7 +644,7 @@ def test_observability_json_event_redacts_and_truncates_details(tmp_path):
 
 
 def test_observability_timeline_can_be_rebuilt_by_run_id(tmp_path):
-    import agent_observability  # noqa: E402
+    from digital_ic_agent._runtime import agent_observability  # noqa: E402
 
     timeline_path = tmp_path / "timeline.jsonl"
     for run_id, stage in (
@@ -677,7 +677,7 @@ def test_observability_timeline_can_be_rebuilt_by_run_id(tmp_path):
 
 
 def test_artifact_manifest_run_appends_observability_timeline(tmp_path):
-    import artifact_manifest  # noqa: E402
+    from digital_ic_agent._runtime import artifact_manifest  # noqa: E402
 
     class FakeAgent:
         def get_target(self, target: str) -> dict[str, object]:
@@ -726,8 +726,8 @@ def test_artifact_manifest_run_appends_observability_timeline(tmp_path):
 
 
 def test_artifact_manifest_accepts_caller_supplied_run_id(tmp_path):
-    import artifact_manifest  # noqa: E402
-    import agent_observability  # noqa: E402
+    from digital_ic_agent._runtime import artifact_manifest  # noqa: E402
+    from digital_ic_agent._runtime import agent_observability  # noqa: E402
 
     class FakeAgent:
         def get_target(self, target: str) -> dict[str, object]:
@@ -758,9 +758,9 @@ def test_artifact_manifest_accepts_caller_supplied_run_id(tmp_path):
 
 
 def test_target_flow_timeline_rebuilds_preflight_handler_and_manifest_stages(tmp_path):
-    import agent_observability  # noqa: E402
-    import artifact_manifest  # noqa: E402
-    import target_flows  # noqa: E402
+    from digital_ic_agent._runtime import agent_observability  # noqa: E402
+    from digital_ic_agent._runtime import artifact_manifest  # noqa: E402
+    from digital_ic_agent._runtime import target_flows  # noqa: E402
 
     class PreflightReport:
         ok = True

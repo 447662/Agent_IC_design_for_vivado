@@ -7,14 +7,14 @@ from typing import Any, get_type_hints
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 DIAGNOSTICS_PATH = AGENT_DIR / "agent_diagnostics.py"
 
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from capability_preflight import PreflightStatus  # noqa: E402
+from digital_ic_agent._runtime.capability_preflight import PreflightStatus  # noqa: E402
 
 
 def _class_method_names(path: Path, class_name: str) -> set[str]:
@@ -56,7 +56,10 @@ def test_agent_diagnostics_are_split_from_core_agent():
     method_names = _class_method_names(AGENT_PATH, "DigitalICAgent")
 
     assert DIAGNOSTICS_PATH.is_file()
-    assert "from agent_diagnostics import run_agent_diagnostic" in agent_source
+    assert (
+        "from digital_ic_agent._runtime.agent_diagnostics import run_agent_diagnostic"
+        in agent_source
+    )
     assert "_diagnostic_status_text" not in method_names
     assert "_capability_diagnostic" not in method_names
     assert "def run_diagnostic" in agent_source

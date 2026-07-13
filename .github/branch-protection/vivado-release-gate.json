@@ -30,7 +30,7 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "Vivado integration / vivado-integration",
+            "context": "Vivado integration / vivado-required-gate",
             "integration_id": null
           }
         ]

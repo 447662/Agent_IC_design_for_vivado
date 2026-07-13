@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 COVERAGE_CLOSURE_PATH = AGENT_DIR / "coverage_closure.py"
 COVERAGE_RECOMMENDATIONS_PATH = AGENT_DIR / "coverage_recommendations.py"
 
@@ -14,16 +14,11 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_local_module(module_name, module_path):
-    module_dir = str(module_path.parent)
-    if module_dir not in sys.path:
-        sys.path.insert(0, module_dir)
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
+    relative_module = module_path.relative_to(AGENT_DIR).with_suffix("")
+    qualified_name = ".".join(relative_module.parts)
+    return importlib.import_module(
+        "digital_ic_agent._runtime.{}".format(qualified_name)
+    )
 
 def _write_p4_1_xcrg_fixture(project_dir):
     code_dir = (
@@ -412,7 +407,7 @@ def test_p4_2_dashboard_renders_recommendations_and_json(tmp_path):
 
 def test_p4_2_async_fifo_catalog_defines_coverage_matching_rules():
     target = json.loads(
-        (ROOT / ".trae" / "agent" / "targets" / "async_fifo.json").read_text(
+        (ROOT / "src" / "digital_ic_agent" / "_runtime" / "targets" / "async_fifo.json").read_text(
             encoding="utf-8"
         )
     )
@@ -436,4 +431,4 @@ def test_p4_2_async_fifo_catalog_defines_coverage_matching_rules():
 def test_p4_2_recommendations_module_is_in_mypy_scope():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert '".trae/agent/coverage_recommendations.py"' in pyproject
+    assert '"src/digital_ic_agent"' in pyproject

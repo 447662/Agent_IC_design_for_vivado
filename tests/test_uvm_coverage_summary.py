@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 
 if str(AGENT_DIR) not in sys.path:
@@ -12,15 +12,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location(
-        "digital_ic_agent_uvm_coverage_summary_split",
-        AGENT_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def async_fifo_plugin(agent):
     return agent.target_plugins["async-fifo"]
@@ -212,7 +204,7 @@ def test_write_async_fifo_uvm_coverage_summary_report_marks_missing_component_da
 def test_p4_3_coverage_gates_module_is_in_mypy_scope():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert '".trae/agent/coverage_gates.py"' in pyproject
+    assert '"src/digital_ic_agent"' in pyproject
 
 
 def test_write_async_fifo_uvm_coverage_summary_report_requires_percent_when_threshold_set(

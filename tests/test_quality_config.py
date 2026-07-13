@@ -10,12 +10,17 @@ DEV_REQUIREMENTS_PATH = ROOT / "requirements-dev.txt"
 UV_LOCK_PATH = ROOT / "uv.lock"
 QUALITY_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "python-quality.yml"
 GITIGNORE_PATH = ROOT / ".gitignore"
-VIVADO_ADAPTER_PATH = ROOT / ".trae" / "agent" / "adapters" / "vivado.py"
+VIVADO_ADAPTER_PATH = ROOT / "src" / "digital_ic_agent" / "_runtime" / "adapters" / "vivado.py"
 TYPE_BOUNDARY_ANY_LIMITS = {
-    ROOT / ".trae" / "agent" / "agent.py": 80,
-    ROOT / ".trae" / "agent" / "agent_runtime.py": 12,
-    ROOT / ".trae" / "agent" / "target_plugins.py": 4,
-    ROOT / ".trae" / "agent" / "target_scaffolder.py": 0,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent.py": 66,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent_skill_execution.py": 0,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent_legacy_target_facades.py": 0,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent_cli_dispatch.py": 0,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent_workflow.py": 0,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent_runtime.py": 12,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "target_plugins.py": 4,
+    ROOT / "src" / "digital_ic_agent" / "_runtime" / "target_scaffolder.py": 0,
+    ROOT / "src" / "digital_ic_agent" / "agent.py": 0,
 }
 
 
@@ -75,11 +80,7 @@ def test_ruff_enables_reviewed_low_noise_rule_subset():
         "SIM300",
         "RUF005",
     } <= selected
-    assert {
-        ".trae/agent/adapters/report.py",
-        ".trae/agent/adapters/vivado.py",
-        ".trae/agent/adapters/waveform.py",
-    } <= set(tools["mypy"]["files"])
+    assert tools["mypy"]["files"] == ["src/digital_ic_agent"]
     assert tools["coverage"]["report"]["fail_under"] == 85
     assert tools["coverage"]["report"]["show_missing"] is True
     assert not any(
@@ -119,12 +120,17 @@ def test_github_actions_runs_all_python_quality_gates():
         match = re.search(r"uses:\s+{}@([0-9a-f]{{40}})".format(action_name), workflow)
         assert match is not None, "{} must be pinned to a commit SHA".format(action_name)
     assert "uv sync --frozen --group dev" in workflow
-    assert "uv run --frozen ruff check .trae/agent tests" in workflow
+    assert (
+        "uv run --frozen ruff check .trae/agent tests src/digital_ic_agent scripts"
+        in workflow
+    )
     assert "uv run --frozen mypy" in workflow
     assert "uv run --frozen pytest tests" in workflow
     assert "--junitxml .tmp/pytest-results.xml" in workflow
-    assert "--cov=.trae/agent" in workflow
+    assert "--cov=.trae/agent" not in workflow
+    assert "--cov=src/digital_ic_agent" in workflow
     assert "--cov-report=xml:coverage.xml" in workflow
+    assert "-p no:cacheprovider" in workflow
     assert "scripts/generate_quality_summary.py" in workflow
     assert "scripts/generate_agent_eval_report.py" in workflow
     assert "--eval-cases tests/fixtures/agent_eval_cases.json" in workflow
@@ -173,54 +179,64 @@ def test_python_quality_artifacts_are_gitignored():
     } <= ignored
 
 
-def test_p5_8_artifact_manifest_is_in_mypy_scope():
+def test_runtime_production_modules_respect_800_line_budget():
+    runtime_dir = ROOT / "src" / "digital_ic_agent" / "_runtime"
+    over_budget = {}
+
+    for path in runtime_dir.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        if line_count > 800:
+            over_budget[path.relative_to(ROOT).as_posix()] = line_count
+
+    assert not over_budget, "runtime modules over 800 lines: {}".format(over_budget)
+
+
+def _assert_runtime_module_in_mypy_scope(module_name: str) -> None:
     config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/artifact_manifest.py" in config["tool"]["mypy"]["files"]
+    assert config["tool"]["mypy"]["files"] == ["src/digital_ic_agent"]
+    assert (ROOT / "src" / "digital_ic_agent" / "_runtime" / module_name).is_file()
+
+
+def test_p5_8_artifact_manifest_is_in_mypy_scope():
+    _assert_runtime_module_in_mypy_scope("artifact_manifest.py")
 
 
 def test_p5_10_environment_report_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/environment_report.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("environment_report.py")
 
 
 def test_p5_11_project_overview_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/project_overview.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("project_overview.py")
 
 
 def test_p1_1_target_service_host_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/target_service_host.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("target_service_host.py")
 
 
 def test_p1_1_report_templates_are_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/report_templates.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("report_templates.py")
 
 
 def test_p1_1_cli_dispatch_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/agent_cli_dispatch.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("agent_cli_dispatch.py")
 
 
 def test_p1_1_cli_parser_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/agent_cli_parser.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("agent_cli_parser.py")
 
 
 def test_p1_1_agent_diagnostics_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/agent_diagnostics.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("agent_diagnostics.py")
 
 
 def test_p1_1_agent_design_spec_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/agent_design_spec.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("agent_design_spec.py")
 
 
 def test_p1_1_agent_sim_smoke_is_in_mypy_scope():
-    config = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
-    assert ".trae/agent/agent_sim_smoke.py" in config["tool"]["mypy"]["files"]
+    _assert_runtime_module_in_mypy_scope("agent_sim_smoke.py")
 
 
 def test_p1_4_vivado_resolution_uses_env_or_discovery_not_machine_defaults(
@@ -272,20 +288,16 @@ def test_p1_4_package_has_reproducible_build_backend_entrypoint_and_version():
     )
     assert '__version__ = "1.0.0"' in version_source
     assert config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"] == {
-        ".trae/agent": "digital_ic_agent/_legacy_agent",
         ".trae/skills": "digital_ic_agent/skills",
     }
 
 
-def test_p1_4_installed_package_loads_legacy_runtime_from_package_data():
-    legacy_source = (ROOT / "src" / "digital_ic_agent" / "_legacy.py").read_text(
-        encoding="utf-8"
-    )
+def test_p1_4_package_uses_src_runtime_without_legacy_loader():
+    package_dir = ROOT / "src" / "digital_ic_agent"
 
-    assert "_legacy_agent" in legacy_source
-    assert "PACKAGE_LEGACY_AGENT_DIR" in legacy_source
-    assert "PACKAGE_LEGACY_AGENT_DIR.exists()" in legacy_source
-    assert "else SOURCE_LEGACY_AGENT_DIR" in legacy_source
+    assert (package_dir / "_runtime" / "agent.py").is_file()
+    assert not (package_dir / "_legacy.py").exists()
+    assert "digital_ic_agent/_legacy_agent" not in PYPROJECT_PATH.read_text(encoding="utf-8")
 
 
 def test_p1_4_github_actions_are_pinned_to_commit_shas():

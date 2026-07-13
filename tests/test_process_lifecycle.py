@@ -6,16 +6,16 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-from adapters.vivado import launch_vivado_gui  # noqa: E402
-import agent as agent_module  # noqa: E402
-from agent import DigitalICAgent  # noqa: E402
-from agent_entrypoint import run_cli  # noqa: E402
-from agent_runtime import CommandRunner, ManagedProcess  # noqa: E402
+from digital_ic_agent._runtime.adapters.vivado import launch_vivado_gui  # noqa: E402
+from digital_ic_agent._runtime import agent as agent_module  # noqa: E402
+from digital_ic_agent._runtime.agent import DigitalICAgent  # noqa: E402
+from digital_ic_agent._runtime.agent_entrypoint import run_cli  # noqa: E402
+from digital_ic_agent._runtime.agent_runtime import CommandRunner, ManagedProcess  # noqa: E402
 
 
 class FakeProcess:

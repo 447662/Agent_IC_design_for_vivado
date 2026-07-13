@@ -3,14 +3,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-from agent import DigitalICAgent  # noqa: E402
-from agent_contracts import AgentRunStatus, ToolResultStatus  # noqa: E402
-from skill_runtime import (  # noqa: E402
+from digital_ic_agent._runtime.agent import DigitalICAgent  # noqa: E402
+from digital_ic_agent._runtime.agent_contracts import AgentRunStatus, ToolResultStatus  # noqa: E402
+from digital_ic_agent._runtime.skill_runtime import (  # noqa: E402
     SkillExecutionRequest,
     SkillExecutionResult,
     SkillExecutionStatus,
@@ -73,6 +73,29 @@ def test_default_document_workflow_executes_loaded_skill_without_external_tools(
     assert Path(calls[0].context["design_spec_path"]).exists()
 
 
+def test_workflow_reports_capability_preflight_configuration_failure(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    agent = DigitalICAgent()
+
+    def fail_preflight(_flow: str):
+        raise ValueError("unknown capability policy")
+
+    monkeypatch.setattr(agent, "run_preflight", fail_preflight)
+
+    assert (
+        agent.execute_workflow(
+            "请生成设计文档和架构方案",
+            output_dir=tmp_path,
+            skip_tool_check=False,
+        )
+        is False
+    )
+    assert "工具预检失败: unknown capability policy" in capsys.readouterr().err
+
+
 def test_default_document_workflow_records_real_agent_run(tmp_path):
     agent = DigitalICAgent()
 
@@ -107,7 +130,7 @@ def test_workflow_rejects_empty_skill_selection(tmp_path):
     assert "skill" in agent.last_agent_run.failure_reason.lower()
 
 
-def test_default_rtl_and_verification_skills_do_not_report_success(tmp_path):
+def test_default_rtl_and_verification_skills_require_an_explicit_target(tmp_path):
     agent = DigitalICAgent()
     spec_path = tmp_path / "design_spec.md"
     spec_path.write_text(
@@ -126,12 +149,11 @@ def test_default_rtl_and_verification_skills_do_not_report_success(tmp_path):
             )
         )
 
-        assert result.status is SkillExecutionStatus.BLOCKED
+        assert result.status is SkillExecutionStatus.FAILED
         assert result.failure_reason
-        assert (
-            not result.validated_artifacts
-            or spec_path.resolve() in result.validated_artifacts
-        )
+        assert "must name one configured RTL target" in result.failure_reason
+        assert "async-fifo" in result.failure_reason
+        assert not result.validated_artifacts
 
 
 def test_workflow_rejects_partial_result_from_custom_executor(tmp_path):

@@ -30,6 +30,23 @@ def test_vivado_integration_workflow_uses_controlled_self_hosted_runner():
     assert "if: always()" in workflow
 
 
+def test_vivado_required_context_is_emitted_for_every_pull_request_state():
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "types: [opened, labeled, unlabeled, synchronize, reopened]" in workflow
+    assert "vivado-required-gate:" in workflow
+    required_gate = workflow.split("vivado-required-gate:", maxsplit=1)[1]
+    assert "name: vivado-required-gate" in required_gate
+    assert "if: always()" in required_gate
+    assert "needs: [vivado-integration]" in required_gate
+    assert "runs-on: ubuntu-latest" in required_gate
+    assert "needs.vivado-integration.result" in required_gate
+    assert "HAS_VIVADO_LABEL" in required_gate
+    assert "Missing required pull-request label: vivado-integration" in required_gate
+    assert "Real Vivado integration did not pass" in required_gate
+    assert '"${REAL_GATE_RESULT}" != "success"' in required_gate
+
+
 def test_vivado_runner_covers_p0_3_release_gate_matrix():
     assert RUNNER_SCRIPT_PATH.exists()
     script = RUNNER_SCRIPT_PATH.read_text(encoding="utf-8")
@@ -211,7 +228,7 @@ def test_vivado_release_gate_is_required_for_protected_branches():
     assert '"main"' in ruleset
     assert '"vivado-integration"' in ruleset
     assert '"type": "required_status_checks"' in ruleset
-    assert '"context": "Vivado integration / vivado-integration"' in ruleset
+    assert '"context": "Vivado integration / vivado-required-gate"' in ruleset
     assert '"strict_required_status_checks_policy": true' in ruleset
     assert '"type": "pull_request"' in ruleset
     assert '"required_approving_review_count": 1' in ruleset

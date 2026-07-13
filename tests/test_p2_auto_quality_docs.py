@@ -1,7 +1,10 @@
 import subprocess
 import sys
 import json
+import importlib.util
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,6 +12,101 @@ README_PATH = ROOT / "README.md"
 QUALITY_SUMMARY_PATH = ROOT / "docs" / "generated" / "quality_summary.md"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "python-quality.yml"
 GENERATOR_PATH = ROOT / "scripts" / "generate_quality_summary.py"
+
+
+def _load_generator():
+    spec = importlib.util.spec_from_file_location("quality_summary_capabilities", GENERATOR_PATH)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write_capability_inputs(tmp_path: Path, *, required: bool, status: str):
+    config_path = tmp_path / "agent.json"
+    evidence_path = tmp_path / "synthpilot.json"
+    config_path.write_text(
+        json.dumps({"mcpServers": {"synthpilot": {"required": required}}}),
+        encoding="utf-8",
+    )
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "capability": {
+                    "name": "synthpilot",
+                    "requirement": "required" if required else "optional",
+                    "failure_impact": (
+                        "release-blocking" if required else "degraded-only"
+                    ),
+                },
+                "captured_at": "2026-07-13T10:27:10Z",
+                "status": status,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return config_path, evidence_path
+
+
+def test_capability_evidence_maps_optional_failure_to_warn(tmp_path):
+    generator = _load_generator()
+    config_path, evidence_path = _write_capability_inputs(
+        tmp_path,
+        required=False,
+        status="FAIL",
+    )
+
+    capability = generator.parse_capability_evidence(evidence_path, config_path)
+    summary = generator.build_quality_summary(
+        {"tests": 1, "failures": 0, "errors": 0, "skipped": 0, "time": 1.0},
+        {"line_rate": 1.0, "branch_rate": 1.0},
+        60,
+        capability_summary=capability,
+    )
+
+    assert capability == {
+        "name": "synthpilot",
+        "requirement": "optional",
+        "failure_impact": "degraded-only",
+        "captured_at": "2026-07-13T10:27:10Z",
+        "source_status": "FAIL",
+        "status": "WARN",
+    }
+    assert (
+        "| Capability synthpilot | WARN "
+        "(optional; degraded-only; source FAIL; captured 2026-07-13T10:27:10Z) |"
+        in summary
+    )
+
+
+def test_capability_evidence_maps_required_failure_to_blocked(tmp_path):
+    generator = _load_generator()
+    config_path, evidence_path = _write_capability_inputs(
+        tmp_path,
+        required=True,
+        status="FAIL",
+    )
+
+    capability = generator.parse_capability_evidence(evidence_path, config_path)
+
+    assert capability["status"] == "BLOCKED"
+    assert generator.has_blocked_capability(capability) is True
+
+
+def test_capability_evidence_rejects_requirement_drift(tmp_path):
+    generator = _load_generator()
+    config_path, evidence_path = _write_capability_inputs(
+        tmp_path,
+        required=False,
+        status="FAIL",
+    )
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["capability"]["requirement"] = "required"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="requirement does not match"):
+        generator.parse_capability_evidence(evidence_path, config_path)
 
 
 def test_p2_readme_uses_generated_quality_block_without_stale_stats():
@@ -43,6 +141,8 @@ def test_p2_quality_workflow_generates_quality_summary_and_matrix():
 
     assert "--junitxml .tmp/pytest-results.xml" in workflow
     assert "--cov-report=xml:coverage.xml" in workflow
+    assert "--minimum-line-rate 0.90" in workflow
+    assert "--minimum-branch-rate 0.80" in workflow
     assert "scripts/generate_quality_summary.py" in workflow
     assert "--write-readme" in workflow
     assert "Verify generated quality reports" in workflow
@@ -97,6 +197,10 @@ def test_p2_quality_summary_generator_updates_readme_from_test_artifacts(tmp_pat
             str(output_dir),
             "--data-scope",
             "local fixture sample",
+            "--minimum-line-rate",
+            "0",
+            "--minimum-branch-rate",
+            "0",
             "--write-readme",
         ],
         cwd=ROOT,

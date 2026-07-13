@@ -7,21 +7,21 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 TARGETS_DIR = AGENT_DIR / "targets"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-from agent_runtime import PluginServices  # noqa: E402
-from target_plugins import (  # noqa: E402
+from digital_ic_agent._runtime.agent_runtime import PluginServices  # noqa: E402
+from digital_ic_agent._runtime.target_plugins import (  # noqa: E402
     TargetHandlerRegistry,
     build_target_handlers,
     discover_target_handler_plugins,
     load_target_handler_plugins,
 )
 
-import agent as agent_module  # noqa: E402
+from digital_ic_agent._runtime import agent as agent_module  # noqa: E402
 
 
 def _write_plugin_package(
@@ -55,17 +55,20 @@ def _write_plugin_package(
         )
 
 
-def test_target_plugins_auto_discover_without_central_mapping(tmp_path):
+def test_trusted_target_plugins_auto_discover_without_central_mapping(
+    tmp_path,
+    monkeypatch,
+):
     _write_plugin_package(
         tmp_path,
         "demo_target_plugins",
         {"sample": ("sample-handler", ("generate-rtl",))},
     )
+    monkeypatch.syspath_prepend(str(tmp_path))
     registry = TargetHandlerRegistry()
     discover_target_handler_plugins(
         registry,
         "demo_target_plugins",
-        search_path=tmp_path,
     )
     targets = {
         "sample-target": {
@@ -84,6 +87,7 @@ def test_target_plugins_auto_discover_without_central_mapping(tmp_path):
 
 def test_target_plugin_discovery_failure_does_not_partially_register_handlers(
     tmp_path,
+    monkeypatch,
 ):
     _write_plugin_package(
         tmp_path,
@@ -93,19 +97,22 @@ def test_target_plugin_discovery_failure_does_not_partially_register_handlers(
             "second": ("first-handler", ("generate-rtl",)),
         },
     )
+    monkeypatch.syspath_prepend(str(tmp_path))
     registry = TargetHandlerRegistry()
 
     with pytest.raises(ValueError, match="Duplicate target handler"):
         discover_target_handler_plugins(
             registry,
             "partial_target_plugins",
-            search_path=tmp_path,
         )
 
     assert registry.ids() == ()
 
 
-def test_target_plugins_reject_duplicate_unknown_and_mismatched_handlers(tmp_path):
+def test_target_plugins_reject_duplicate_unknown_and_mismatched_handlers(
+    tmp_path,
+    monkeypatch,
+):
     _write_plugin_package(
         tmp_path,
         "duplicate_target_plugins",
@@ -114,11 +121,11 @@ def test_target_plugins_reject_duplicate_unknown_and_mismatched_handlers(tmp_pat
             "second": ("duplicate", ("generate-rtl",)),
         },
     )
+    monkeypatch.syspath_prepend(str(tmp_path))
     with pytest.raises(ValueError, match="Duplicate target handler"):
         discover_target_handler_plugins(
             TargetHandlerRegistry(),
             "duplicate_target_plugins",
-            search_path=tmp_path,
         )
 
     registry = TargetHandlerRegistry()
@@ -144,7 +151,6 @@ def test_target_plugins_reject_duplicate_unknown_and_mismatched_handlers(tmp_pat
     discover_target_handler_plugins(
         registry,
         "mismatched_target_plugins",
-        search_path=tmp_path,
     )
     with pytest.raises(ValueError, match="flow mismatch"):
         build_target_handlers(
@@ -171,7 +177,10 @@ def test_target_plugin_registry_rejects_empty_and_non_callable_factories():
         registry.register("bad-factory", object())
 
 
-def test_target_plugin_discovery_rejects_invalid_modules_and_packages(tmp_path):
+def test_target_plugin_discovery_rejects_invalid_modules_and_packages(
+    tmp_path,
+    monkeypatch,
+):
     package_dir = tmp_path / "invalid_target_plugins"
     package_dir.mkdir()
     (package_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -180,18 +189,35 @@ def test_target_plugin_discovery_rejects_invalid_modules_and_packages(tmp_path):
         encoding="utf-8",
     )
 
+    monkeypatch.syspath_prepend(str(tmp_path))
     with pytest.raises(ValueError, match="Invalid target handler plugin module"):
         discover_target_handler_plugins(
             TargetHandlerRegistry(),
             "invalid_target_plugins",
-            search_path=tmp_path,
         )
 
+    manifest_path = tmp_path / "missing_plugins.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "trust": "trusted-local",
+                "plugins": [
+                    {
+                        "module": "missing_target_plugins.sample",
+                        "handler_id": "missing-handler",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError, match="package not found"):
         discover_target_handler_plugins(
             TargetHandlerRegistry(),
             "missing_target_plugins",
             search_path=tmp_path,
+            manifest_path=manifest_path,
+            allowed_modules=("missing_target_plugins.sample",),
         )
 
 
@@ -213,6 +239,7 @@ def test_target_plugin_manifest_rejects_bad_schema_and_handler_mismatch(
             "manifest_bad_plugins",
             search_path=tmp_path,
             manifest_path=manifest_path,
+            allowed_modules=("manifest_bad_plugins.sample",),
         )
 
     manifest_path.write_text(json.dumps({"plugins": ["bad"]}), encoding="utf-8")
@@ -222,6 +249,7 @@ def test_target_plugin_manifest_rejects_bad_schema_and_handler_mismatch(
             "manifest_bad_plugins",
             search_path=tmp_path,
             manifest_path=manifest_path,
+            allowed_modules=("manifest_bad_plugins.sample",),
         )
 
     manifest_path.write_text(json.dumps({"plugins": [{}]}), encoding="utf-8")
@@ -231,9 +259,11 @@ def test_target_plugin_manifest_rejects_bad_schema_and_handler_mismatch(
             "manifest_bad_plugins",
             search_path=tmp_path,
             manifest_path=manifest_path,
+            allowed_modules=("manifest_bad_plugins.sample",),
         )
 
     mismatch_manifest = {
+        "trust": "trusted-local",
         "plugins": [
             {
                 "module": "manifest_bad_plugins.sample",
@@ -285,12 +315,12 @@ def test_builtin_target_handlers_use_explicit_module_whitelist():
     assert target_configs
     assert all(config.get("handler") for config in target_configs)
 
-    from target_flows import BUILTIN_HANDLER_MODULES
+    from digital_ic_agent._runtime.target_flows import BUILTIN_HANDLER_MODULES
 
     assert BUILTIN_HANDLER_MODULES == (
-        "target_handlers.async_fifo",
-        "target_handlers.round_robin_arbiter",
-        "target_handlers.sync_fifo",
+        "digital_ic_agent._runtime.target_handlers.async_fifo",
+        "digital_ic_agent._runtime.target_handlers.round_robin_arbiter",
+        "digital_ic_agent._runtime.target_handlers.sync_fifo",
     )
     registry = load_target_handler_plugins(
         TargetHandlerRegistry(),
@@ -302,7 +332,7 @@ def test_builtin_target_handlers_use_explicit_module_whitelist():
         "sync-fifo",
     }
 
-    from agent import DigitalICAgent
+    from digital_ic_agent._runtime.agent import DigitalICAgent
 
     agent = DigitalICAgent()
     assert set(agent.target_handlers) == {
@@ -311,7 +341,7 @@ def test_builtin_target_handlers_use_explicit_module_whitelist():
 
 
 def test_core_targets_build_without_async_fifo_plugin(tmp_path):
-    from target_flows import build_plugin_services
+    from digital_ic_agent._runtime.target_flows import build_plugin_services
 
     agent = agent_module.DigitalICAgent()
     registry = load_target_handler_plugins(

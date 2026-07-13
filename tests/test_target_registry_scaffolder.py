@@ -8,35 +8,25 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
-AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
-TARGET_REGISTRY_PATH = ROOT / ".trae" / "agent" / "target_registry.py"
-TARGET_SCAFFOLDER_PATH = ROOT / ".trae" / "agent" / "target_scaffolder.py"
-AGENT_TARGETS_DIR = ROOT / ".trae" / "agent" / "targets"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
+AGENT_PATH = ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent.py"
+TARGET_REGISTRY_PATH = ROOT / "src" / "digital_ic_agent" / "_runtime" / "target_registry.py"
+TARGET_SCAFFOLDER_PATH = ROOT / "src" / "digital_ic_agent" / "_runtime" / "target_scaffolder.py"
+AGENT_TARGETS_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime" / "targets"
 
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location("digital_ic_agent", AGENT_PATH)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def load_local_module(module_name, module_path):
-    module_dir = str(module_path.parent)
-    if module_dir not in sys.path:
-        sys.path.insert(0, module_dir)
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
+    relative_module = module_path.relative_to(AGENT_DIR).with_suffix("")
+    qualified_name = ".".join(relative_module.parts)
+    return importlib.import_module(
+        "digital_ic_agent._runtime.{}".format(qualified_name)
+    )
 
 def run_agent(*args):
     return subprocess.run(
@@ -269,7 +259,7 @@ def test_p5_7_target_scaffolder_generates_valid_candidate_project(tmp_path):
     assert "TODO" in rtl_path.read_text(encoding="utf-8")
     assert "module tb_packet_router" in tb_path.read_text(encoding="utf-8")
     assert "- [ ]" in todo_path.read_text(encoding="utf-8")
-    assert ".trae/agent/targets/packet_router.json" in readme_path.read_text(
+    assert "src/digital_ic_agent/_runtime/targets/packet_router.json" in readme_path.read_text(
         encoding="utf-8"
     )
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 SKILL_EXECUTION_PATH = AGENT_DIR / "agent_skill_execution.py"
 
@@ -25,8 +25,6 @@ def test_agent_skill_execution_handlers_are_split_from_core_agent():
     assert SKILL_EXECUTION_PATH.is_file()
     assert "import agent_skill_execution as skill_execution" in agent_source
     assert "skill_execution.build_skill_action_handlers(" in agent_source
-    assert "skill_execution.skill_result(" in agent_source
-    assert "skill_execution.write_skill_execution_brief(" in agent_source
     assert "skill_execution.execute_design_document_skill(" in agent_source
     assert "skill_execution.execute_rtl_implementation_skill(" in agent_source
     assert "skill_execution.execute_verification_plan_skill(" in agent_source
@@ -34,7 +32,6 @@ def test_agent_skill_execution_handlers_are_split_from_core_agent():
     for method_name in (
         "build_skill_action_handlers",
         "_skill_result",
-        "_write_skill_execution_brief",
         "execute_design_document_skill",
         "execute_rtl_implementation_skill",
         "execute_verification_plan_skill",

@@ -1,6 +1,4 @@
-from digital_ic_agent._legacy import load_legacy_module
+from digital_ic_agent._runtime.agent_entrypoint import run_cli
 
 
-_legacy_entrypoint = load_legacy_module("agent_entrypoint")
-
-run_cli = _legacy_entrypoint.run_cli
+__all__ = ["run_cli"]

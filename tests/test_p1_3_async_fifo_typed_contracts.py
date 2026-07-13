@@ -5,16 +5,16 @@ from typing import Any, get_type_hints
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-import agent_async_fifo_reports  # noqa: E402
-import agent_async_fifo_runtime  # noqa: E402
-import agent_sim_smoke  # noqa: E402
-import agent_runtime_facades  # noqa: E402
-import agent_waveform  # noqa: E402
+from digital_ic_agent._runtime import agent_async_fifo_reports  # noqa: E402
+from digital_ic_agent._runtime import agent_async_fifo_runtime  # noqa: E402
+from digital_ic_agent._runtime import agent_sim_smoke  # noqa: E402
+from digital_ic_agent._runtime import agent_runtime_facades  # noqa: E402
+from digital_ic_agent._runtime import agent_waveform  # noqa: E402
 
 
 def test_async_fifo_runtime_exposes_typed_analysis_contracts():

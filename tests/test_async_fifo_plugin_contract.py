@@ -6,14 +6,14 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-import agent as agent_module  # noqa: E402
-from agent_runtime import PluginServices, TargetPlugin  # noqa: E402
-from target_examples.async_fifo import (  # noqa: E402
+from digital_ic_agent._runtime import agent as agent_module  # noqa: E402
+from digital_ic_agent._runtime.agent_runtime import PluginServices, TargetPlugin  # noqa: E402
+from digital_ic_agent._runtime.target_examples.async_fifo import (  # noqa: E402
     ASYNC_FIFO_SERVICE_NAMES,
     AsyncFifoPlugin,
 )

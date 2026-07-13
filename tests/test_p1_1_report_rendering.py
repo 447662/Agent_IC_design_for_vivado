@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 REPORTS_PATH = AGENT_DIR / "agent_reports.py"
 TEMPLATES_PATH = AGENT_DIR / "report_templates.py"
 
@@ -25,7 +25,10 @@ def test_report_shell_template_is_split_from_markdown_renderer():
     reports_source = REPORTS_PATH.read_text(encoding="utf-8")
     templates_source = TEMPLATES_PATH.read_text(encoding="utf-8")
 
-    assert "from report_templates import render_report_html_shell" in reports_source
+    assert (
+        "from digital_ic_agent._runtime.report_templates import render_report_html_shell"
+        in reports_source
+    )
     assert "<!doctype html>" not in reports_source
     assert "<!doctype html>" in templates_source
     assert "def render_markdown_body_html" in reports_source
@@ -53,3 +56,4 @@ def test_report_renderer_preserves_document_and_scenario_variants():
     assert "<td>PASS</td>" in doc_html
     assert '<section class="scenario-card">' in scenario_html
     assert templates.REPORT_CARD_CLASSES["scenario"] == "scenario-card"
+    assert "由 Digital IC Agent 基于目标配置和场景目录自动生成。" in doc_html

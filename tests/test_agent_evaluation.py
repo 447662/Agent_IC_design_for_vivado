@@ -4,12 +4,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-from intent_router import analyze_requirement  # noqa: E402
+from digital_ic_agent._runtime.intent_router import analyze_requirement  # noqa: E402
 
 
 ROUTING_CASES = ROOT / "tests" / "fixtures" / "agent_routing_cases.json"

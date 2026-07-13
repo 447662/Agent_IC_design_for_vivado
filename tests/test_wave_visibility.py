@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 WAVE_VISIBILITY_PATH = AGENT_DIR / "wave_visibility.py"
 
@@ -14,31 +14,18 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location(
-        "digital_ic_agent_wave_visibility_split",
-        AGENT_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def async_fifo_plugin(agent):
     return agent.target_plugins["async-fifo"]
 
 
 def load_local_module(module_name, module_path):
-    module_dir = str(module_path.parent)
-    if module_dir not in sys.path:
-        sys.path.insert(0, module_dir)
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
+    relative_module = module_path.relative_to(AGENT_DIR).with_suffix("")
+    qualified_name = ".".join(relative_module.parts)
+    return importlib.import_module(
+        "digital_ic_agent._runtime.{}".format(qualified_name)
+    )
 
 def test_async_fifo_wave_visibility_report_validates_gui_preflight(tmp_path):
     module = load_agent_module()
@@ -356,4 +343,4 @@ def test_p4_6_async_fifo_gui_script_ignores_stale_latest_wdb_pointer():
 def test_p4_6_wave_visibility_module_is_in_mypy_scope():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert '".trae/agent/wave_visibility.py"' in pyproject
+    assert '"src/digital_ic_agent"' in pyproject

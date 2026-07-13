@@ -25,7 +25,7 @@ path = "src/digital_ic_agent/__about__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/digital_ic_agent"]
-force-include = { ".trae/agent" = "digital_ic_agent/_legacy_agent", ".trae/skills" = "digital_ic_agent/skills" }
+force-include = { ".trae/skills" = "digital_ic_agent/skills" }
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -57,64 +57,12 @@ extend-exclude = [
 select = ["E4", "E7", "E9", "F", "B904", "B905", "UP017", "SIM105", "SIM300", "RUF005"]
 
 [tool.ruff.lint.per-file-ignores]
-".trae/agent/agent.py" = ["E402", "F401"]
+"src/digital_ic_agent/_runtime/agent.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"
 files = [
     "src/digital_ic_agent",
-    ".trae/agent/agent.py",
-    ".trae/agent/agent_errors.py",
-    ".trae/agent/agent_contracts.py",
-    ".trae/agent/agent_execution.py",
-    ".trae/agent/agent_provider.py",
-    ".trae/agent/agent_skill_tool.py",
-    ".trae/agent/mcp_client.py",
-    ".trae/agent/agent_runtime.py",
-    ".trae/agent/agent_async_fifo_render.py",
-    ".trae/agent/agent_async_fifo_reports.py",
-    ".trae/agent/agent_async_fifo_runtime.py",
-    ".trae/agent/agent_sync_fifo.py",
-    ".trae/agent/agent_round_robin_arbiter.py",
-    ".trae/agent/agent_cli_parser.py",
-    ".trae/agent/agent_cli.py",
-    ".trae/agent/agent_cli_dispatch.py",
-    ".trae/agent/agent_design_spec.py",
-    ".trae/agent/agent_diagnostics.py",
-    ".trae/agent/agent_composition.py",
-    ".trae/agent/agent_entrypoint.py",
-    ".trae/agent/agent_config.py",
-    ".trae/agent/report_templates.py",
-    ".trae/agent/agent_reports.py",
-    ".trae/agent/agent_waveform.py",
-    ".trae/agent/agent_sim_smoke.py",
-    ".trae/agent/skill_runtime.py",
-    ".trae/agent/capability_preflight.py",
-    ".trae/agent/intent_router.py",
-    ".trae/agent/artifact_manifest.py",
-    ".trae/agent/history_rotation.py",
-    ".trae/agent/coverage_closure.py",
-    ".trae/agent/coverage_gates.py",
-    ".trae/agent/coverage_history.py",
-    ".trae/agent/coverage_recommendations.py",
-    ".trae/agent/environment_report.py",
-    ".trae/agent/failure_archive.py",
-    ".trae/agent/project_overview.py",
-    ".trae/agent/wave_visibility.py",
-    ".trae/agent/waveform_samples.py",
-    ".trae/agent/xcrg_coverage.py",
-    ".trae/agent/adapters/report.py",
-    ".trae/agent/adapters/vivado.py",
-    ".trae/agent/adapters/waveform.py",
-    ".trae/agent/target_registry.py",
-    ".trae/agent/target_service_host.py",
-    ".trae/agent/target_plugins.py",
-    ".trae/agent/plugin_guard_runner.py",
-    ".trae/agent/target_handlers",
-    ".trae/agent/target_examples",
-    ".trae/agent/target_scaffolder.py",
-    ".trae/agent/target_checks.py",
-    ".trae/agent/target_flows.py",
 ]
 check_untyped_defs = true
 disallow_untyped_defs = true
@@ -128,7 +76,7 @@ exclude = "(outputs|VCD_ANALYZER-main|RWaveAnalyzer-main|docs/tools_archive)"
 
 [tool.coverage.run]
 branch = true
-source = [".trae/agent", "src/digital_ic_agent"]
+source = ["src/digital_ic_agent"]
 
 [tool.coverage.report]
 fail_under = 85

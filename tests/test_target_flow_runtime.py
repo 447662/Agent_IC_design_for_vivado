@@ -3,12 +3,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-from agent import DigitalICAgent  # noqa: E402
+from digital_ic_agent._runtime.agent import DigitalICAgent  # noqa: E402
 
 
 def test_target_flow_preflight_blocks_before_handler_execution(

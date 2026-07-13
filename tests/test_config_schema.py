@@ -9,17 +9,17 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_CONFIG_PATH = AGENT_DIR / "agent.json"
 SYNC_TARGET_PATH = AGENT_DIR / "targets" / "sync_fifo.json"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-from agent_composition import build_agent  # noqa: E402
-import agent_config  # noqa: E402
-from agent_config import load_agent_config  # noqa: E402
-from target_registry import load_target_registry  # noqa: E402
+from digital_ic_agent._runtime.agent_composition import build_agent  # noqa: E402
+from digital_ic_agent._runtime import agent_config  # noqa: E402
+from digital_ic_agent._runtime.agent_config import load_agent_config  # noqa: E402
+from digital_ic_agent._runtime.target_registry import load_target_registry  # noqa: E402
 
 
 def write_agent_config(tmp_path: Path, mutate) -> Path:

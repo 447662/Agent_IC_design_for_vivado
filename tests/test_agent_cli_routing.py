@@ -8,7 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 AGENT_CONFIG_PATH = AGENT_DIR / "agent.json"
 TRAE_CONFIG_PATH = ROOT / ".trae" / "config.json"
@@ -26,15 +26,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location(
-        "digital_ic_agent_cli_routing_split",
-        AGENT_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def run_agent(*args):
     return subprocess.run(
@@ -145,7 +137,7 @@ def test_cli_rejects_conflicting_modes():
     )
 
 
-def test_cli_no_tool_check_generates_design_spec_but_fails_without_rtl_execution(
+def test_cli_no_tool_check_generates_design_spec_but_requires_configured_target(
     tmp_path,
 ):
     result = run_agent(
@@ -156,8 +148,8 @@ def test_cli_no_tool_check_generates_design_spec_but_fails_without_rtl_execution
     )
 
     assert result.returncode != 0
-    assert "blocked" in result.stderr
-    assert "No RTL generator" in result.stderr
+    assert "must name one configured RTL target" in result.stderr
+    assert "sync-fifo" in result.stderr
     spec_files = list(tmp_path.glob("*/design_spec.md"))
     assert len(spec_files) == 1
 

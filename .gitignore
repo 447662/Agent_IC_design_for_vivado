@@ -9,6 +9,7 @@ __pycache__/
 .coverage.*
 coverage.xml
 htmlcov/
+dist/
 .tmp-*/
 .tmp/
 .tmp-pytest/

@@ -5,12 +5,12 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 
-from agent_contracts import (  # noqa: E402
+from digital_ic_agent._runtime.agent_contracts import (  # noqa: E402
     AgentRequest,
     AgentRunStatus,
     ExecutionPlan,
@@ -18,9 +18,9 @@ from agent_contracts import (  # noqa: E402
     ToolResult,
     ToolResultStatus,
 )
-from agent_execution import AgentExecutionEngine, MCPToolExecutor  # noqa: E402
-from agent_provider import ConfiguredAgentProvider, DeterministicProvider  # noqa: E402
-from mcp_client import (  # noqa: E402
+from digital_ic_agent._runtime.agent_execution import AgentExecutionEngine, MCPToolExecutor  # noqa: E402
+from digital_ic_agent._runtime.agent_provider import ConfiguredAgentProvider, DeterministicProvider  # noqa: E402
+from digital_ic_agent._runtime.mcp_client import (  # noqa: E402
     MCPProcessError,
     MCPProtocolError,
     MCPTimeoutError,
@@ -347,21 +347,22 @@ def test_mcp_tool_success_persists_evidence_artifact(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("mode", "error_type"),
+    ("mode", "error_type", "message"),
     [
-        ("error", MCPProtocolError),
-        ("invalid", MCPProtocolError),
-        ("hang", MCPTimeoutError),
-        ("exit", MCPProcessError),
+        ("error", MCPProtocolError, "fake failure"),
+        ("invalid", MCPProtocolError, "invalid JSON"),
+        ("hang", MCPTimeoutError, "timed out"),
+        ("exit", MCPProcessError, "exited"),
     ],
 )
 def test_stdio_mcp_client_reports_protocol_timeout_and_exit_errors(
     tmp_path,
     mode,
     error_type,
+    message,
 ):
     with _client(tmp_path, mode=mode, timeout=0.1) as client:
-        with pytest.raises(error_type):
+        with pytest.raises(error_type, match=message):
             client.initialize()
 
 
@@ -385,3 +386,5 @@ def test_mcp_failures_become_failed_tool_results(tmp_path, mode):
     assert run.tool_results[0].status is ToolResultStatus.FAILED
     assert run.tool_results[0].tool_call_id == "mcp-call-1"
     assert run.tool_results[0].returncode != 0
+    assert run.tool_results[0].error
+    assert run.tool_results[0].error in run.failure_reason

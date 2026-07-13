@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 
 if str(AGENT_DIR) not in sys.path:
@@ -13,15 +13,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location(
-        "digital_ic_agent_target_report_rendering_split",
-        AGENT_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def run_agent(*args):
     return subprocess.run(

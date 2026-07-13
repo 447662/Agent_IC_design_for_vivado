@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 
 if str(AGENT_DIR) not in sys.path:
@@ -13,15 +13,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location(
-        "digital_ic_agent_sim_smoke_runtime_split",
-        AGENT_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def run_agent(*args):
     return subprocess.run(
@@ -86,6 +78,25 @@ def test_run_sim_smoke_reports_missing_simulator(monkeypatch, capsys, tmp_path):
     captured = capsys.readouterr()
     assert "No supported Verilog simulator found" in captured.err
     assert "iverilog" in captured.err
+
+
+def test_icarus_compile_failure_is_reported(monkeypatch, capsys, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+
+    monkeypatch.setattr(
+        agent.command_runner,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            2,
+            stdout="",
+            stderr="iverilog rejected the source",
+        ),
+    )
+
+    assert agent.run_icarus_sim_smoke(output_dir=tmp_path) is False
+    assert "iverilog rejected the source" in capsys.readouterr().err
 
 
 def test_cli_sim_smoke_rejects_no_tool_check():

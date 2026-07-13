@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 ENTRYPOINT_PATH = AGENT_DIR / "agent_entrypoint.py"
 DISPATCH_PATH = AGENT_DIR / "agent_cli_dispatch.py"
 CLI_PATH = AGENT_DIR / "agent_cli.py"
@@ -35,7 +35,10 @@ def test_cli_command_dispatch_is_split_from_entrypoint():
     entrypoint_source = ENTRYPOINT_PATH.read_text(encoding="utf-8")
 
     assert DISPATCH_PATH.is_file()
-    assert "from agent_cli_dispatch import dispatch_cli_command" in entrypoint_source
+    assert (
+        "from digital_ic_agent._runtime.agent_cli_dispatch import dispatch_cli_command"
+        in entrypoint_source
+    )
     assert _function_length(ENTRYPOINT_PATH, "run_cli") <= 100
 
 
@@ -48,5 +51,5 @@ def test_cli_parser_construction_is_split_from_parse_args():
     cli_source = CLI_PATH.read_text(encoding="utf-8")
 
     assert CLI_PARSER_PATH.is_file()
-    assert "from agent_cli_parser import build_parser" in cli_source
+    assert "from digital_ic_agent._runtime.agent_cli_parser import build_parser" in cli_source
     assert _function_length(CLI_PATH, "parse_args") <= 100

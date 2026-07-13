@@ -7,7 +7,7 @@ from typing import Any, get_type_hints
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 TARGET_FLOWS_PATH = AGENT_DIR / "target_flows.py"
 LEGACY_FACADES_PATH = AGENT_DIR / "agent_legacy_target_facades.py"
@@ -246,14 +246,20 @@ def test_legacy_target_facades_are_thin_delegates_without_mixin_inheritance():
         if isinstance(node, ast.FunctionDef)
         and node.name == "install_legacy_target_facades"
     )
-    installed_methods = {
-        target.attr
+    methods_assignment = next(
+        item
         for item in install_function.body
         if isinstance(item, ast.Assign)
-        for target in item.targets
-        if isinstance(target, ast.Attribute)
-        and isinstance(target.value, ast.Name)
-        and target.value.id == "agent_cls"
+        and any(
+            isinstance(target, ast.Name) and target.id == "methods"
+            for target in item.targets
+        )
+    )
+    assert isinstance(methods_assignment.value, ast.Dict)
+    installed_methods = {
+        key.value
+        for key in methods_assignment.value.keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
     }
     assert installed_methods >= LEGACY_TARGET_FACADE_METHODS
 

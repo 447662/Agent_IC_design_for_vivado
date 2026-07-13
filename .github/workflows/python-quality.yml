@@ -31,13 +31,36 @@ jobs:
       - name: Install frozen development dependencies
         run: uv sync --frozen --group dev
 
+      - name: Verify release source tree
+        run: uv run --frozen python scripts/check_release_tree.py --phase source
+
+      - name: Build wheel and sdist
+        run: >-
+          uv build --wheel --sdist
+          --out-dir .tmp/distributions
+          --no-create-gitignore
+
+      - name: Smoke test wheel outside source tree
+        run: >-
+          uv run --frozen python scripts/smoke_test_distribution.py
+          --artifact-dir .tmp/distributions
+          --kind wheel
+          --work-dir .tmp/distribution-smoke-wheel
+
+      - name: Smoke test sdist outside source tree
+        run: >-
+          uv run --frozen python scripts/smoke_test_distribution.py
+          --artifact-dir .tmp/distributions
+          --kind sdist
+          --work-dir .tmp/distribution-smoke-sdist
+
       - name: Ruff
-        run: uv run --frozen ruff check .trae/agent tests
+        run: uv run --frozen ruff check .trae/agent tests src/digital_ic_agent scripts
 
       - name: Mypy
         run: uv run --frozen mypy
 
-      - name: Verify tracked runtime snapshot
+      - name: Verify release-tree runtime snapshot
         run: >-
           uv run --frozen pytest tests/test_repository_reproducibility.py
           -q
@@ -48,10 +71,11 @@ jobs:
         run: >-
           uv run --frozen pytest tests
           --junitxml .tmp/pytest-results.xml
-          --cov=.trae/agent
+          --cov=src/digital_ic_agent
           --cov-report=term-missing
           --cov-report=xml:coverage.xml
           --basetemp .tmp-pytest
+          -p no:cacheprovider
 
       - name: Generate quality summary
         if: ${{ !cancelled() }}
@@ -59,6 +83,8 @@ jobs:
           uv run --frozen python scripts/generate_quality_summary.py
           --junitxml .tmp/pytest-results.xml
           --coverage-xml coverage.xml
+          --minimum-line-rate 0.90
+          --minimum-branch-rate 0.80
           --readme README.md
           --output-dir docs/generated
           --write-readme
@@ -90,6 +116,7 @@ jobs:
           test -s docs/generated/test_module_report.md
           test -s coverage.xml
           test -s .tmp/pytest-results.xml
+          uv run --frozen python scripts/check_release_tree.py --phase generated
 
       - name: Upload generated quality reports
         if: ${{ !cancelled() }}

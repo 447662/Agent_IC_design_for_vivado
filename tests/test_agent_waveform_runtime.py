@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 
 if str(AGENT_DIR) not in sys.path:
@@ -13,15 +13,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location(
-        "digital_ic_agent_waveform_runtime_split",
-        AGENT_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def test_waveform_analyzer_prefers_rwave_when_available(monkeypatch, tmp_path):
     module = load_agent_module()
@@ -180,3 +172,18 @@ def test_rwave_batch_json_parses_ndjson_results(monkeypatch, tmp_path):
     assert "info #info" in calls[0][1]["input"]
     assert "tb_async_fifo.write_count" in calls[0][1]["input"]
     assert "tb_async_fifo.read_count" in calls[0][1]["input"]
+
+
+def test_waveform_analyzer_runtime_failure_is_reported(monkeypatch, capsys, tmp_path):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    vcd_path = tmp_path / "wave.vcd"
+    vcd_path.write_text("$date\nwave\n$end\n", encoding="utf-8")
+
+    def fail_analyzer(*_args, **_kwargs):
+        raise RuntimeError("waveform backend returned invalid JSON")
+
+    monkeypatch.setattr(agent, "run_waveform_analyzer_json", fail_analyzer)
+
+    assert agent.analyze_waveform(vcd_path) is False
+    assert "waveform backend returned invalid JSON" in capsys.readouterr().err

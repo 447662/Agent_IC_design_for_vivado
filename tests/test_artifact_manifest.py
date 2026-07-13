@@ -8,7 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 ARTIFACT_MANIFEST_PATH = AGENT_DIR / "artifact_manifest.py"
 
@@ -17,24 +17,14 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location("digital_ic_agent", AGENT_PATH)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def load_local_module(module_name, module_path):
-    module_dir = str(module_path.parent)
-    if module_dir not in sys.path:
-        sys.path.insert(0, module_dir)
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
+    relative_module = module_path.relative_to(AGENT_DIR).with_suffix("")
+    qualified_name = ".".join(relative_module.parts)
+    return importlib.import_module(
+        "digital_ic_agent._runtime.{}".format(qualified_name)
+    )
 
 class FakeArtifactAgent:
     def __init__(self, manifest_entries):

@@ -1,17 +1,27 @@
 {
   "schema_version": 1,
   "line_limit": 1000,
-  "module_count": 69,
+  "module_count": 83,
   "over_limit_count": 0,
   "modules": [
     {
       "path": "tests/test_agent_adapters.py",
-      "lines": 210,
+      "lines": 202,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_cli_dispatch_branches.py",
+      "lines": 100,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_cli_failure_paths.py",
+      "lines": 52,
       "status": "OK"
     },
     {
       "path": "tests/test_agent_cli_routing.py",
-      "lines": 200,
+      "lines": 192,
       "status": "OK"
     },
     {
@@ -21,37 +31,47 @@
     },
     {
       "path": "tests/test_agent_execution.py",
-      "lines": 387,
+      "lines": 390,
       "status": "OK"
     },
     {
       "path": "tests/test_agent_runtime_boundaries.py",
-      "lines": 266,
+      "lines": 253,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_sim_smoke_branches.py",
+      "lines": 167,
       "status": "OK"
     },
     {
       "path": "tests/test_agent_sim_smoke_runtime.py",
-      "lines": 305,
+      "lines": 316,
       "status": "OK"
     },
     {
       "path": "tests/test_agent_vivado_diagnostics.py",
-      "lines": 74,
+      "lines": 66,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_agent_waveform_branches.py",
+      "lines": 163,
       "status": "OK"
     },
     {
       "path": "tests/test_agent_waveform_runtime.py",
-      "lines": 182,
+      "lines": 189,
       "status": "OK"
     },
     {
       "path": "tests/test_agent_workflow_contract.py",
-      "lines": 159,
+      "lines": 181,
       "status": "OK"
     },
     {
       "path": "tests/test_artifact_manifest.py",
-      "lines": 491,
+      "lines": 481,
       "status": "OK"
     },
     {
@@ -61,22 +81,22 @@
     },
     {
       "path": "tests/test_async_fifo_reports.py",
-      "lines": 254,
+      "lines": 246,
       "status": "OK"
     },
     {
       "path": "tests/test_async_fifo_rtl_flow.py",
-      "lines": 559,
+      "lines": 551,
       "status": "OK"
     },
     {
       "path": "tests/test_async_fifo_uvm_wave.py",
-      "lines": 206,
+      "lines": 198,
       "status": "OK"
     },
     {
       "path": "tests/test_async_fifo_vcd_analysis.py",
-      "lines": 245,
+      "lines": 237,
       "status": "OK"
     },
     {
@@ -86,27 +106,57 @@
     },
     {
       "path": "tests/test_coverage_closure.py",
-      "lines": 546,
+      "lines": 541,
       "status": "OK"
     },
     {
       "path": "tests/test_coverage_history.py",
-      "lines": 274,
+      "lines": 261,
       "status": "OK"
     },
     {
       "path": "tests/test_coverage_recommendations.py",
-      "lines": 439,
+      "lines": 434,
       "status": "OK"
     },
     {
       "path": "tests/test_environment_report.py",
-      "lines": 240,
+      "lines": 235,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_external_plugin_discovery.py",
+      "lines": 341,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_external_plugin_subprocess.py",
+      "lines": 174,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_external_plugin_timeout.py",
+      "lines": 171,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_external_plugin_trust_boundary.py",
+      "lines": 194,
       "status": "OK"
     },
     {
       "path": "tests/test_failure_archive.py",
-      "lines": 192,
+      "lines": 179,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_mcp_client_branches.py",
+      "lines": 134,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_mcp_protocol_messages.py",
+      "lines": 109,
       "status": "OK"
     },
     {
@@ -116,7 +166,7 @@
     },
     {
       "path": "tests/test_p1_1_agent_bootstrap_split.py",
-      "lines": 24,
+      "lines": 19,
       "status": "OK"
     },
     {
@@ -126,12 +176,12 @@
     },
     {
       "path": "tests/test_p1_1_agent_design_spec.py",
-      "lines": 32,
+      "lines": 31,
       "status": "OK"
     },
     {
       "path": "tests/test_p1_1_agent_diagnostics.py",
-      "lines": 184,
+      "lines": 187,
       "status": "OK"
     },
     {
@@ -146,12 +196,12 @@
     },
     {
       "path": "tests/test_p1_1_agent_sim_smoke.py",
-      "lines": 49,
+      "lines": 48,
       "status": "OK"
     },
     {
       "path": "tests/test_p1_1_agent_skill_execution_split.py",
-      "lines": 45,
+      "lines": 42,
       "status": "OK"
     },
     {
@@ -161,7 +211,7 @@
     },
     {
       "path": "tests/test_p1_1_agent_target_flow.py",
-      "lines": 274,
+      "lines": 280,
       "status": "OK"
     },
     {
@@ -176,17 +226,17 @@
     },
     {
       "path": "tests/test_p1_1_cli_dispatch.py",
-      "lines": 52,
+      "lines": 55,
       "status": "OK"
     },
     {
       "path": "tests/test_p1_1_package_layout.py",
-      "lines": 74,
+      "lines": 68,
       "status": "OK"
     },
     {
       "path": "tests/test_p1_1_report_rendering.py",
-      "lines": 55,
+      "lines": 59,
       "status": "OK"
     },
     {
@@ -221,7 +271,7 @@
     },
     {
       "path": "tests/test_p2_auto_quality_docs.py",
-      "lines": 213,
+      "lines": 317,
       "status": "OK"
     },
     {
@@ -231,7 +281,7 @@
     },
     {
       "path": "tests/test_plugin_security_boundary.py",
-      "lines": 700,
+      "lines": 316,
       "status": "OK"
     },
     {
@@ -246,22 +296,32 @@
     },
     {
       "path": "tests/test_project_overview.py",
-      "lines": 271,
+      "lines": 266,
       "status": "OK"
     },
     {
       "path": "tests/test_project_text_encoding.py",
-      "lines": 20,
+      "lines": 60,
       "status": "OK"
     },
     {
       "path": "tests/test_quality_config.py",
-      "lines": 305,
+      "lines": 317,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_release_evidence.py",
+      "lines": 104,
       "status": "OK"
     },
     {
       "path": "tests/test_repository_reproducibility.py",
-      "lines": 134,
+      "lines": 123,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_runtime_package_migration.py",
+      "lines": 201,
       "status": "OK"
     },
     {
@@ -270,23 +330,33 @@
       "status": "OK"
     },
     {
+      "path": "tests/test_skill_target_execution.py",
+      "lines": 122,
+      "status": "OK"
+    },
+    {
       "path": "tests/test_sync_fifo_round_robin_rtl_flow.py",
-      "lines": 205,
+      "lines": 197,
       "status": "OK"
     },
     {
       "path": "tests/test_sync_fifo_round_robin_runtime.py",
-      "lines": 571,
+      "lines": 563,
       "status": "OK"
     },
     {
       "path": "tests/test_sync_fifo_round_robin_vcd_analysis.py",
-      "lines": 280,
+      "lines": 272,
+      "status": "OK"
+    },
+    {
+      "path": "tests/test_synthpilot_semantics.py",
+      "lines": 91,
       "status": "OK"
     },
     {
       "path": "tests/test_target_dashboard.py",
-      "lines": 275,
+      "lines": 265,
       "status": "OK"
     },
     {
@@ -296,57 +366,57 @@
     },
     {
       "path": "tests/test_target_plugin_registry.py",
-      "lines": 381,
+      "lines": 411,
       "status": "OK"
     },
     {
       "path": "tests/test_target_registry_runtime.py",
-      "lines": 172,
+      "lines": 159,
       "status": "OK"
     },
     {
       "path": "tests/test_target_registry_scaffolder.py",
-      "lines": 306,
+      "lines": 296,
       "status": "OK"
     },
     {
       "path": "tests/test_target_report_rendering.py",
-      "lines": 148,
+      "lines": 140,
       "status": "OK"
     },
     {
       "path": "tests/test_uvm_coverage_runtime.py",
-      "lines": 549,
+      "lines": 541,
       "status": "OK"
     },
     {
       "path": "tests/test_uvm_coverage_summary.py",
-      "lines": 237,
+      "lines": 229,
       "status": "OK"
     },
     {
       "path": "tests/test_uvm_smoke_regression.py",
-      "lines": 286,
+      "lines": 278,
       "status": "OK"
     },
     {
       "path": "tests/test_vivado_integration_workflow.py",
-      "lines": 217,
+      "lines": 234,
       "status": "OK"
     },
     {
       "path": "tests/test_wave_visibility.py",
-      "lines": 359,
+      "lines": 346,
       "status": "OK"
     },
     {
       "path": "tests/test_waveform_samples.py",
-      "lines": 183,
+      "lines": 177,
       "status": "OK"
     },
     {
       "path": "tests/test_xcrg_coverage.py",
-      "lines": 226,
+      "lines": 221,
       "status": "OK"
     }
   ],

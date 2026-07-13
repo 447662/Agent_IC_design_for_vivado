@@ -3,7 +3,7 @@ name: Vivado integration
 on:
   workflow_dispatch:
   pull_request:
-    types: [labeled, synchronize, reopened]
+    types: [opened, labeled, unlabeled, synchronize, reopened]
   push:
     branches: [vivado-integration]
 
@@ -48,3 +48,28 @@ jobs:
           path: ${{ runner.temp }}\vivado-integration
           if-no-files-found: error
           retention-days: 14
+
+  vivado-required-gate:
+    name: vivado-required-gate
+    if: always()
+    needs: [vivado-integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Enforce deterministic Vivado release result
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_VIVADO_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'vivado-integration') }}
+          REAL_GATE_RESULT: ${{ needs.vivado-integration.result }}
+        run: |
+          if [[ "${EVENT_NAME}" == "pull_request" && "${HAS_VIVADO_LABEL}" != "true" ]]; then
+            echo "::error::Missing required pull-request label: vivado-integration"
+            exit 1
+          fi
+          if [[ "${REAL_GATE_RESULT}" != "success" ]]; then
+            echo "::error::Real Vivado integration did not pass: ${REAL_GATE_RESULT}"
+            exit 1
+          fi
+          echo "Vivado required gate: PASS"

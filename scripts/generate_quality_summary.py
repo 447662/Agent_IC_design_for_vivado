@@ -3,12 +3,20 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
+from typing import TypedDict
 import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ROUTING_CASES = ROOT / "tests" / "fixtures" / "agent_routing_cases.json"
 DEFAULT_AGENT_EVAL_CASES = ROOT / "tests" / "fixtures" / "agent_eval_cases.json"
+DEFAULT_JUNIT_XML = ROOT / ".tmp" / "pytest-results.xml"
+DEFAULT_COVERAGE_XML = ROOT / "coverage.xml"
+DEFAULT_CAPABILITY_EVIDENCE = (
+    ROOT / "docs" / "testing" / "evidence" / "synthpilot_tools_list.json"
+)
+DEFAULT_AGENT_CONFIG = ROOT / ".trae" / "agent" / "agent.json"
 README_START = "<!-- digital-ic-agent:quality:start -->"
 README_END = "<!-- digital-ic-agent:quality:end -->"
 MIN_ROUTING_CASES = 50
@@ -23,6 +31,15 @@ VOLATILE_README_METRICS = (
     "Pytest skipped",
     "Pytest runtime seconds",
 )
+
+
+class CapabilitySummary(TypedDict):
+    name: str
+    requirement: str
+    failure_impact: str
+    captured_at: str
+    source_status: str
+    status: str
 
 
 def _percent(value: float) -> str:
@@ -83,6 +100,30 @@ def parse_coverage(path: Path) -> dict[str, float]:
     }
 
 
+def coverage_gate_violations(
+    coverage: dict[str, float],
+    *,
+    minimum_line_rate: float,
+    minimum_branch_rate: float,
+) -> list[str]:
+    violations = []
+    if coverage["line_rate"] < minimum_line_rate:
+        violations.append(
+            "line coverage {:.2%} is below {:.2%}".format(
+                coverage["line_rate"],
+                minimum_line_rate,
+            )
+        )
+    if coverage["branch_rate"] < minimum_branch_rate:
+        violations.append(
+            "branch coverage {:.2%} is below {:.2%}".format(
+                coverage["branch_rate"],
+                minimum_branch_rate,
+            )
+        )
+    return violations
+
+
 def count_routing_cases(path: Path) -> int:
     if not path.exists():
         raise FileNotFoundError(f"Routing evaluation fixture does not exist: {path}")
@@ -123,16 +164,78 @@ def summarize_agent_eval_cases(path: Path) -> dict[str, int]:
     return summary
 
 
+def parse_capability_evidence(
+    evidence_path: Path,
+    agent_config_path: Path,
+) -> CapabilitySummary:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    config = json.loads(agent_config_path.read_text(encoding="utf-8"))
+    if not isinstance(evidence, dict) or not isinstance(evidence.get("capability"), dict):
+        raise ValueError(f"Capability evidence must contain a capability object: {evidence_path}")
+    capability = evidence["capability"]
+    name = str(capability.get("name", "")).strip()
+    source_status = str(evidence.get("status", "")).strip().upper()
+    captured_at = str(evidence.get("captured_at", "")).strip()
+    if not name or not source_status or not captured_at.endswith("Z"):
+        raise ValueError(f"Capability evidence is incomplete: {evidence_path}")
+    if source_status not in {"PASS", "FAIL", "BLOCKED"}:
+        raise ValueError(f"Capability evidence has invalid status: {source_status}")
+    mcp_servers = config.get("mcpServers") if isinstance(config, dict) else None
+    configured = mcp_servers.get(name) if isinstance(mcp_servers, dict) else None
+    if not isinstance(configured, dict) or not isinstance(configured.get("required"), bool):
+        raise ValueError(f"Capability evidence is not declared in agent config: {name}")
+    required = bool(configured["required"])
+    requirement = "required" if required else "optional"
+    failure_impact = "release-blocking" if required else "degraded-only"
+    if capability.get("requirement") != requirement:
+        raise ValueError(
+            "Capability evidence requirement does not match agent config: {}".format(
+                name
+            )
+        )
+    if capability.get("failure_impact") != failure_impact:
+        raise ValueError(
+            "Capability evidence failure impact does not match agent config: {}".format(
+                name
+            )
+        )
+    if source_status == "PASS":
+        normalized_status = "PASS"
+    elif required:
+        normalized_status = "BLOCKED"
+    else:
+        normalized_status = "WARN"
+    declared_normalized = evidence.get("normalized_status")
+    if declared_normalized is not None and declared_normalized != normalized_status:
+        raise ValueError(
+            "Capability evidence normalized status does not match derived status: {}".format(
+                name
+            )
+        )
+    return {
+        "name": name,
+        "requirement": requirement,
+        "failure_impact": failure_impact,
+        "captured_at": captured_at,
+        "source_status": source_status,
+        "status": normalized_status,
+    }
+
+
+def has_blocked_capability(capability_summary: CapabilitySummary | None) -> bool:
+    return capability_summary is not None and capability_summary["status"] == "BLOCKED"
+
+
 def build_quality_summary(
     junit: dict[str, int | float],
     coverage: dict[str, float],
     routing_cases: int,
     eval_case_summary: dict[str, int] | None = None,
     data_scope: str = "CI full quality artifact",
+    capability_summary: CapabilitySummary | None = None,
 ) -> str:
     eval_case_total = sum((eval_case_summary or {}).values())
-    return "\n".join(
-        [
+    lines = [
             "# Quality Summary",
             "",
             "Generated by `python scripts/generate_quality_summary.py` from JUnit XML and coverage XML artifacts.",
@@ -144,19 +247,26 @@ def build_quality_summary(
             f"| Pytest failed | {junit['failures']} |",
             f"| Pytest errors | {junit['errors']} |",
             f"| Pytest skipped | {junit['skipped']} |",
-            f"| Pytest runtime seconds | {float(junit['time']):.2f} |",
             f"| Line coverage | {_percent(float(coverage['line_rate']))} |",
             f"| Branch coverage | {_percent(float(coverage['branch_rate']))} |",
             f"| Routing evaluation cases | {routing_cases} |",
             f"| Additional agent evaluation cases | {eval_case_total} |",
-            "",
-        ]
-    )
+    ]
+    if capability_summary is not None:
+        lines.append(
+            "| Capability {name} | {status} ({requirement}; {failure_impact}; "
+            "source {source_status}; captured {captured_at}) |".format(
+                **capability_summary
+            )
+        )
+    lines.append("")
+    return "\n".join(lines)
 
 
 def build_capability_matrix(
     routing_cases: int,
     eval_case_summary: dict[str, int] | None = None,
+    capability_summary: CapabilitySummary | None = None,
 ) -> str:
     routing_cases_path = DEFAULT_ROUTING_CASES.relative_to(ROOT).as_posix()
     eval_cases_path = DEFAULT_AGENT_EVAL_CASES.relative_to(ROOT).as_posix()
@@ -172,6 +282,14 @@ def build_capability_matrix(
     for domain, count in sorted((eval_case_summary or {}).items()):
         label = domain.replace("_", " ").title()
         lines.append(f"| {label} | `{eval_cases_path}` ({count} cases) | Automated eval fixture |")
+    if capability_summary is not None:
+        lines.append(
+            "| MCP {name} | `docs/testing/evidence/synthpilot_tools_list.json` "
+            "({requirement}; {failure_impact}; source {source_status}; "
+            "captured {captured_at}) | {status} |".format(
+                **capability_summary
+            )
+        )
     lines.extend(
         [
             "| Agent evaluation report | `docs/generated/agent_eval_report.json` plus Markdown summary | Generated in CI |",
@@ -239,30 +357,56 @@ def clean_stale_readme_stats(readme: str) -> str:
     return readme
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate quality summary documentation.")
-    parser.add_argument("--junitxml", type=Path, required=True)
-    parser.add_argument("--coverage-xml", type=Path, required=True)
+    parser.add_argument("--junitxml", type=Path, default=DEFAULT_JUNIT_XML)
+    parser.add_argument("--coverage-xml", type=Path, default=DEFAULT_COVERAGE_XML)
     parser.add_argument("--readme", type=Path, default=ROOT / "README.md")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "docs" / "generated")
     parser.add_argument("--routing-cases", type=Path, default=DEFAULT_ROUTING_CASES)
     parser.add_argument("--agent-eval-cases", type=Path, default=DEFAULT_AGENT_EVAL_CASES)
+    parser.add_argument(
+        "--capability-evidence",
+        type=Path,
+        default=DEFAULT_CAPABILITY_EVIDENCE,
+    )
+    parser.add_argument("--agent-config", type=Path, default=DEFAULT_AGENT_CONFIG)
     parser.add_argument("--data-scope", default="CI full quality artifact")
+    parser.add_argument("--minimum-line-rate", type=float, default=0.90)
+    parser.add_argument("--minimum-branch-rate", type=float, default=0.80)
     parser.add_argument("--write-readme", action="store_true")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     junit = parse_junit(args.junitxml)
     coverage = parse_coverage(args.coverage_xml)
     routing_cases = count_routing_cases(args.routing_cases)
     eval_case_summary = summarize_agent_eval_cases(args.agent_eval_cases)
+    capability_summary = parse_capability_evidence(
+        args.capability_evidence,
+        args.agent_config,
+    )
+    coverage_violations = coverage_gate_violations(
+        coverage,
+        minimum_line_rate=args.minimum_line_rate,
+        minimum_branch_rate=args.minimum_branch_rate,
+    )
     quality_summary = build_quality_summary(
         junit,
         coverage,
         routing_cases,
         eval_case_summary,
         args.data_scope,
+        capability_summary,
     )
-    capability_matrix = build_capability_matrix(routing_cases, eval_case_summary)
+    capability_matrix = build_capability_matrix(
+        routing_cases,
+        eval_case_summary,
+        capability_summary,
+    )
 
     write_outputs(args.output_dir, quality_summary, capability_matrix)
 
@@ -271,7 +415,11 @@ def main() -> int:
         updated = replace_marked_block(readme, render_readme_block(quality_summary))
         args.readme.write_text(updated, encoding="utf-8")
 
-    return 0
+    for violation in coverage_violations:
+        print(f"QUALITY_GATE_ERROR: {violation}", file=sys.stderr)
+    if has_blocked_capability(capability_summary):
+        return 2
+    return 3 if coverage_violations else 0
 
 
 if __name__ == "__main__":

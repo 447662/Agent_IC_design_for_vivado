@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 SIM_SMOKE_PATH = AGENT_DIR / "agent_sim_smoke.py"
 
@@ -40,10 +40,9 @@ def test_sim_smoke_flows_are_split_from_core_agent():
     method_lengths = _class_methods(AGENT_PATH, "DigitalICAgent")
 
     assert SIM_SMOKE_PATH.is_file()
-    assert "from agent_sim_smoke import" in agent_source
+    assert "from digital_ic_agent._runtime.agent_sim_smoke import" in agent_source
     assert "run_sim_smoke as run_sim_smoke_flow" in agent_source
     assert "module handshake_passthrough" not in agent_source
     assert "DigitalICAgent built-in handshake smoke loop" not in agent_source
     for method_name in SIM_SMOKE_METHODS:
         assert method_lengths[method_name] <= 20, method_name
-

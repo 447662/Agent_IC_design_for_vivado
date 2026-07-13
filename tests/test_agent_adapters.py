@@ -8,7 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
+AGENT_DIR = ROOT / "src" / "digital_ic_agent" / "_runtime"
 AGENT_PATH = AGENT_DIR / "agent.py"
 ADAPTERS_DIR = AGENT_DIR / "adapters"
 REPORT_ADAPTER_PATH = ADAPTERS_DIR / "report.py"
@@ -20,15 +20,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def load_agent_module():
-    spec = importlib.util.spec_from_file_location(
-        "digital_ic_agent_adapters_split",
-        AGENT_PATH,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
+    return importlib.import_module("digital_ic_agent._runtime.agent")
 
 def test_p5_9_adapter_modules_own_extracted_agent_methods():
     assert REPORT_ADAPTER_PATH.exists()
@@ -36,9 +28,9 @@ def test_p5_9_adapter_modules_own_extracted_agent_methods():
     assert VIVADO_ADAPTER_PATH.exists()
 
     module = load_agent_module()
-    report_adapter = importlib.import_module("adapters.report")
-    waveform_adapter = importlib.import_module("adapters.waveform")
-    vivado_adapter = importlib.import_module("adapters.vivado")
+    report_adapter = importlib.import_module("digital_ic_agent._runtime.adapters.report")
+    waveform_adapter = importlib.import_module("digital_ic_agent._runtime.adapters.waveform")
+    vivado_adapter = importlib.import_module("digital_ic_agent._runtime.adapters.vivado")
 
     assert module.DigitalICAgent.target_spec_catalog is report_adapter.target_spec_catalog
     assert (

@@ -7,15 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT / "src"
 PACKAGE_DIR = SRC_DIR / "digital_ic_agent"
+RUNTIME_DIR = PACKAGE_DIR / "_runtime"
 PYPROJECT_PATH = ROOT / "pyproject.toml"
-LEGACY_AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
-LEGACY_LOADER_PATH = PACKAGE_DIR / "_legacy.py"
-
-
-def _clear_imports() -> None:
-    for name in tuple(sys.modules):
-        if name == "digital_ic_agent" or name.startswith("digital_ic_agent."):
-            sys.modules.pop(name, None)
+THIN_AGENT_PATH = ROOT / ".trae" / "agent" / "agent.py"
 
 
 def test_src_package_exports_core_agent_entrypoints_without_path_insertion(
@@ -38,7 +32,6 @@ def test_src_package_exports_core_agent_entrypoints_without_path_insertion(
     assert "sys.path.insert" not in package_source
     assert "sys.path.append" not in package_source
 
-    _clear_imports()
     monkeypatch.syspath_prepend(str(SRC_DIR))
     import_path_before = tuple(sys.path)
     package = importlib.import_module("digital_ic_agent")
@@ -54,11 +47,10 @@ def test_src_package_exports_core_agent_entrypoints_without_path_insertion(
     assert tuple(sys.path) == import_path_before
 
 
-def test_installed_legacy_loader_prefers_regular_package_imports():
-    source = LEGACY_LOADER_PATH.read_text(encoding="utf-8")
-
-    assert "importlib.import_module" in source
-    assert "digital_ic_agent._legacy_agent" in source
+def test_runtime_is_owned_by_the_src_package_without_legacy_loader():
+    assert (RUNTIME_DIR / "agent.py").is_file()
+    assert (RUNTIME_DIR / "target_plugins.py").is_file()
+    assert not (PACKAGE_DIR / "_legacy.py").exists()
 
 
 def test_src_package_is_in_quality_and_coverage_scope():
@@ -68,7 +60,9 @@ def test_src_package_is_in_quality_and_coverage_scope():
     assert "src/digital_ic_agent" in config["tool"]["coverage"]["run"]["source"]
 
 
-def test_legacy_core_entrypoint_no_longer_inserts_sys_path():
-    source = LEGACY_AGENT_PATH.read_text(encoding="utf-8")
+def test_trae_core_entrypoint_is_a_thin_package_delegate():
+    source = THIN_AGENT_PATH.read_text(encoding="utf-8")
 
     assert "sys.path.insert" not in source
+    assert "digital_ic_agent.agent" in source
+    assert "class DigitalICAgent" not in source

@@ -1,16 +1,14 @@
+import argparse
 import json
 import os
-import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from digital_ic_agent._runtime.mcp_client import StdioMCPClient
+
 
 ROOT = Path(__file__).resolve().parents[1]
-AGENT_DIR = ROOT / ".trae" / "agent"
-if str(AGENT_DIR) not in sys.path:
-    sys.path.insert(0, str(AGENT_DIR))
-
-from mcp_client import StdioMCPClient  # noqa: E402
 
 
 EVIDENCE_PATH = ROOT / "docs" / "testing" / "evidence" / "synthpilot_tools_list.json"
@@ -24,6 +22,29 @@ SAFE_TOOL_HINTS = (
     "ping",
     "echo",
 )
+BLOCKER_FINGERPRINT = "synthpilot-license-device-limit-v1"
+
+
+def _captured_at() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _read_existing_evidence() -> dict[str, Any] | None:
+    if not EVIDENCE_PATH.is_file():
+        return None
+    value = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
+    return value if isinstance(value, dict) else None
+
+
+def should_attempt(existing: dict[str, Any] | None, *, force: bool) -> bool:
+    if force or not isinstance(existing, dict):
+        return True
+    blocker = existing.get("blocker")
+    return not (
+        isinstance(blocker, dict)
+        and blocker.get("fingerprint") == BLOCKER_FINGERPRINT
+        and blocker.get("retry_policy") == "external-state-change-only"
+    )
 
 
 def _repo_local_uv_env() -> None:
@@ -76,13 +97,47 @@ def _choose_safe_tool(tools: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Capture real SynthPilot MCP evidence without repeating known blockers."
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Retry after confirming the external license/device state changed.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    existing = _read_existing_evidence()
+    if not should_attempt(existing, force=args.force):
+        print(str(EVIDENCE_PATH))
+        print(
+            json.dumps(
+                {
+                    "status": "SKIPPED",
+                    "reason": "unchanged-external-blocker",
+                    "fingerprint": BLOCKER_FINGERPRINT,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
     _repo_local_uv_env()
     EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     command = _synthpilot_command()
     evidence: dict[str, Any] = {
+        "capability": {
+            "name": "synthpilot",
+            "requirement": "optional",
+            "failure_impact": "degraded-only",
+        },
         "command": list(command),
+        "captured_at": _captured_at(),
         "steps": [],
         "safe_tool_selection": None,
     }
@@ -134,6 +189,21 @@ def main() -> int:
     except Exception as exc:
         evidence["status"] = "FAIL"
         evidence["error"] = {"type": type(exc).__name__, "message": str(exc)}
+        error_message = str(exc)
+        if (
+            "License Verification Failed" in error_message
+            or "Device limit reached" in error_message
+        ):
+            evidence["blocker"] = {
+                "code": "synthpilot-license-device-limit",
+                "fingerprint": BLOCKER_FINGERPRINT,
+                "retry_policy": "external-state-change-only",
+                "resume_when": "license slot is freed or activation is reset",
+            }
+
+    evidence["normalized_status"] = (
+        "PASS" if evidence.get("status") == "PASS" else "WARN"
+    )
 
     EVIDENCE_PATH.write_text(
         json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True),
@@ -144,6 +214,7 @@ def main() -> int:
         json.dumps(
             {
                 "status": evidence["status"],
+                "normalized_status": evidence["normalized_status"],
                 "steps": [
                     {
                         "method": step.get("method"),
