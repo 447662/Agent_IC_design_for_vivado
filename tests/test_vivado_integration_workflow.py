@@ -7,6 +7,7 @@ RUNNER_SCRIPT_PATH = (
     ROOT / ".github" / "scripts" / "run-vivado-integration.ps1"
 )
 PREFLIGHT_SCRIPT_PATH = ROOT / ".github" / "scripts" / "vivado-preflight.tcl"
+RULESET_PATH = ROOT / ".github" / "branch-protection" / "vivado-release-gate.json"
 
 
 def test_vivado_integration_workflow_uses_controlled_self_hosted_runner():
@@ -22,7 +23,10 @@ def test_vivado_integration_workflow_uses_controlled_self_hosted_runner():
     assert "timeout-minutes:" in workflow
     assert "uv sync --frozen --group dev" in workflow
     assert "run-vivado-integration.ps1" in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    assert (
+        "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        in workflow
+    )
     assert "if: always()" in workflow
 
 
@@ -88,9 +92,37 @@ def test_vivado_runner_covers_p0_3_release_gate_matrix():
             assert marker in script
 
     assert "Assert-RuntimeManifest" in script
+    assert "ManifestCurrentArtifacts" in script
+    assert "ManifestCurrentArtifactPaths" in script
     assert "produced_by_run_id" in script
     assert '"CURRENT"' in script
     assert "Assert-ScoreboardMarker" in script
+
+    uvm_smoke_block = script.split('Name = "uvm-smoke"', maxsplit=1)[1].split(
+        'Name = "uvm-coverage"',
+        maxsplit=1,
+    )[0]
+    uvm_smoke_manifest_block = uvm_smoke_block.split(
+        "ManifestCurrentArtifacts = @(",
+        maxsplit=1,
+    )[1].split(")", maxsplit=1)[0]
+    assert "rtl\\async_fifo.v" in uvm_smoke_block
+    assert "rtl\\async_fifo.v" not in uvm_smoke_manifest_block
+    assert "sim\\async_fifo_uvm_smoke.wdb" in uvm_smoke_manifest_block
+    assert "reports\\uvm_smoke_report.md" in uvm_smoke_manifest_block
+
+    uvm_coverage_block = script.split('Name = "uvm-coverage"', maxsplit=1)[1].split(
+        'Target = "round-robin-arbiter"',
+        maxsplit=1,
+    )[0]
+    uvm_coverage_manifest_block = uvm_coverage_block.split(
+        "ManifestCurrentArtifacts = @(",
+        maxsplit=1,
+    )[1].split(")", maxsplit=1)[0]
+    assert "rtl\\async_fifo.v" in uvm_coverage_block
+    assert "rtl\\async_fifo.v" not in uvm_coverage_manifest_block
+    assert "sim\\async_fifo_uvm_coverage.wdb" in uvm_coverage_manifest_block
+    assert "reports\\uvm_coverage_summary.md" in uvm_coverage_manifest_block
 
 
 def test_vivado_runner_rejects_false_passes_for_each_release_gate_target():
@@ -116,7 +148,14 @@ def test_vivado_runner_executes_real_flow_and_rejects_false_passes():
     script = RUNNER_SCRIPT_PATH.read_text(encoding="utf-8")
 
     required_fragments = (
+        "Resolve-VivadoExecutable",
+        "$VivadoPath = $env:VIVADO_EXECUTABLE",
+        "$env:DIGITAL_IC_AGENT_VIVADO = $vivadoExecutable",
         "Get-Command vivado",
+        "unwrapped",
+        "vivado.bat",
+        "UV_CACHE_DIR",
+        ".tmp\\uv-cache",
         "-version",
         "TCLLIBPATH",
         "support\\appinit",
@@ -129,6 +168,8 @@ def test_vivado_runner_executes_real_flow_and_rejects_false_passes():
         "sync_fifo_project.xpr",
         "artifacts.json",
         "run_id",
+        "requiredWaveDatabases",
+        "Flow does not declare a required WDB artifact",
         "*.wdb",
         "Add-Content",
         "negative-syntax",
@@ -158,3 +199,19 @@ def test_vivado_preflight_starts_real_tool_and_reports_blocked_state():
     assert "VIVADO_PREFLIGHT_PASS" in script
     assert "VIVADO_PREFLIGHT_BLOCKED" in script
     assert "exit 2" in script
+
+
+def test_vivado_release_gate_is_required_for_protected_branches():
+    assert RULESET_PATH.exists()
+    ruleset = RULESET_PATH.read_text(encoding="utf-8")
+
+    assert '"name": "P0-3 Vivado release gate"' in ruleset
+    assert '"target": "branch"' in ruleset
+    assert '"ref_name"' in ruleset
+    assert '"main"' in ruleset
+    assert '"vivado-integration"' in ruleset
+    assert '"type": "required_status_checks"' in ruleset
+    assert '"context": "Vivado integration / vivado-integration"' in ruleset
+    assert '"strict_required_status_checks_policy": true' in ruleset
+    assert '"type": "pull_request"' in ruleset
+    assert '"required_approving_review_count": 1' in ruleset

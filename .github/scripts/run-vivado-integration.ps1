@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$ArtifactsRoot = (Join-Path $PWD ".tmp\vivado-integration")
+    [string]$ArtifactsRoot = (Join-Path $PWD ".tmp\vivado-integration"),
+    [string]$VivadoPath = $env:VIVADO_EXECUTABLE
 )
 
 Set-StrictMode -Version Latest
@@ -108,7 +109,7 @@ function Assert-RuntimeManifest {
         [string]$ExpectedFlow,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$RequiredArtifactPaths
+        [string[]]$ManifestCurrentArtifactPaths
     )
 
     Assert-FreshFile -Path $ManifestPath -StartedAt $script:GateStartedAt
@@ -135,7 +136,7 @@ function Assert-RuntimeManifest {
             $artifactByPath[$artifact.path] = $artifact
         }
     }
-    foreach ($relativePath in $RequiredArtifactPaths) {
+    foreach ($relativePath in $ManifestCurrentArtifactPaths) {
         $manifestPath = $relativePath.Replace("\", "/")
         if (-not $artifactByPath.ContainsKey($manifestPath)) {
             throw "Runtime manifest does not list required artifact: $manifestPath"
@@ -152,23 +153,77 @@ function Assert-RuntimeManifest {
     return $latestRun
 }
 
+function Resolve-VivadoExecutable {
+    param(
+        [string]$RequestedPath
+    )
+
+    $candidatePath = $RequestedPath
+    if ([string]::IsNullOrWhiteSpace($candidatePath)) {
+        $vivadoCommand = Get-Command vivado -ErrorAction Stop
+        $candidatePath = if ($vivadoCommand.Source) {
+            $vivadoCommand.Source
+        }
+        else {
+            $vivadoCommand.Path
+        }
+    }
+
+    $resolvedPath = (Resolve-Path -LiteralPath $candidatePath -ErrorAction Stop).Path
+    $pathParts = @($resolvedPath -split '[\\/]')
+    $isUnwrappedExecutable = (
+        (Split-Path -Leaf $resolvedPath) -ieq "vivado.exe" -and
+        $pathParts -icontains "unwrapped"
+    )
+    if (-not $isUnwrappedExecutable) {
+        return $resolvedPath
+    }
+
+    $currentDirectory = Split-Path -Parent $resolvedPath
+    while ($currentDirectory) {
+        $wrapperCandidate = Join-Path $currentDirectory "vivado.bat"
+        if (Test-Path -LiteralPath $wrapperCandidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $wrapperCandidate).Path
+        }
+        $parentDirectory = Split-Path -Parent $currentDirectory
+        if ($parentDirectory -eq $currentDirectory) {
+            break
+        }
+        $currentDirectory = $parentDirectory
+    }
+
+    return $resolvedPath
+}
+
+function Get-VivadoRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VivadoExecutable
+    )
+
+    $executableDirectory = Split-Path -Parent $VivadoExecutable
+    if ((Split-Path -Leaf $executableDirectory) -ieq "bin") {
+        return Split-Path -Parent $executableDirectory
+    }
+
+    return Split-Path (Split-Path $executableDirectory -Parent) -Parent
+}
+
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$vivadoCommand = Get-Command vivado -ErrorAction Stop
 $uvCommand = Get-Command uv -ErrorAction Stop
-$vivadoExecutable = if ($vivadoCommand.Source) {
-    $vivadoCommand.Source
-}
-else {
-    $vivadoCommand.Path
-}
+$vivadoExecutable = Resolve-VivadoExecutable -RequestedPath $VivadoPath
+$env:DIGITAL_IC_AGENT_VIVADO = $vivadoExecutable
 $uvExecutable = if ($uvCommand.Source) {
     $uvCommand.Source
 }
 else {
     $uvCommand.Path
 }
+if ([string]::IsNullOrWhiteSpace($env:UV_CACHE_DIR)) {
+    $env:UV_CACHE_DIR = Join-Path $repositoryRoot ".tmp\uv-cache"
+}
 
-$vivadoRoot = Split-Path (Split-Path $vivadoExecutable -Parent) -Parent
+$vivadoRoot = Get-VivadoRoot -VivadoExecutable $vivadoExecutable
 $tclStore = Join-Path $vivadoRoot "data\XilinxTclStore"
 $tclLibraryPaths = @(
     (Join-Path $tclStore "support"),
@@ -244,6 +299,14 @@ $targetGates = @(
                     "reports\sim_report.md",
                     "sim\sync_fifo_smoke.wdb"
                 )
+                ManifestCurrentArtifacts = @(
+                    "rtl\sync_fifo.v",
+                    "tb\tb_sync_fifo.v",
+                    "sim\sync_fifo_trace.vcd",
+                    "vivado_project\sync_fifo_project.xpr",
+                    "reports\sim_report.md",
+                    "sim\sync_fifo_smoke.wdb"
+                )
                 Markers = @("SYNC_FIFO_SCOREBOARD_PASS")
             }
         )
@@ -265,6 +328,14 @@ $targetGates = @(
                     "reports\sim_report.md",
                     "sim\async_fifo_smoke.wdb"
                 )
+                ManifestCurrentArtifacts = @(
+                    "rtl\async_fifo.v",
+                    "tb\tb_async_fifo.v",
+                    "sim\async_fifo_trace.vcd",
+                    "vivado_project\async_fifo_project.xpr",
+                    "reports\sim_report.md",
+                    "sim\async_fifo_smoke.wdb"
+                )
                 Markers = @("ASYNC_FIFO_SCOREBOARD_PASS")
             },
             [pscustomobject]@{
@@ -273,6 +344,10 @@ $targetGates = @(
                 LogName = "async-fifo-uvm-smoke-agent.log"
                 RequiredArtifacts = @(
                     "rtl\async_fifo.v",
+                    "sim\async_fifo_uvm_smoke.wdb",
+                    "reports\uvm_smoke_report.md"
+                )
+                ManifestCurrentArtifacts = @(
                     "sim\async_fifo_uvm_smoke.wdb",
                     "reports\uvm_smoke_report.md"
                 )
@@ -287,6 +362,10 @@ $targetGates = @(
                 LogName = "async-fifo-uvm-coverage-agent.log"
                 RequiredArtifacts = @(
                     "rtl\async_fifo.v",
+                    "sim\async_fifo_uvm_coverage.wdb",
+                    "reports\uvm_coverage_summary.md"
+                )
+                ManifestCurrentArtifacts = @(
                     "sim\async_fifo_uvm_coverage.wdb",
                     "reports\uvm_coverage_summary.md"
                 )
@@ -307,6 +386,14 @@ $targetGates = @(
                 CliFlag = "--sim-rtl"
                 LogName = "round-robin-arbiter-sim-rtl-agent.log"
                 RequiredArtifacts = @(
+                    "rtl\round_robin_arbiter.v",
+                    "tb\tb_round_robin_arbiter.v",
+                    "sim\round_robin_arbiter_trace.vcd",
+                    "vivado_project\round_robin_arbiter_project.xpr",
+                    "reports\sim_report.md",
+                    "sim\round_robin_arbiter_smoke.wdb"
+                )
+                ManifestCurrentArtifacts = @(
                     "rtl\round_robin_arbiter.v",
                     "tb\tb_round_robin_arbiter.v",
                     "sim\round_robin_arbiter_trace.vcd",
@@ -341,18 +428,16 @@ foreach ($targetGate in $targetGates) {
                 -Path (Join-Path $projectDirectory $relativePath) `
                 -StartedAt $script:GateStartedAt
         }
-        $waveDatabases = @(
-            Get-ChildItem `
-                -LiteralPath (Join-Path $projectDirectory "sim") `
-                -Filter "*.wdb" `
-                -File
+        $requiredWaveDatabases = @(
+            $flowGate.RequiredArtifacts |
+                Where-Object { $_ -like "*.wdb" }
         )
-        if ($waveDatabases.Count -eq 0) {
-            throw "Simulation did not generate a WDB file"
+        if ($requiredWaveDatabases.Count -eq 0) {
+            throw "Flow does not declare a required WDB artifact: $($targetGate.Target) $($flowGate.Name)"
         }
-        foreach ($waveDatabase in $waveDatabases) {
+        foreach ($requiredWaveDatabase in $requiredWaveDatabases) {
             Assert-FreshFile `
-                -Path $waveDatabase.FullName `
+                -Path (Join-Path $projectDirectory $requiredWaveDatabase) `
                 -StartedAt $script:GateStartedAt
         }
 
@@ -363,7 +448,7 @@ foreach ($targetGate in $targetGates) {
         $latestRun = Assert-RuntimeManifest `
             -ManifestPath (Join-Path $projectDirectory "artifacts.json") `
             -ExpectedFlow $flowGate.Name `
-            -RequiredArtifactPaths $flowGate.RequiredArtifacts
+            -ManifestCurrentArtifactPaths $flowGate.ManifestCurrentArtifacts
 
         $gateSummaries += [ordered]@{
             target = $targetGate.Target
@@ -371,6 +456,7 @@ foreach ($targetGate in $targetGates) {
             run_id = $latestRun.run_id
             exit_code = $flowResult.ExitCode
             required_artifacts = $flowGate.RequiredArtifacts
+            manifest_current_artifacts = $flowGate.ManifestCurrentArtifacts
             scoreboard_markers = $flowGate.Markers
         }
     }
