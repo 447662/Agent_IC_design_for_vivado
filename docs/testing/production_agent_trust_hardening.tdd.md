@@ -81,7 +81,25 @@ GREEN evidence:
 
 ## Final Verification
 
-Pending full coverage, distributions, real Vivado gate, and SSH publication.
+Acceptance commands completed against the final implementation sequence:
+
+- Ruff: PASS.
+- Mypy: PASS, 88 source files.
+- Pytest: `532 passed`; line coverage `90.84%` (`6892/7587`), branch
+  coverage `81.61%` (`1779/2180`), combined coverage `88.78%`.
+- Risk-oriented module coverage and generated config mirror checks: PASS.
+- Wheel and sdist build: PASS; both artifacts installed outside the source
+  tree and passed package-data, three-target discovery, and CLI smoke checks.
+- Vivado 2025.2: PASS for three targets and five positive flows. All three
+  deliberately corrupted syntax flows returned nonzero and were accepted only
+  as negative-gate evidence.
+- Vivado evidence:
+  `.tmp/vivado-goal/20260714-010916-6749c4daca3d4d23aadd2baa38c0f8d6/integration-summary.json`.
+
+The final quality provenance artifact is generated under `.tmp/final-quality`
+after this evidence commit so its `commit_sha` can equal the final `HEAD`.
+GitHub Actions will independently generate `source=ci` provenance with its run
+identity; no local result is represented as CI evidence.
 
 ## Known External Decisions
 
