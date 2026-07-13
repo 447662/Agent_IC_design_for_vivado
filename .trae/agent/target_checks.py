@@ -58,10 +58,7 @@ def check_rtl_project(
             for label, token in tb_markers
         )
 
-    print("{} RTL check".format(target_name))
-    print("=" * 60)
     ok = True
     for label, passed, path in checks:
-        print("[{}] {}: {}".format("OK" if passed else "NO", label, path))
         ok = ok and passed
     return ok

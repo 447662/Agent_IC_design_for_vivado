@@ -1,8 +1,14 @@
-import sys
 from pathlib import Path
-from typing import Any
+import sys
+import time
+import uuid
+from collections.abc import Callable, Mapping, Sequence
+from os import PathLike
+from typing import Any, Literal, NotRequired, Protocol, TextIO, TypedDict, cast
 
+from agent_observability import append_observability_event, build_observability_event
 from artifact_manifest import snapshot_project_artifacts
+from agent_errors import CapabilityError, ToolExecutionError
 from agent_runtime import PluginServices
 from target_registry import (
     get_target as get_registered_target,
@@ -46,24 +52,96 @@ PLUGIN_OPERATION_NAMES = (
 )
 
 
-def _service_adapter(operation: Any) -> Any:
-    def invoke(*args: Any, **kwargs: Any) -> Any:
+class TargetInfo(TypedDict):
+    name: str
+    display_name: str
+    design_family: str
+    aliases: NotRequired[Sequence[str]]
+    flows: NotRequired[Sequence[str]]
+    description: NotRequired[str]
+
+
+TargetMap = Mapping[str, TargetInfo]
+TargetOperation = Callable[..., object]
+
+
+class TargetRegistryAgent(Protocol):
+    targets_dir: Path
+
+    def load_target_registry(self) -> TargetMap:
+        ...
+
+
+class TargetPluginAgent(Protocol):
+    targets: TargetMap
+
+
+class TargetListAgent(Protocol):
+    targets: TargetMap
+
+    def list_targets(self) -> Sequence[TargetInfo]:
+        ...
+
+
+class TargetLookupAgent(Protocol):
+    targets: TargetMap
+
+
+class PreflightReportLike(Protocol):
+    ok: bool
+    missing_required: Sequence[str]
+
+
+class TargetHandlerLike(Protocol):
+    flows: Mapping[str, TargetOperation]
+    plugin: object | None
+
+    def run(self, flow: str, **kwargs: object) -> object:
+        ...
+
+
+class TargetHandlerValidationAgent(Protocol):
+    targets: TargetMap
+    target_handlers: Mapping[str, TargetHandlerLike]
+
+
+class RunTargetFlowAgent(Protocol):
+    targets: TargetMap
+    target_handlers: Mapping[str, TargetHandlerLike]
+
+    def normalize_rtl_target(self, target: str) -> str:
+        ...
+
+    def run_preflight(self, flow: str) -> PreflightReportLike:
+        ...
+
+    def record_artifact_run(
+        self,
+        target: str,
+        flow: str,
+        **kwargs: object,
+    ) -> Path:
+        ...
+
+
+def _service_adapter(operation: TargetOperation) -> TargetOperation:
+    def invoke(*args: object, **kwargs: object) -> object:
         return operation(*args, **kwargs)
 
     return invoke
 
 
-def _resolve_plugin_operation(agent: Any, name: str) -> Any:
+def _resolve_plugin_operation(agent: object, name: str) -> TargetOperation:
     target_services = getattr(agent, "target_services", None)
     if target_services is not None:
         try:
-            return getattr(target_services, name)
+            return cast(TargetOperation, getattr(target_services, name))
         except AttributeError:
             pass
-    return getattr(agent, name)
+    return cast(TargetOperation, getattr(agent, name))
 
 
-def build_plugin_services(agent: Any) -> Any:
+def build_plugin_services(agent: object) -> PluginServices:
     return PluginServices(
         operations={
             name: _service_adapter(_resolve_plugin_operation(agent, name))
@@ -72,52 +150,80 @@ def build_plugin_services(agent: Any) -> Any:
     )
 
 
-def build_target_handlers(agent: Any) -> Any:
+def build_target_handlers(agent: TargetPluginAgent) -> dict[str, TargetHandlerLike]:
     registry = TargetHandlerRegistry()
     load_target_handler_plugins(registry, BUILTIN_HANDLER_MODULES)
-    handlers = build_plugin_target_handlers(
-        build_plugin_services(agent),
-        agent.targets,
-        registry,
+    handlers = cast(
+        dict[str, TargetHandlerLike],
+        build_plugin_target_handlers(
+            build_plugin_services(agent),
+            cast(Mapping[str, Mapping[str, Any]], agent.targets),
+            registry,
+        ),
     )
-    agent.target_plugins = {
-        target_name: handler.plugin
-        for target_name, handler in handlers.items()
-        if handler.plugin is not None
-    }
+    setattr(
+        agent,
+        "target_plugins",
+        {
+            target_name: handler.plugin
+            for target_name, handler in handlers.items()
+            if getattr(handler, "plugin", None) is not None
+        },
+    )
     return handlers
 
 
-def build_target_registry(agent: Any) -> Any:
+def build_target_registry(agent: TargetRegistryAgent) -> TargetMap:
     return agent.load_target_registry()
 
 
-def load_target_registry(agent: Any, targets_dir: Any = None) -> Any:
+def load_target_registry(
+    agent: TargetRegistryAgent,
+    targets_dir: str | PathLike[str] | None = None,
+) -> TargetMap:
     resolved_targets_dir = Path(targets_dir) if targets_dir else agent.targets_dir
-    return load_registered_targets(resolved_targets_dir)
+    return cast(TargetMap, load_registered_targets(resolved_targets_dir))
 
 
-def list_targets(agent: Any) -> Any:
-    return list_registered_targets(agent.targets)
+def list_targets(agent: TargetListAgent) -> list[TargetInfo]:
+    return cast(
+        list[TargetInfo],
+        list_registered_targets(cast(dict[str, dict[str, Any]], agent.targets)),
+    )
 
 
-def get_target(agent: Any, target: Any) -> Any:
-    return get_registered_target(agent.targets, target)
+def get_target(agent: TargetLookupAgent, target: str) -> TargetInfo:
+    return cast(
+        TargetInfo,
+        get_registered_target(cast(dict[str, dict[str, Any]], agent.targets), target),
+    )
 
 
-def print_targets(agent: Any) -> Any:
-    print("Digital IC Agent registered targets")
-    print("=" * 60)
-    for target in agent.list_targets():
-        print("{} ({})".format(target["name"], target["display_name"]))
-        print("  family: {}".format(target["design_family"]))
-        print("  aliases: {}".format(", ".join(target.get("aliases", [])) or "-"))
-        print("  flows: {}".format(", ".join(target.get("flows", []))))
-        print("  note: {}".format(target.get("description", "")))
+def render_targets(targets: Sequence[TargetInfo]) -> str:
+    lines = [
+        "Digital IC Agent registered targets",
+        "=" * 60,
+    ]
+    for target in targets:
+        lines.extend(
+            [
+                "{} ({})".format(target["name"], target["display_name"]),
+                "  family: {}".format(target["design_family"]),
+                "  aliases: {}".format(", ".join(target.get("aliases", [])) or "-"),
+                "  flows: {}".format(", ".join(target.get("flows", []))),
+                "  note: {}".format(target.get("description", "")),
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def print_targets(agent: TargetListAgent, output: TextIO | None = None) -> bool:
+    target_output = output or sys.stdout
+    target_output.write(render_targets(agent.list_targets()))
     return True
 
 
-def validate_target_handlers(agent: Any) -> Any:
+def validate_target_handlers(agent: TargetHandlerValidationAgent) -> bool:
     if set(agent.target_handlers) != set(agent.targets):
         missing_handlers = sorted(set(agent.targets) - set(agent.target_handlers))
         unknown_handlers = sorted(set(agent.target_handlers) - set(agent.targets))
@@ -142,63 +248,145 @@ def validate_target_handlers(agent: Any) -> Any:
     return True
 
 
-def run_target_flow(agent: Any, target: Any, flow: Any, **kwargs: Any) -> Any:
+def run_target_flow(
+    agent: RunTargetFlowAgent,
+    target: str,
+    flow: str,
+    **kwargs: object,
+) -> object:
+    run_id = uuid.uuid4().hex
     target_name = agent.normalize_rtl_target(target)
     if flow not in agent.targets[target_name].get("flows", []):
         raise ValueError(
             "Target {} does not declare flow: {}".format(target_name, flow)
         )
-    output_dir = kwargs.get("output_dir", "outputs")
+    output_dir = cast(str | PathLike[str], kwargs.get("output_dir", "outputs"))
     project_dir = Path(output_dir) / target_name
+    timeline_path = project_dir / "artifacts.timeline.jsonl"
     artifact_snapshot = snapshot_project_artifacts(project_dir)
+    preflight_started = time.perf_counter()
     preflight_report = agent.run_preflight(flow)
+    append_observability_event(
+        timeline_path,
+        build_observability_event(
+            run_id=run_id,
+            flow=str(flow),
+            stage="preflight",
+            event="stage_finished",
+            status="PASS" if preflight_report.ok else "FAIL",
+            duration_ms=max(0, int((time.perf_counter() - preflight_started) * 1000)),
+            exit_code=None if preflight_report.ok else 3,
+            error_category=None if preflight_report.ok else "capability",
+            details={
+                "missing_required": tuple(preflight_report.missing_required),
+                "target": target_name,
+            },
+        ),
+    )
     if not preflight_report.ok:
-        error = "Missing required capabilities for {}: {}".format(
+        error_message = "Missing required capabilities for {}: {}".format(
             flow,
             ", ".join(preflight_report.missing_required),
         )
-        print(error, file=sys.stderr)
+        capability_error = CapabilityError(
+            error_message,
+            stage="preflight",
+            details={
+                "flow": str(flow),
+                "missing_required": tuple(preflight_report.missing_required),
+                "target": target_name,
+            },
+        )
         agent.record_artifact_run(
             target_name,
             flow,
             output_dir=output_dir,
             status="FAIL",
-            error=error,
+            error=capability_error,
             options=kwargs,
             artifact_snapshot=artifact_snapshot,
+            run_id=run_id,
         )
         return False
-    if preflight_report.missing_optional:
-        print(
-            "{} flow {} 将降级运行，缺少可选能力: {}".format(
-                agent.WARN,
-                flow,
-                ", ".join(preflight_report.missing_optional),
-            ),
-            file=sys.stderr,
-        )
     try:
+        target_flow_started = time.perf_counter()
         result = agent.target_handlers[target_name].run(flow, **kwargs)
     except Exception as exc:
+        handler_error = ToolExecutionError(
+            str(exc),
+            stage="target_flow",
+            details={
+                "exception_type": type(exc).__name__,
+                "flow": str(flow),
+                "target": target_name,
+            },
+        )
+        append_observability_event(
+            timeline_path,
+            build_observability_event(
+                run_id=run_id,
+                flow=str(flow),
+                stage="target_flow",
+                event="stage_finished",
+                status="FAIL",
+                duration_ms=max(0, int((time.perf_counter() - target_flow_started) * 1000)),
+                exit_code=handler_error.exit_code,
+                error_category=handler_error.category,
+                details={
+                    "exception_type": type(exc).__name__,
+                    "target": target_name,
+                },
+            ),
+        )
         agent.record_artifact_run(
             target_name,
             flow,
             output_dir=output_dir,
             status="FAIL",
-            error=exc,
+            error=handler_error,
             options=kwargs,
             artifact_snapshot=artifact_snapshot,
+            run_id=run_id,
         )
         raise
 
-    status = "PASS" if result else "FAIL"
+    status: Literal["PASS", "FAIL"] = "PASS" if result else "FAIL"
+    tool_error = None
+    if not result:
+        tool_error = ToolExecutionError(
+            "flow returned a false result",
+            stage="target_flow",
+            details={
+                "flow": str(flow),
+                "reason": "false_result",
+                "target": target_name,
+            },
+        )
+    append_observability_event(
+        timeline_path,
+        build_observability_event(
+            run_id=run_id,
+            flow=str(flow),
+            stage="target_flow",
+            event="stage_finished",
+            status=status,
+            duration_ms=max(0, int((time.perf_counter() - target_flow_started) * 1000)),
+            exit_code=None if tool_error is None else tool_error.exit_code,
+            error_category=None if tool_error is None else tool_error.category,
+            details={
+                "target": target_name,
+                "result": bool(result),
+            },
+        ),
+    )
     agent.record_artifact_run(
         target_name,
         flow,
         output_dir=output_dir,
         status=status,
-        error=None if result else "flow returned a false result",
+        error=tool_error,
         options=kwargs,
         artifact_snapshot=artifact_snapshot,
+        run_id=run_id,
     )
     return result

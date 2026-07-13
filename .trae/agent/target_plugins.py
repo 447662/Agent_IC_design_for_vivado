@@ -4,16 +4,37 @@ import json
 import pkgutil
 import subprocess
 import sys
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from types import ModuleType
+from typing import TypedDict, cast
 
 from agent_runtime import PluginServiceDenied, PluginServices, TargetHandler
 
 
+TargetDefinition = Mapping[str, object]
 TargetHandlerFactory = Callable[
-    [PluginServices, Mapping[str, Any]],
+    [PluginServices, TargetDefinition],
     TargetHandler,
 ]
+
+
+class ExternalFlowPayload(TypedDict):
+    module: str
+    module_path: str
+    agent_runtime_path: str
+    output_root: str
+    handler_id: str
+    flow: str
+    target: dict[str, object]
+    kwargs: dict[str, str]
+
+
+def _declared_flows(target: TargetDefinition) -> tuple[str, ...]:
+    raw_flows = target.get("flows", ())
+    if not isinstance(raw_flows, list | tuple):
+        raise ValueError("Target flows must be a list or tuple")
+    return tuple(str(flow) for flow in raw_flows)
 
 
 def _external_plugin_factory(
@@ -23,7 +44,7 @@ def _external_plugin_factory(
 ) -> TargetHandlerFactory:
     def create_external_handler(
         services: PluginServices,
-        target: Mapping[str, Any],
+        target: TargetDefinition,
     ) -> TargetHandler:
         target_name = str(target["name"])
         target_payload = {
@@ -38,7 +59,7 @@ def _external_plugin_factory(
                 str(flow),
                 target_payload,
             )
-            for flow in target.get("flows", ())
+            for flow in _declared_flows(target)
         }
         return TargetHandler(
             target_name,
@@ -58,93 +79,28 @@ def _external_flow_runner(
     handler_id: str,
     search_path: Path,
     flow: str,
-    target: Mapping[str, Any],
-) -> Callable[..., Any]:
-    def run_external_flow(**kwargs: Any) -> Any:
+    target: TargetDefinition,
+) -> Callable[..., object]:
+    def run_external_flow(**kwargs: object) -> object:
         module_path = (search_path / Path(*module_name.split("."))).with_suffix(".py")
         agent_runtime_path = Path(__file__).resolve().with_name("agent_runtime.py")
-        output_root = Path(kwargs.get("output_dir", "outputs")).resolve()
-        payload: dict[str, Any] = {
+        raw_output_root = kwargs.get("output_dir", "outputs")
+        if not isinstance(raw_output_root, str | Path):
+            raise TypeError("output_dir must be path-like")
+        output_root = Path(raw_output_root).resolve()
+        payload: ExternalFlowPayload = {
             "module": module_name,
             "module_path": str(module_path),
             "agent_runtime_path": str(agent_runtime_path),
             "output_root": str(output_root),
             "handler_id": handler_id,
             "flow": flow,
-            "target": target,
+            "target": dict(target),
             "kwargs": {key: str(value) for key, value in kwargs.items()},
         }
-        script = (
-            "import builtins, importlib.util, json, os, pathlib, subprocess, sys\n"
-            "payload=json.loads(sys.stdin.read())\n"
-            "allowed_root=pathlib.Path(payload['output_root']).resolve()\n"
-            "allowed_reads={pathlib.Path(payload['agent_runtime_path']).resolve(), pathlib.Path(payload['module_path']).resolve()}\n"
-            "stdlib_roots={pathlib.Path(path).resolve() for path in sys.path if 'site-packages' not in path and 'dist-packages' not in path and path}\n"
-            "def emit_denial(reason, path):\n"
-            "    print(json.dumps({'status':'denied','event':{'event':'plugin_service_denied','service':'external_plugin','reason':reason,'path':str(path)}}))\n"
-            "    raise SystemExit(13)\n"
-            "def deny_command(*args, **kwargs):\n"
-            "    command=args[0] if args else kwargs.get('args', '')\n"
-            "    emit_denial('unauthorized_command', command)\n"
-            "subprocess.run=deny_command\n"
-            "subprocess.Popen=deny_command\n"
-            "subprocess.call=deny_command\n"
-            "subprocess.check_call=deny_command\n"
-            "subprocess.check_output=deny_command\n"
-            "os.system=deny_command\n"
-            "os.popen=deny_command\n"
-            "os.spawnl=deny_command\n"
-            "os.spawnle=deny_command\n"
-            "os.spawnlp=deny_command\n"
-            "os.spawnlpe=deny_command\n"
-            "os.spawnv=deny_command\n"
-            "os.spawnve=deny_command\n"
-            "os.spawnvp=deny_command\n"
-            "os.spawnvpe=deny_command\n"
-            "def is_under(path, root):\n"
-            "    try:\n"
-            "        pathlib.Path(path).resolve().relative_to(root)\n"
-            "        return True\n"
-            "    except ValueError:\n"
-            "        return False\n"
-            "def guard_path(path, mode):\n"
-            "    resolved=pathlib.Path(path).resolve()\n"
-            "    if any(flag in mode for flag in ('w','a','x','+')):\n"
-            "        if not is_under(resolved, allowed_root):\n"
-            "            emit_denial('output_dir_outside_allowed_root', resolved)\n"
-            "    elif resolved not in allowed_reads and not is_under(resolved, allowed_root) and not any(is_under(resolved, root) for root in stdlib_roots):\n"
-            "        emit_denial('read_outside_allowed_root', resolved)\n"
-            "real_open=builtins.open\n"
-            "def guarded_open(file, mode='r', *args, **kwargs):\n"
-            "    if not isinstance(file, int):\n"
-            "        guard_path(file, mode)\n"
-            "    return real_open(file, mode, *args, **kwargs)\n"
-            "builtins.open=guarded_open\n"
-            "real_path_open=pathlib.Path.open\n"
-            "def guarded_path_open(self, mode='r', *args, **kwargs):\n"
-            "    guard_path(self, mode)\n"
-            "    return real_path_open(self, mode, *args, **kwargs)\n"
-            "pathlib.Path.open=guarded_path_open\n"
-            "runtime_spec=importlib.util.spec_from_file_location('agent_runtime', payload['agent_runtime_path'])\n"
-            "if runtime_spec is None or runtime_spec.loader is None:\n"
-            "    raise SystemExit('invalid agent runtime spec')\n"
-            "runtime=importlib.util.module_from_spec(runtime_spec)\n"
-            "sys.modules['agent_runtime']=runtime\n"
-            "runtime_spec.loader.exec_module(runtime)\n"
-            "spec=importlib.util.spec_from_file_location(payload['module'], payload['module_path'])\n"
-            "if spec is None or spec.loader is None:\n"
-            "    raise SystemExit('invalid external plugin spec')\n"
-            "module=importlib.util.module_from_spec(spec)\n"
-            "spec.loader.exec_module(module)\n"
-            "if getattr(module, 'HANDLER_ID', None) != payload['handler_id']:\n"
-            "    raise SystemExit('handler mismatch')\n"
-            "from agent_runtime import PluginServices\n"
-            "handler=module.create_handler(PluginServices(operations={}), payload['target'])\n"
-            "result=handler.run(payload['flow'], **payload['kwargs'])\n"
-            "print(json.dumps({'status':'ok','result':str(result)}))\n"
-        )
+        guard_runner_path = Path(__file__).resolve().with_name("plugin_guard_runner.py")
         result = subprocess.run(
-            [sys.executable, "-B", "-c", script],
+            [sys.executable, "-B", str(guard_runner_path)],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -153,8 +109,11 @@ def _external_flow_runner(
         )
         if result.returncode != 0:
             try:
-                denial_payload: dict[str, Any] = json.loads(
-                    result.stdout.strip().splitlines()[-1]
+                raw_denial: object = json.loads(result.stdout.strip().splitlines()[-1])
+                denial_payload = (
+                    {str(key): value for key, value in raw_denial.items()}
+                    if isinstance(raw_denial, dict)
+                    else {}
                 )
             except (IndexError, json.JSONDecodeError):
                 denial_payload = {}
@@ -162,22 +121,26 @@ def _external_flow_runner(
                 event = denial_payload.get("event", {})
                 if not isinstance(event, Mapping):
                     event = {}
+                denied_path = event.get("path")
                 raise PluginServiceDenied(
                     str(event.get("service", "external_plugin")),
                     reason=str(event.get("reason", "external_plugin_denied")),
-                    path=event.get("path"),
+                    path=None if denied_path is None else str(denied_path),
                 )
             raise RuntimeError(
                 "External target plugin subprocess failed: {}".format(
                     result.stderr.strip()
                 )
             )
-        return json.loads(result.stdout.strip().splitlines()[-1])["result"]
+        response: object = json.loads(result.stdout.strip().splitlines()[-1])
+        if not isinstance(response, dict) or "result" not in response:
+            raise RuntimeError("External target plugin returned an invalid response")
+        return response["result"]
 
     return run_external_flow
 
 
-def _is_target_handler_compatible(handler: Any) -> bool:
+def _is_target_handler_compatible(handler: object) -> bool:
     return (
         isinstance(getattr(handler, "target_name", None), str)
         and isinstance(getattr(handler, "flows", None), dict)
@@ -236,7 +199,7 @@ def load_target_handler_plugins(
 
 def _load_target_handler_plugin_modules(
     registry: TargetHandlerRegistry,
-    modules: tuple[tuple[str, Any], ...],
+    modules: tuple[tuple[str, ModuleType], ...],
 ) -> TargetHandlerRegistry:
     pending_plugins = []
     for module_name, module in modules:
@@ -246,7 +209,9 @@ def _load_target_handler_plugin_modules(
             raise ValueError(
                 "Invalid target handler plugin module: {}".format(module_name)
             )
-        pending_plugins.append((str(handler_id), factory, module_name))
+        pending_plugins.append(
+            (str(handler_id), cast(TargetHandlerFactory, factory), module_name)
+        )
 
     staged_registry = TargetHandlerRegistry()
     staged_registry._factories = dict(registry._factories)
@@ -403,7 +368,7 @@ def discover_target_handler_plugins(
 
 def build_target_handlers(
     services: PluginServices,
-    targets: Mapping[str, Mapping[str, Any]],
+    targets: Mapping[str, TargetDefinition],
     registry: TargetHandlerRegistry,
 ) -> dict[str, TargetHandler]:
     handlers: dict[str, TargetHandler] = {}
@@ -421,7 +386,7 @@ def build_target_handlers(
                     handler_id
                 )
             )
-        declared_flows = set(str(flow) for flow in target.get("flows", ()))
+        declared_flows = set(_declared_flows(target))
         implemented_flows = set(handler.flows)
         if declared_flows != implemented_flows:
             missing = sorted(declared_flows - implemented_flows)
