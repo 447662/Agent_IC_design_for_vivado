@@ -59,6 +59,7 @@ from digital_ic_agent._runtime.agent_design_spec import (
 from digital_ic_agent._runtime.agent_diagnostics import run_agent_diagnostic
 from digital_ic_agent._runtime.agent_entrypoint import run_cli
 from digital_ic_agent._runtime.agent_execution import AgentExecutionEngine, ToolHandler
+from digital_ic_agent._runtime.agent_errors import ConfigurationError
 from digital_ic_agent._runtime.agent_provider import AgentProvider, ConfiguredAgentProvider
 from digital_ic_agent._runtime.agent_reports import render_markdown_document_html as render_markdown_html_document
 from digital_ic_agent._runtime.agent_runtime import CommandRunner, TargetHandler
@@ -263,7 +264,16 @@ class DigitalICAgent:
 
     def load_config(self) -> Any:
         """加载Agent配置文件。"""
-        return load_agent_config(self.config_path)
+        try:
+            return load_agent_config(self.config_path)
+        except (OSError, ValueError) as exc:
+            raise ConfigurationError(
+                "Agent configuration could not be loaded",
+                details={
+                    "config_path": str(self.config_path),
+                    "reason": str(exc),
+                },
+            ) from exc
 
     def normalize_command(self, command: Any) -> Any:
         """将配置中的命令转换为可执行参数列表。"""

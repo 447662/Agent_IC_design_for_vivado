@@ -40,6 +40,32 @@ def test_mcp_client_builds_an_explicit_minimal_child_environment(monkeypatch):
     assert "MCP_SENTINEL_SECRET" not in child_environment
 
 
+def test_mcp_start_passes_the_minimal_environment_to_subprocess(monkeypatch):
+    captured = {}
+
+    class StartedProcess:
+        stdin = None
+        stdout = None
+        stderr = None
+
+        @staticmethod
+        def poll():
+            return 0
+
+    def start_process(*_args, **kwargs):
+        captured.update(kwargs)
+        return StartedProcess()
+
+    monkeypatch.setenv("MCP_SENTINEL_SECRET", "must-not-leak")
+    monkeypatch.setattr(mcp_client.subprocess, "Popen", start_process)
+    monkeypatch.setattr(mcp_client.threading.Thread, "start", lambda _thread: None)
+
+    StdioMCPClient(("server",))._start()
+
+    assert "MCP_SENTINEL_SECRET" not in captured["env"]
+    assert captured["env"]["PATH"] == os.environ["PATH"]
+
+
 def test_mcp_client_rejects_oversized_messages_and_pending_response_flood():
     client = StdioMCPClient(
         ("server",),
@@ -53,6 +79,19 @@ def test_mcp_client_rejects_oversized_messages_and_pending_response_flood():
     client._messages.put('{"jsonrpc":"2.0","id":2,"result":{}}')
     client._messages.put('{"jsonrpc":"2.0","id":3,"result":{}}')
     with pytest.raises(MCPProtocolError, match="pending response limit"):
+        client._wait_for_response(1, "tools/list", time.monotonic() + 1)
+
+
+def test_mcp_stdout_queue_flood_sets_a_protocol_error():
+    class StdoutProcess:
+        stdout = iter(("first\n", "second\n"))
+        stderr = None
+
+    client = StdioMCPClient(("server",), max_queue_messages=1)
+    client._process = StdoutProcess()
+    client._read_stdout()
+
+    with pytest.raises(MCPProtocolError, match="queue message limit"):
         client._wait_for_response(1, "tools/list", time.monotonic() + 1)
 
 
@@ -94,7 +133,7 @@ def test_mcp_readers_handle_missing_process_streams():
     client._read_stdout()
     assert client._messages.get_nowait() is mcp_client._EOF
     client._read_stderr()
-    assert client._stderr_lines == []
+    assert list(client._stderr_lines) == []
 
 
 def test_mcp_stderr_is_bounded_and_sanitized():

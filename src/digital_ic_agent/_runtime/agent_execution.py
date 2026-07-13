@@ -1,5 +1,6 @@
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Mapping, Protocol, cast
 
@@ -8,11 +9,13 @@ from digital_ic_agent._runtime.agent_contracts import (
     AgentRun,
     AgentRunStatus,
     ExecutionPlan,
+    PayloadMapping,
     ToolCall,
     ToolResult,
     ToolResultStatus,
 )
 from digital_ic_agent._runtime.agent_provider import AgentProvider
+from digital_ic_agent._runtime.agent_errors import sanitize_details, sanitize_text
 from digital_ic_agent._runtime.mcp_client import MCPClient, MCPError
 
 
@@ -72,6 +75,18 @@ class AgentExecutionEngine:
         return None
 
     @staticmethod
+    def _sanitize_result(result: ToolResult) -> ToolResult:
+        return replace(
+            result,
+            output=sanitize_text(result.output),
+            error=sanitize_text(result.error) if result.error is not None else None,
+            metadata=cast(
+                PayloadMapping,
+                sanitize_details(dict(result.metadata)),
+            ),
+        )
+
+    @staticmethod
     def _resolve_artifacts(
         request: AgentRequest,
         result: ToolResult,
@@ -122,8 +137,11 @@ class AgentExecutionEngine:
                         tool_name=call.tool_name,
                         status=ToolResultStatus.FAILED,
                         returncode=1,
-                        error="Tool execution raised: {}".format(exc),
+                        error="Tool execution raised: {}".format(
+                            sanitize_text(str(exc))
+                        ),
                     )
+            result = self._sanitize_result(result)
             results.append(result)
 
             identity_error = self._validate_identity(call, result)
@@ -188,10 +206,18 @@ class MCPToolExecutor:
                 tool_name=call.tool_name,
                 status=ToolResultStatus.FAILED,
                 returncode=1,
-                error=str(exc),
+                error=sanitize_text(str(exc)),
             )
 
         is_error = bool(payload.get("isError", False))
+        sanitized_arguments = cast(
+            PayloadMapping,
+            sanitize_details(dict(call.arguments)),
+        )
+        sanitized_payload = cast(
+            PayloadMapping,
+            sanitize_details(dict(payload)),
+        )
         evidence_dir = request.output_dir / "agent-evidence"
         evidence_dir.mkdir(parents=True, exist_ok=True)
         evidence_name = re.sub(
@@ -207,9 +233,9 @@ class MCPToolExecutor:
             "tool_call": {
                 "tool_call_id": call.tool_call_id,
                 "tool_name": call.tool_name,
-                "arguments": dict(call.arguments),
+                "arguments": sanitized_arguments,
             },
-            "result": payload,
+            "result": sanitized_payload,
         }
         evidence_path.write_text(
             json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True),
@@ -225,7 +251,7 @@ class MCPToolExecutor:
             ),
             returncode=1 if is_error else 0,
             artifacts=(evidence_path,),
-            output=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            output=json.dumps(sanitized_payload, ensure_ascii=False, sort_keys=True),
             error="MCP tool returned isError=true" if is_error else None,
-            metadata={"mcp_result": payload},
+            metadata={"mcp_result": sanitized_payload},
         )

@@ -120,4 +120,7 @@ def test_agent_eval_report_fails_when_an_expected_tool_is_corrupted(tmp_path):
     )
     failed = next(case for case in report["cases"] if case["id"] == "design_doc_uses_document_generator")
     assert failed["status"] == "FAIL"
-    assert failed["observed"]["tools"] == ["render_target_design_spec"]
+    assert failed["observed"]["tools"] == [
+        "render_target_design_spec",
+        "record_artifact_run",
+    ]

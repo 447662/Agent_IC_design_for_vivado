@@ -1,12 +1,16 @@
 import json
+import os
 import queue
 import subprocess
 import threading
 import time
 from collections.abc import Mapping, Sequence
+from collections import deque
 from contextlib import suppress
 from types import TracebackType
 from typing import Any, Protocol
+
+from digital_ic_agent._runtime.agent_errors import sanitize_text
 
 
 class MCPError(RuntimeError):
@@ -44,6 +48,27 @@ class MCPClient(Protocol):
 
 
 _EOF = object()
+DEFAULT_ENVIRONMENT_ALLOWLIST = (
+    "APPDATA",
+    "COMSPEC",
+    "HOME",
+    "LOCALAPPDATA",
+    "PATH",
+    "PATHEXT",
+    "PROGRAMDATA",
+    "SYSTEMDRIVE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "UV_CACHE_DIR",
+    "UV_LINK_MODE",
+    "WINDIR",
+)
+DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024
+DEFAULT_MAX_QUEUE_MESSAGES = 256
+DEFAULT_MAX_STDERR_LINES = 100
+DEFAULT_MAX_PENDING_RESPONSES = 128
 
 
 class StdioMCPClient:
@@ -53,17 +78,34 @@ class StdioMCPClient:
         *,
         request_timeout: float = 30.0,
         protocol_version: str = "2024-11-05",
+        environment_allowlist: Sequence[str] = DEFAULT_ENVIRONMENT_ALLOWLIST,
+        max_message_bytes: int = DEFAULT_MAX_MESSAGE_BYTES,
+        max_queue_messages: int = DEFAULT_MAX_QUEUE_MESSAGES,
+        max_stderr_lines: int = DEFAULT_MAX_STDERR_LINES,
+        max_pending_responses: int = DEFAULT_MAX_PENDING_RESPONSES,
     ) -> None:
         if not command:
             raise ValueError("MCP command must not be empty")
         if request_timeout <= 0:
             raise ValueError("request_timeout must be positive")
+        for name, value in (
+            ("max_message_bytes", max_message_bytes),
+            ("max_queue_messages", max_queue_messages),
+            ("max_stderr_lines", max_stderr_lines),
+            ("max_pending_responses", max_pending_responses),
+        ):
+            if value <= 0:
+                raise ValueError("{} must be positive".format(name))
         self.command = tuple(str(part) for part in command)
         self.request_timeout = float(request_timeout)
         self.protocol_version = protocol_version
+        self.environment_allowlist = tuple(str(name) for name in environment_allowlist)
+        self.max_message_bytes = int(max_message_bytes)
+        self.max_pending_responses = int(max_pending_responses)
         self._process: subprocess.Popen[str] | None = None
-        self._messages: queue.Queue[object] = queue.Queue()
-        self._stderr_lines: list[str] = []
+        self._messages: queue.Queue[object] = queue.Queue(maxsize=max_queue_messages)
+        self._stderr_lines: deque[str] = deque(maxlen=max_stderr_lines)
+        self._reader_error: MCPProtocolError | None = None
         self._next_id = 1
         self._initialized = False
         self._pending_responses: dict[int, Mapping[str, Any]] = {}
@@ -93,30 +135,52 @@ class StdioMCPClient:
             encoding="utf-8",
             errors="replace",
             bufsize=1,
+            env=self._build_child_environment(),
         )
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
 
+    def _build_child_environment(self) -> dict[str, str]:
+        allowed = {name.casefold() for name in self.environment_allowlist}
+        return {
+            key: value
+            for key, value in os.environ.items()
+            if key.casefold() in allowed
+        }
+
+    def _set_reader_error(self, message: str) -> None:
+        if self._reader_error is None:
+            self._reader_error = MCPProtocolError(message)
+
     def _read_stdout(self) -> None:
         process = self._process
         if process is None or process.stdout is None:
-            self._messages.put(_EOF)
+            with suppress(queue.Full):
+                self._messages.put_nowait(_EOF)
             return
         for line in process.stdout:
-            self._messages.put(line)
-        self._messages.put(_EOF)
+            if len(line.encode("utf-8")) > self.max_message_bytes:
+                self._set_reader_error("MCP stdout exceeded message size limit")
+                break
+            try:
+                self._messages.put_nowait(line)
+            except queue.Full:
+                self._set_reader_error("MCP stdout exceeded queue message limit")
+                break
+        with suppress(queue.Full):
+            self._messages.put_nowait(_EOF)
 
     def _read_stderr(self) -> None:
         process = self._process
         if process is None or process.stderr is None:
             return
         for line in process.stderr:
-            self._stderr_lines.append(line.rstrip())
+            self._stderr_lines.append(sanitize_text(line.rstrip()))
 
     def _process_error(self) -> MCPProcessError:
         process = self._process
         returncode = None if process is None else process.poll()
-        detail = "\n".join(self._stderr_lines[-10:]).strip()
+        detail = "\n".join(list(self._stderr_lines)[-10:]).strip()
         message = "MCP process exited"
         if returncode is not None:
             message += " with code {}".format(returncode)
@@ -142,32 +206,40 @@ class StdioMCPClient:
         method: str,
         params: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        with self._request_lock:
-            request_id = self._next_id
-            self._next_id += 1
-            self._write(
-                {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "method": method,
-                    "params": dict(params),
-                }
-            )
-            deadline = time.monotonic() + self.request_timeout
-            message = self._wait_for_response(request_id, method, deadline)
-        if "error" in message:
-            error = message["error"]
-            if isinstance(error, dict):
-                detail = error.get("message", error)
-            else:
-                detail = error
-            raise MCPProtocolError(
-                "MCP request {} id={} failed: {}".format(method, request_id, detail)
-            )
-        result = message.get("result")
-        if not isinstance(result, dict):
-            raise MCPProtocolError("MCP response result must be an object")
-        return result
+        try:
+            with self._request_lock:
+                request_id = self._next_id
+                self._next_id += 1
+                self._write(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "method": method,
+                        "params": dict(params),
+                    }
+                )
+                deadline = time.monotonic() + self.request_timeout
+                message = self._wait_for_response(request_id, method, deadline)
+            if "error" in message:
+                error = message["error"]
+                if isinstance(error, dict):
+                    detail = error.get("message", error)
+                else:
+                    detail = error
+                raise MCPProtocolError(
+                    "MCP request {} id={} failed: {}".format(
+                        method,
+                        request_id,
+                        sanitize_text(str(detail)),
+                    )
+                )
+            result = message.get("result")
+            if not isinstance(result, dict):
+                raise MCPProtocolError("MCP response result must be an object")
+            return result
+        except MCPError:
+            self.close()
+            raise
 
     def _wait_for_response(
         self,
@@ -179,6 +251,8 @@ class StdioMCPClient:
         if pending is not None:
             return pending
         while True:
+            if self._reader_error is not None:
+                raise self._reader_error
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise MCPTimeoutError(
@@ -195,6 +269,13 @@ class StdioMCPClient:
                 ) from exc
             if raw_message is _EOF:
                 raise self._process_error()
+            if len(str(raw_message).encode("utf-8")) > self.max_message_bytes:
+                raise MCPProtocolError(
+                    "MCP {} id={} response exceeded message size limit".format(
+                        method,
+                        request_id,
+                    )
+                )
             try:
                 decoded = json.loads(str(raw_message))
             except json.JSONDecodeError as exc:
@@ -221,6 +302,16 @@ class StdioMCPClient:
                 )
             response = dict(decoded)
             if response_id != request_id:
+                if (
+                    response_id not in self._pending_responses
+                    and len(self._pending_responses) >= self.max_pending_responses
+                ):
+                    raise MCPProtocolError(
+                        "MCP {} id={} exceeded pending response limit".format(
+                            method,
+                            request_id,
+                        )
+                    )
                 self._pending_responses[response_id] = response
                 continue
             return response
