@@ -22,6 +22,9 @@ docs/testing/p0_1_synthpilot_follow_up.md
    unions, so invalid status values are visible in the Python type surface.
 3. As a reviewer, I want existing artifact-manifest behavior tests to remain
    green while typing is introduced incrementally.
+4. As a manifest consumer, I want missing artifacts to omit fingerprint fields
+   rather than receive placeholder hashes, so `MISSING` entries remain distinct
+   from observed files.
 
 ## Task Report
 
@@ -86,6 +89,143 @@ All checks passed!
 Success: no issues found in 60 source files
 ```
 
+### ArtifactEntry Required/Optional Slice Evidence
+
+The next P1-2 slice fixed a contract mismatch in `ArtifactEntry`: runtime
+entries always include artifact identity/status fields, while fingerprint fields
+exist only when the file is present. The previous `TypedDict` inheritance made
+fingerprint fields required and runtime identity fields optional.
+
+RED command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_2_artifact_manifest_typed_contract.py --basetemp .tmp-pytest-p1-2-artifact-entry-red -p no:cacheprovider -q
+```
+
+RED result:
+
+```text
+1 failed, 1 passed in 0.15s
+```
+
+The intended failure showed `ArtifactEntry.__required_keys__` did not contain
+`id`, `path`, `declared_status`, `status`, `exists`, `observed_at`, or
+`produced_by_run_id`.
+
+GREEN command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_2_artifact_manifest_typed_contract.py --basetemp .tmp-pytest-p1-2-artifact-entry-green2 -p no:cacheprovider -q
+```
+
+GREEN result:
+
+```text
+2 passed in 0.10s
+```
+
+Regression and quality commands:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_3_error_model.py tests/test_p1_3_async_fifo_typed_contracts.py tests/test_agent.py -k artifact_manifest --basetemp .tmp-pytest-p1-2-artifact-entry-regression -p no:cacheprovider -q
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen ruff check .trae/agent/artifact_manifest.py tests/test_p1_2_artifact_manifest_typed_contract.py
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen mypy
+```
+
+Regression and quality results:
+
+```text
+8 passed, 208 deselected in 4.65s
+All checks passed!
+Success: no issues found in 61 source files
+```
+
+### Artifact Manifest Pure Function Signature Slice Evidence
+
+The follow-on P1-2 slice tightened low-risk pure-function boundaries in
+`artifact_manifest.py` without changing runtime manifest behavior:
+
+- `snapshot_project_inputs(project_dir: str | Path) -> dict[str, ArtifactFingerprint]`
+- `build_replay_command(...) -> list[str]`
+- `extract_tool_version(...) -> str | None`
+- `json_digest(...) -> str`
+- `normalize_artifact_path(...) -> Path`
+- `build_run_input_digest(...) -> str`
+
+RED command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_2_artifact_manifest_typed_contract.py --basetemp .tmp-pytest-p1-2-artifact-pure-fns-red -p no:cacheprovider -q
+```
+
+RED result:
+
+```text
+1 failed, 1 passed in 0.14s
+```
+
+The intended failure showed `snapshot_project_inputs` still accepted
+`typing.Any` for `project_dir`, proving the pure-function boundary was not yet
+typed.
+
+GREEN and quality commands:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_2_artifact_manifest_typed_contract.py --basetemp .tmp-pytest-p1-2-artifact-pure-fns-green2 -p no:cacheprovider -q
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen ruff check .trae/agent/artifact_manifest.py tests/test_p1_2_artifact_manifest_typed_contract.py
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen mypy
+```
+
+GREEN and quality results:
+
+```text
+2 passed in 2.85s
+All checks passed!
+Success: no issues found in 61 source files
+```
+
+### Artifact Manifest Builder/Snapshot Signature Slice Evidence
+
+The next P1-2 slice tightened artifact builder, extra artifact normalization,
+latest snapshot extraction, and atomic JSON write boundaries:
+
+- `build_artifact_entry(...) -> ArtifactEntry`
+- `normalize_extra_artifact(...) -> ExtraArtifactEntry`
+- `collect_artifacts(target_info: TargetArtifactInfo, ...) -> list[ArtifactEntry]`
+- `_latest_artifact_snapshot(manifest: RuntimeManifest) -> dict[str, ArtifactSnapshotEntry]`
+- `atomic_write_json(path: str | Path, value: object) -> None`
+
+RED command:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_2_artifact_manifest_typed_contract.py --basetemp .tmp-pytest-p1-2-artifact-builders-red -p no:cacheprovider -q
+```
+
+RED result:
+
+```text
+1 failed, 1 passed in 0.16s
+```
+
+The intended failure showed `build_artifact_entry` still accepted `typing.Any`
+for `project_dir`, proving the builder boundary was not yet typed.
+
+GREEN and quality commands:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_2_artifact_manifest_typed_contract.py --basetemp .tmp-pytest-p1-2-artifact-builders-green2 -p no:cacheprovider -q
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen ruff check .trae/agent/artifact_manifest.py tests/test_p1_2_artifact_manifest_typed_contract.py
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen mypy
+```
+
+GREEN and quality results:
+
+```text
+2 passed in 3.63s
+All checks passed!
+Success: no issues found in 61 source files
+```
+
 ## Test Specification
 
 | # | What is guaranteed | Test file or command | Test type | Result | Evidence |
@@ -96,6 +236,12 @@ Success: no issues found in 60 source files
 | 4 | Runtime manifests expose typed top-level fields | `tests/test_p1_2_artifact_manifest_typed_contract.py` | structure/unit | PASS | `RuntimeManifest.__annotations__` asserted |
 | 5 | Existing artifact manifest freshness and failure behavior remains compatible | selected `tests/test_agent.py` manifest tests | regression | PASS | `10 passed in 0.91s` |
 | 6 | Artifact manifest stays covered by Ruff and Mypy | quality command above | quality/typecheck | PASS | Ruff PASS, Mypy PASS |
+| 7 | Artifact entry identity/status fields are required while fingerprint fields are optional | `tests/test_p1_2_artifact_manifest_typed_contract.py` | structure/unit | PASS | `2 passed in 0.10s` |
+| 8 | Missing artifact entries do not emit placeholder fingerprint fields | `tests/test_p1_2_artifact_manifest_typed_contract.py::test_missing_artifact_entry_keeps_fingerprint_fields_absent` | behavior/unit | PASS | `2 passed in 0.10s` |
+| 9 | Artifact manifest pure helpers expose concrete path, digest, replay, and version return types | `tests/test_p1_2_artifact_manifest_typed_contract.py` | structure/unit | PASS | `2 passed in 2.85s` |
+| 10 | Tightened pure-function signatures remain accepted by Ruff and project Mypy scope | quality commands above | quality/typecheck | PASS | Ruff PASS, Mypy PASS |
+| 11 | Artifact builder, extra artifact, snapshot, and atomic write helpers expose concrete contracts | `tests/test_p1_2_artifact_manifest_typed_contract.py` | structure/unit | PASS | `2 passed in 3.63s` |
+| 12 | Builder/snapshot signature tightening remains accepted by Ruff and project Mypy scope | quality commands above | quality/typecheck | PASS | Ruff PASS, Mypy PASS |
 
 ## Known Gaps
 

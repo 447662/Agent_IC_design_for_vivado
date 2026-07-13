@@ -81,6 +81,37 @@ Result:
 600
 ```
 
+After adding P1-2 legacy target compatibility facades, the core facade was
+recompacted by moving legacy Sync FIFO / Arbiter method installation into
+`agent_legacy_target_facades.install_legacy_target_facades()`.
+
+Command:
+
+```powershell
+(Get-Content -LiteralPath .trae/agent/agent.py).Count
+```
+
+Result:
+
+```text
+595
+```
+
+Latest size reconfirmation after P0-3 runner and async FIFO UVM artifact
+contract work:
+
+```powershell
+(Get-Content -LiteralPath .trae/agent/agent.py).Count; Select-String -Path .trae/agent/agent.py -Pattern '^class DigitalICAgent'
+```
+
+Result:
+
+```text
+598
+
+.trae\agent\agent.py:157:class DigitalICAgent:
+```
+
 ### Focused Regression
 
 Command:
@@ -99,6 +130,32 @@ Success: no issues found in 60 source files
 
 `py_compile` completed with exit code 0.
 
+Latest focused reconfirmation after the legacy facade installation move:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_1_agent_bootstrap_split.py tests/test_p1_1_agent_document_facades_split.py tests/test_p1_1_agent_skill_execution_split.py tests/test_p1_1_agent_runtime_facades_split.py tests/test_p1_1_agent_capabilities_split.py tests/test_p1_1_agent_workflow_split.py tests/test_p1_1_agent_skill_listing.py tests/test_p1_1_agent_target_flow.py tests/test_p1_1_agent_waveform_analysis.py tests/test_p1_1_agent_sim_smoke.py tests/test_p1_1_agent_design_spec.py tests/test_p1_1_agent_diagnostics.py tests/test_p1_1_cli_dispatch.py tests/test_p1_1_package_layout.py tests/test_p1_1_report_rendering.py tests/test_quality_config.py tests/test_repository_reproducibility.py tests/test_agent.py::test_runtime_components_live_in_dedicated_module tests/test_agent.py::test_cli_helpers_live_in_dedicated_module tests/test_agent.py::test_p5_9_adapter_modules_own_extracted_agent_methods tests/test_architecture_runtime.py::test_default_document_workflow_executes_loaded_skill_without_external_tools tests/test_agent.py::test_p5_2_run_sync_fifo_vivado_sim_creates_project_and_can_skip_gui tests/test_agent.py::test_p5_3_run_round_robin_arbiter_vivado_sim_creates_project_and_can_skip_gui --basetemp .tmp-pytest-p1-1-core-595-reconfirm -p no:cacheprovider -q; uv run --offline --frozen ruff check .trae/agent/agent.py .trae/agent/agent_legacy_target_facades.py tests/test_p1_1_agent_target_flow.py tests/test_p1_1_*.py tests/test_quality_config.py tests/test_repository_reproducibility.py
+```
+
+Result:
+
+```text
+45 passed in 2.72s
+All checks passed!
+```
+
+Latest focused reconfirmation on 2026-07-12 after P0-3 runner and async FIFO
+UVM artifact contract work:
+
+```powershell
+$env:UV_CACHE_DIR='F:\My_code\Agent_design_for_vivado\.tmp\uv-cache'; uv run --offline --frozen pytest tests/test_p1_1_agent_bootstrap_split.py tests/test_p1_1_agent_document_facades_split.py tests/test_p1_1_agent_skill_execution_split.py tests/test_p1_1_agent_runtime_facades_split.py tests/test_p1_1_agent_capabilities_split.py tests/test_p1_1_agent_workflow_split.py tests/test_p1_1_agent_skill_listing.py tests/test_p1_1_agent_target_flow.py tests/test_p1_1_agent_waveform_analysis.py tests/test_p1_1_agent_sim_smoke.py tests/test_p1_1_agent_design_spec.py tests/test_p1_1_agent_diagnostics.py tests/test_p1_1_cli_dispatch.py tests/test_p1_1_package_layout.py tests/test_p1_1_report_rendering.py tests/test_quality_config.py tests/test_repository_reproducibility.py tests/test_agent.py::test_runtime_components_live_in_dedicated_module tests/test_agent.py::test_cli_helpers_live_in_dedicated_module tests/test_agent.py::test_p5_9_adapter_modules_own_extracted_agent_methods tests/test_architecture_runtime.py::test_default_document_workflow_executes_loaded_skill_without_external_tools tests/test_agent.py::test_p5_2_run_sync_fifo_vivado_sim_creates_project_and_can_skip_gui tests/test_agent.py::test_p5_3_run_round_robin_arbiter_vivado_sim_creates_project_and_can_skip_gui --basetemp .tmp-pytest-p1-1-current-doc -p no:cacheprovider -q
+```
+
+Result:
+
+```text
+45 passed in 3.39s
+```
+
 ## Test Specification
 
 | # | What is guaranteed | Test file or command | Test type | Result | Evidence |
@@ -109,8 +166,8 @@ Success: no issues found in 60 source files
 | 4 | Capability checks delegate through `agent_capabilities` module alias | `tests/test_p1_1_agent_capabilities_split.py` | structure/unit | PASS | `6 passed in 0.25s` |
 | 5 | Default workflow delegates through `agent_workflow` module alias | `tests/test_p1_1_agent_workflow_split.py` | structure/unit | PASS | `6 passed in 0.25s` |
 | 6 | Skill listing methods delegate through `agent_skill_listing` module alias | `tests/test_p1_1_agent_skill_listing.py` | structure/unit | PASS | `6 passed in 0.25s` |
-| 7 | Core `agent.py` stays within the P1-1 size threshold | `(Get-Content -LiteralPath .trae/agent/agent.py).Count` | static check | PASS | `600` |
-| 8 | P1-1 focused regression remains green after compaction | focused pytest command above | regression | PASS | `41 passed in 2.54s` |
+| 7 | Core `agent.py` stays within the P1-1 size threshold | `(Get-Content -LiteralPath .trae/agent/agent.py).Count` | static check | PASS | `598` |
+| 8 | P1-1 focused regression remains green after compaction | focused pytest command above | regression | PASS | `45 passed in 3.39s` |
 | 9 | Ruff, Mypy, and Python compile checks remain green | quality command above | quality/typecheck | PASS | Ruff PASS, Mypy PASS, `py_compile` exit code 0 |
 
 ## Known Gaps
