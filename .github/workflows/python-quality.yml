@@ -14,11 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -27,6 +29,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          version: "0.11.26"
 
       - name: Install frozen development dependencies
         run: uv sync --frozen --group dev
@@ -86,15 +90,21 @@ jobs:
           --minimum-line-rate 0.90
           --minimum-branch-rate 0.80
           --readme README.md
-          --output-dir docs/generated
-          --write-readme
+          --output-dir .tmp/generated-quality
+          --source ci
+          --commit-sha "${{ github.sha }}"
+          --run-id "${{ github.run_id }}"
+          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Enforce risk-oriented module coverage
+        run: uv run --frozen python scripts/check_risk_coverage.py --coverage-xml coverage.xml
 
       - name: Generate agent evaluation report
         if: ${{ !cancelled() }}
         run: >-
           uv run --frozen python scripts/generate_agent_eval_report.py
           --eval-cases tests/fixtures/agent_eval_cases.json
-          --output-dir docs/generated
+          --output-dir .tmp/generated-quality
 
       - name: Generate test module size report
         if: ${{ !cancelled() }}
@@ -102,18 +112,19 @@ jobs:
           uv run --frozen python scripts/generate_test_module_report.py
           --tests-dir tests
           --line-limit 1000
-          --output-dir docs/generated
+          --output-dir .tmp/generated-quality
 
       - name: Verify generated quality reports
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          test -s docs/generated/quality_summary.md
-          test -s docs/generated/capability_matrix.md
-          test -s docs/generated/agent_eval_report.json
-          test -s docs/generated/agent_eval_report.md
-          test -s docs/generated/test_module_report.json
-          test -s docs/generated/test_module_report.md
+          test -s .tmp/generated-quality/quality_summary.md
+          test -s .tmp/generated-quality/capability_matrix.md
+          test -s .tmp/generated-quality/quality_provenance.json
+          test -s .tmp/generated-quality/agent_eval_report.json
+          test -s .tmp/generated-quality/agent_eval_report.md
+          test -s .tmp/generated-quality/test_module_report.json
+          test -s .tmp/generated-quality/test_module_report.md
           test -s coverage.xml
           test -s .tmp/pytest-results.xml
           uv run --frozen python scripts/check_release_tree.py --phase generated
@@ -124,7 +135,7 @@ jobs:
         with:
           name: digital-ic-agent-generated-quality-${{ matrix.python-version }}
           path: |
-            docs/generated
+            .tmp/generated-quality
             coverage.xml
             .tmp/pytest-results.xml
           if-no-files-found: error

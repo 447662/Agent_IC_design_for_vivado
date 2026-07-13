@@ -136,23 +136,24 @@ def test_github_actions_runs_all_python_quality_gates():
     assert "--eval-cases tests/fixtures/agent_eval_cases.json" in workflow
     assert "scripts/generate_test_module_report.py" in workflow
     assert "--line-limit 1000" in workflow
-    assert "--output-dir docs/generated" in workflow
-    assert "--write-readme" in workflow
+    assert "--output-dir .tmp/generated-quality" in workflow
+    assert "--write-readme" not in workflow
     assert "Verify generated quality reports" in workflow
     for generated_path in (
-        "docs/generated/quality_summary.md",
-        "docs/generated/capability_matrix.md",
-        "docs/generated/agent_eval_report.json",
-        "docs/generated/agent_eval_report.md",
-        "docs/generated/test_module_report.json",
-        "docs/generated/test_module_report.md",
+        ".tmp/generated-quality/quality_summary.md",
+        ".tmp/generated-quality/capability_matrix.md",
+        ".tmp/generated-quality/quality_provenance.json",
+        ".tmp/generated-quality/agent_eval_report.json",
+        ".tmp/generated-quality/agent_eval_report.md",
+        ".tmp/generated-quality/test_module_report.json",
+        ".tmp/generated-quality/test_module_report.md",
         "coverage.xml",
         ".tmp/pytest-results.xml",
     ):
         assert f"test -s {generated_path}" in workflow
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow
     assert "digital-ic-agent-generated-quality-${{ matrix.python-version }}" in workflow
-    assert "docs/generated" in workflow
+    assert ".tmp/generated-quality" in workflow
     assert "coverage.xml" in workflow
     assert ".tmp/pytest-results.xml" in workflow
     assert "if-no-files-found: error" in workflow

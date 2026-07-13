@@ -300,11 +300,26 @@ def test_cli_dispatch_covers_operational_command_branches(tmp_path):
             calls.append("smoke-loop")
             return True
 
+        def create_target_scaffold(self, *_args, **_kwargs):
+            calls.append("create-target")
+            return {
+                "project_dir": tmp_path / "target",
+                "config_path": tmp_path / "target" / "target.json",
+                "todo_path": tmp_path / "target" / "TODO.md",
+            }
+
     agent = Agent()
     for option in ("--list-skills", "--list-targets", "--diagnostic", "--smoke-loop"):
         assert dispatch_cli_command(parse_args([option]), agent) == 0
+    assert dispatch_cli_command(parse_args(["--create-target", "demo"]), agent) == 0
 
-    assert calls == ["list-skills", "list-targets", "diagnostic", "smoke-loop"]
+    assert calls == [
+        "list-skills",
+        "list-targets",
+        "diagnostic",
+        "smoke-loop",
+        "create-target",
+    ]
 
 
 def test_async_fifo_flows_cover_regression_gui_and_uvm_launch_failures(tmp_path):
@@ -337,8 +352,9 @@ def test_async_fifo_flows_cover_regression_gui_and_uvm_launch_failures(tmp_path)
     assert regression.opened == [tmp_path / "async-fifo"]
 
     class UvmSmokeFlow(AsyncFifoFlowMixin):
-        def __init__(self, command):
+        def __init__(self, command, returncode=1):
             self.command = command
+            self.returncode = returncode
 
         def generate_rtl_project(self, _target, output_dir, **_kwargs):
             project = Path(output_dir) / "async-fifo"
@@ -352,10 +368,16 @@ def test_async_fifo_flows_cover_regression_gui_and_uvm_launch_failures(tmp_path)
             return self.command
 
         def run_vivado_batch(self, *_args, **_kwargs):
-            return subprocess.CompletedProcess([], 1, stdout="", stderr="uvm failed")
+            return subprocess.CompletedProcess(
+                [],
+                self.returncode,
+                stdout="",
+                stderr="uvm failed",
+            )
 
         def write_async_fifo_uvm_smoke_report(self, *_args, **_kwargs):
             return {"passed": False}
 
     assert UvmSmokeFlow(None).run_async_fifo_uvm_smoke(tmp_path / "missing") is False
     assert UvmSmokeFlow("vivado").run_async_fifo_uvm_smoke(tmp_path / "failed") is False
+    assert UvmSmokeFlow("vivado", 0).run_async_fifo_uvm_smoke(tmp_path / "markers") is False

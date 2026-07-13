@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 from pathlib import Path
+import re
+import subprocess
 import sys
 from typing import TypedDict
 import xml.etree.ElementTree as ET
@@ -40,6 +43,69 @@ class CapabilitySummary(TypedDict):
     captured_at: str
     source_status: str
     status: str
+
+
+class QualityProvenance(TypedDict):
+    source: str
+    commit_sha: str
+    generated_at: str
+    run_id: str
+    run_url: str
+
+
+def validate_provenance(
+    *,
+    source: str,
+    commit_sha: str,
+    generated_at: str,
+    run_id: str,
+    run_url: str,
+) -> QualityProvenance:
+    if source not in {"local", "ci"}:
+        raise ValueError("provenance source must be local or ci")
+    if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:
+        raise ValueError("provenance commit_sha must be a 40-character lowercase Git SHA")
+    if not generated_at.endswith("Z"):
+        raise ValueError("provenance generated_at must be an ISO-8601 UTC timestamp")
+    try:
+        parsed_at = datetime.fromisoformat(generated_at.removesuffix("Z") + "+00:00")
+    except ValueError as exc:
+        raise ValueError("provenance generated_at must be an ISO-8601 UTC timestamp") from exc
+    if parsed_at.tzinfo is None or parsed_at.utcoffset() != UTC.utcoffset(parsed_at):
+        raise ValueError("provenance generated_at must be an ISO-8601 UTC timestamp")
+    if source == "ci":
+        if not run_id or not run_url:
+            raise ValueError("CI provenance requires run_id and run_url")
+        expected_suffix = "/actions/runs/{}".format(run_id)
+        if not run_url.startswith("https://github.com/") or expected_suffix not in run_url:
+            raise ValueError("CI provenance run_url must identify its GitHub Actions run_id")
+    elif run_id or run_url:
+        raise ValueError("local provenance must not claim a CI run_id or run_url")
+    return {
+        "source": source,
+        "commit_sha": commit_sha,
+        "generated_at": generated_at,
+        "run_id": run_id,
+        "run_url": run_url,
+    }
+
+
+def _current_commit_sha(root: Path = ROOT) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "git rev-parse HEAD failed")
+    return result.stdout.strip().lower()
+
+
+def _current_utc_timestamp() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _percent(value: float) -> str:
@@ -231,8 +297,9 @@ def build_quality_summary(
     coverage: dict[str, float],
     routing_cases: int,
     eval_case_summary: dict[str, int] | None = None,
-    data_scope: str = "CI full quality artifact",
+    data_scope: str = "local quality evidence",
     capability_summary: CapabilitySummary | None = None,
+    provenance: QualityProvenance | None = None,
 ) -> str:
     eval_case_total = sum((eval_case_summary or {}).values())
     lines = [
@@ -252,6 +319,12 @@ def build_quality_summary(
             f"| Routing evaluation cases | {routing_cases} |",
             f"| Additional agent evaluation cases | {eval_case_total} |",
     ]
+    if provenance is not None:
+        provenance_rows = [
+            f"| {field} | {provenance[field]} |"
+            for field in ("source", "commit_sha", "generated_at", "run_id", "run_url")
+        ]
+        lines[7:7] = provenance_rows
     if capability_summary is not None:
         lines.append(
             "| Capability {name} | {status} ({requirement}; {failure_impact}; "
@@ -345,10 +418,15 @@ def write_outputs(
     output_dir: Path,
     quality_summary: str,
     capability_matrix: str,
+    provenance: QualityProvenance,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "quality_summary.md").write_text(quality_summary, encoding="utf-8")
     (output_dir / "capability_matrix.md").write_text(capability_matrix, encoding="utf-8")
+    (output_dir / "quality_provenance.json").write_text(
+        json.dumps(provenance, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def clean_stale_readme_stats(readme: str) -> str:
@@ -371,7 +449,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CAPABILITY_EVIDENCE,
     )
     parser.add_argument("--agent-config", type=Path, default=DEFAULT_AGENT_CONFIG)
-    parser.add_argument("--data-scope", default="CI full quality artifact")
+    parser.add_argument("--data-scope", default="local quality evidence")
+    parser.add_argument("--source", choices=("local", "ci"), default="local")
+    parser.add_argument("--commit-sha")
+    parser.add_argument("--generated-at")
+    parser.add_argument("--run-id", default="")
+    parser.add_argument("--run-url", default="")
     parser.add_argument("--minimum-line-rate", type=float, default=0.90)
     parser.add_argument("--minimum-branch-rate", type=float, default=0.80)
     parser.add_argument("--write-readme", action="store_true")
@@ -389,6 +472,13 @@ def main() -> int:
         args.capability_evidence,
         args.agent_config,
     )
+    provenance = validate_provenance(
+        source=args.source,
+        commit_sha=(args.commit_sha or _current_commit_sha()),
+        generated_at=(args.generated_at or _current_utc_timestamp()),
+        run_id=args.run_id,
+        run_url=args.run_url,
+    )
     coverage_violations = coverage_gate_violations(
         coverage,
         minimum_line_rate=args.minimum_line_rate,
@@ -401,6 +491,7 @@ def main() -> int:
         eval_case_summary,
         args.data_scope,
         capability_summary,
+        provenance,
     )
     capability_matrix = build_capability_matrix(
         routing_cases,
@@ -408,7 +499,7 @@ def main() -> int:
         capability_summary,
     )
 
-    write_outputs(args.output_dir, quality_summary, capability_matrix)
+    write_outputs(args.output_dir, quality_summary, capability_matrix, provenance)
 
     if args.write_readme:
         readme = clean_stale_readme_stats(args.readme.read_text(encoding="utf-8"))

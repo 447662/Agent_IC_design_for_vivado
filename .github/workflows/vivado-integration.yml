@@ -41,6 +41,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          version: "0.11.26"
 
       - name: Install frozen development dependencies
         run: uv sync --frozen --group dev

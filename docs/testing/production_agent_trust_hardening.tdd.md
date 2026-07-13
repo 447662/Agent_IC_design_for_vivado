@@ -39,7 +39,28 @@ GREEN commands:
 
 ## P1 Evidence
 
-Pending.
+| Work item | RED | GREEN | Guarantee |
+|---|---|---|---|
+| Quality provenance | Missing validation API/JSON output; workflow still labeled local generation as a CI full artifact | P1 contract set: 50 passed | Markdown and JSON record `source`, `commit_sha`, `generated_at`, `run_id`, and `run_url`; CI identity is mandatory and local evidence cannot claim a CI run |
+| Risk-oriented coverage | No per-module gate; six baseline branch rates ranged from 64.29% to 86.67% | Risk coverage gate PASS after 528-test coverage run | Security and orchestration modules have independent line/branch thresholds that fail closed on missing or low coverage |
+| Python and uv support | Python 3.12 absent, upper Python bound absent, setup-uv selected an implicit tool version | P1 contract set: 50 passed; frozen lock resolved | CI covers Python 3.11/3.12/3.13, package support is `>=3.11,<3.14`, and both workflows install uv 0.11.26 |
+
+RED command result: `10 failed, 6 passed`. The failures were missing
+provenance behavior, missing risk-coverage gate, and incomplete CI/Python/uv
+configuration; all six new runtime branch tests executed successfully.
+
+GREEN evidence:
+
+- P1 provenance/configuration contract set: `50 passed`.
+- Full suite with coverage: `528 passed`; total coverage `88.79%`.
+- Risk module line/branch results: provider `95.00%/92.86%`, MCP
+  `94.62%/89.19%`, plugin guard `87.18%/78.57%`, execution
+  `96.23%/96.67%`, CLI dispatch `85.33%/75.00%`, async FIFO flows
+  `71.01%/84.00%`.
+- `uv run --frozen python scripts/check_risk_coverage.py`: PASS.
+- Ruff: PASS. Mypy: PASS, 88 source files.
+- `uv lock` with uv 0.11.26: resolved 17 packages; Python 3.14-only wheels
+  are excluded by the declared support range.
 
 ## P2 Evidence
 

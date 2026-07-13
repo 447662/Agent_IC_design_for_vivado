@@ -144,14 +144,15 @@ def test_p2_quality_workflow_generates_quality_summary_and_matrix():
     assert "--minimum-line-rate 0.90" in workflow
     assert "--minimum-branch-rate 0.80" in workflow
     assert "scripts/generate_quality_summary.py" in workflow
-    assert "--write-readme" in workflow
+    assert "--write-readme" not in workflow
     assert "Verify generated quality reports" in workflow
-    assert "test -s docs/generated/quality_summary.md" in workflow
-    assert "test -s docs/generated/capability_matrix.md" in workflow
-    assert "test -s docs/generated/agent_eval_report.json" in workflow
-    assert "test -s docs/generated/test_module_report.json" in workflow
+    assert "test -s .tmp/generated-quality/quality_summary.md" in workflow
+    assert "test -s .tmp/generated-quality/capability_matrix.md" in workflow
+    assert "test -s .tmp/generated-quality/quality_provenance.json" in workflow
+    assert "test -s .tmp/generated-quality/agent_eval_report.json" in workflow
+    assert "test -s .tmp/generated-quality/test_module_report.json" in workflow
     assert "Upload generated quality reports" in workflow
-    assert "docs/generated" in workflow
+    assert ".tmp/generated-quality" in workflow
     assert "if-no-files-found: error" in workflow
     assert workflow.count("if: ${{ !cancelled() }}") >= 5
 

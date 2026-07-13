@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "digital-ic-agent"
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = []
 
 [project.scripts]
