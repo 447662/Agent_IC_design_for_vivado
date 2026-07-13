@@ -35,6 +35,9 @@ jobs:
       - name: Install frozen development dependencies
         run: uv sync --frozen --group dev
 
+      - name: Verify generated agent config mirror
+        run: uv run --frozen python scripts/sync_agent_config.py --check
+
       - name: Verify release source tree
         run: uv run --frozen python scripts/check_release_tree.py --phase source
 

@@ -64,7 +64,20 @@ GREEN evidence:
 
 ## P2 Evidence
 
-Pending.
+| Work item | RED | GREEN | Guarantee |
+|---|---|---|---|
+| Package metadata | `description`, `readme`, `authors`, classifiers, and project URLs were absent | P2 contract/adjacent set: 38 passed | Wheel and sdist expose objective package metadata and GitHub links without selecting a license |
+| Agent config single source | Two equal JSON files had no generation or drift contract | P2 contract/adjacent set: 38 passed; repository `--check` PASS | Package runtime JSON is canonical; `.trae` is a generated compatibility mirror; check mode detects drift without mutating files and CI fails on drift |
+
+RED command result: `4 failed`. Failures covered missing metadata, missing sync
+script, invalid canonical JSON handling, and missing repository enforcement.
+
+GREEN evidence:
+
+- `uv run --frozen python scripts/sync_agent_config.py --check`: PASS.
+- P2 metadata/config and adjacent quality contracts: `38 passed`.
+- Ruff: PASS. Mypy: PASS, 88 source files.
+- `uv lock --check`: resolved 17 packages with no lock drift.
 
 ## Final Verification
 
@@ -73,7 +86,8 @@ Pending full coverage, distributions, real Vivado gate, and SSH publication.
 ## Known External Decisions
 
 - The repository license is intentionally not selected. This remains the sole
-  owner decision and must not be guessed by automation.
+  owner decision and must not be guessed by automation. P2 therefore adds no
+  license field, classifier, text, or file and stops that sub-item here.
 - GitHub protected-environment required reviewers and runner ephemerality are
   external settings; the repository records and enforces the locally testable
   parts of that contract.

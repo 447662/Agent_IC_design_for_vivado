@@ -19,7 +19,7 @@ DEFAULT_COVERAGE_XML = ROOT / "coverage.xml"
 DEFAULT_CAPABILITY_EVIDENCE = (
     ROOT / "docs" / "testing" / "evidence" / "synthpilot_tools_list.json"
 )
-DEFAULT_AGENT_CONFIG = ROOT / ".trae" / "agent" / "agent.json"
+DEFAULT_AGENT_CONFIG = ROOT / "src" / "digital_ic_agent" / "_runtime" / "agent.json"
 README_START = "<!-- digital-ic-agent:quality:start -->"
 README_END = "<!-- digital-ic-agent:quality:end -->"
 MIN_ROUTING_CASES = 50

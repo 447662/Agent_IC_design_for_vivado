@@ -2,6 +2,16 @@
 
 这是 `.trae/agent/agent.py` 的本地 CLI 说明。当前版本已从文档模板扩展到 VCD 分析、Vivado/xsim smoke 仿真，以及第一个可落地 RTL 工程 `async-fifo`。
 
+`.trae/agent/agent.json` 是兼容性生成镜像，唯一主源为
+`src/digital_ic_agent/_runtime/agent.json`。修改主源后运行：
+
+```powershell
+uv run --frozen python scripts/sync_agent_config.py
+uv run --frozen python scripts/sync_agent_config.py --check
+```
+
+CI 会执行 `--check`，配置漂移会直接使质量门禁失败。
+
 ## CLI
 
 ```powershell
