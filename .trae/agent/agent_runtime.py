@@ -1,21 +1,44 @@
+import os
 import subprocess
 import time
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, runtime_checkable
+from types import TracebackType
+from typing import Any, Protocol, TypeGuard, cast, runtime_checkable
 
 
 _PLUGIN_OUTPUT_ROOT: ContextVar[Path | None] = ContextVar(
     "plugin_output_root",
     default=None,
 )
+CommandPart = str | os.PathLike[str]
+FlowHandler = Callable[..., object]
+PluginOperation = Callable[..., object]
+
+
+def _is_path_value(value: object) -> TypeGuard[str | os.PathLike[str]]:
+    return isinstance(value, str | os.PathLike)
+
+
+class ProcessHandle(Protocol):
+    pid: int
+    returncode: int | None
+
+    def poll(self) -> int | None: ...
+
+    def wait(self, timeout: float | None = None) -> int: ...
+
+    def terminate(self) -> None: ...
+
+    def kill(self) -> None: ...
 
 
 @dataclass
 class ManagedProcess:
-    process: Any
+    process: ProcessHandle
     command: tuple[str, ...]
     cwd: Path | None
     started_at: datetime
@@ -88,9 +111,9 @@ class ManagedProcess:
 
     def __exit__(
         self,
-        exc_type: Any,
-        exc: Any,
-        traceback: Any,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
         self.close()
 
@@ -98,8 +121,8 @@ class ManagedProcess:
 class CommandRunner:
     def __init__(
         self,
-        default_timeout: Any = 120,
-        process_grace_period: Any = 5.0,
+        default_timeout: float = 120,
+        process_grace_period: float = 5.0,
     ) -> None:
         self.default_timeout = int(default_timeout)
         self.process_grace_period = float(process_grace_period)
@@ -118,21 +141,32 @@ class CommandRunner:
         )
 
     @staticmethod
-    def _coerce_text(value: Any) -> Any:
+    def _coerce_text(value: object) -> str:
         if value is None:
             return ""
         if isinstance(value, bytes):
             return value.decode("utf-8", errors="replace")
         return str(value)
 
-    def run(self, command: Any, timeout: Any=None, **kwargs: Any) -> Any:
+    def run(
+        self,
+        command: Sequence[str | Path],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        options = dict(kwargs)
+        timeout = options.pop("timeout", None)
+        if timeout is not None and not isinstance(timeout, int | float):
+            raise TypeError("timeout must be numeric or None")
         effective_timeout = self.default_timeout if timeout is None else int(timeout)
-        kwargs["timeout"] = effective_timeout
-        if kwargs.get("text") or kwargs.get("universal_newlines"):
-            kwargs.setdefault("encoding", "utf-8")
-            kwargs.setdefault("errors", "replace")
+        options["timeout"] = effective_timeout
+        if options.get("text") or options.get("universal_newlines"):
+            options.setdefault("encoding", "utf-8")
+            options.setdefault("errors", "replace")
         try:
-            return subprocess.run(command, **kwargs)
+            return cast(
+                subprocess.CompletedProcess[str],
+                subprocess.run(command, **cast(Any, options)),
+            )
         except subprocess.TimeoutExpired as exc:
             stdout = self._coerce_text(exc.stdout or exc.output)
             timeout_message = "Command timed out after {} seconds: {}".format(
@@ -151,11 +185,11 @@ class CommandRunner:
 
     def launch(
         self,
-        command: Any,
+        command: Sequence[CommandPart],
         *,
         mode: str = "automation",
         preserve: bool | None = None,
-        startup_timeout: Any = 0.5,
+        startup_timeout: float = 0.5,
         **kwargs: Any,
     ) -> ManagedProcess:
         if mode not in {"automation", "interactive"}:
@@ -172,7 +206,7 @@ class CommandRunner:
             process=process,
             command=tuple(str(part) for part in command),
             cwd=cwd,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             mode=mode,
             preserve=bool(preserve_process),
             termination_grace_period=self.process_grace_period,
@@ -210,9 +244,9 @@ class CommandRunner:
 
     def __exit__(
         self,
-        exc_type: Any,
-        exc: Any,
-        traceback: Any,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
         self.cleanup()
 
@@ -243,7 +277,7 @@ class PluginServiceFacade:
     services: "PluginServices"
     domain: str
 
-    def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
+    def call(self, name: str, *args: object, **kwargs: object) -> object:
         return self.services.call(name, *args, **kwargs)
 
 
@@ -264,7 +298,7 @@ class ArtifactService(PluginServiceFacade):
 
 @dataclass(frozen=True)
 class PluginServices:
-    operations: Mapping[str, Callable[..., Any]]
+    operations: Mapping[str, PluginOperation]
     _denials: tuple[dict[str, str], ...] = field(default_factory=tuple)
 
     @property
@@ -284,24 +318,21 @@ class PluginServices:
         return self._denials
 
     @staticmethod
-    def _looks_like_output_path(name: str, value: Any) -> bool:
-        if not isinstance(value, str | Path):
+    def _looks_like_output_path(
+        name: str,
+        value: object,
+    ) -> TypeGuard[str | os.PathLike[str]]:
+        if not _is_path_value(value):
             return False
         return name == "output_dir" or name in {"project_dir", "artifact_path"}
 
     @staticmethod
-    def _operation_accepts_output_path(name: str) -> bool:
-        return name.startswith(
-            (
-                "analyze_",
-                "check_",
-                "launch_",
-                "open_",
-                "render_",
-                "run_",
-                "write_",
-            )
-        )
+    def _positional_output_path_indices(name: str) -> tuple[int, ...]:
+        if name in {"launch_vivado_gui", "run_vivado_batch"}:
+            return (2,)
+        if name.startswith(("analyze_", "check_", "open_", "write_")):
+            return (0,)
+        return ()
 
     @staticmethod
     def _is_relative_to(path: Path, root: Path) -> bool:
@@ -312,36 +343,37 @@ class PluginServices:
             return False
 
     def _record_denial(self, denial: PluginServiceDenied) -> None:
-        object.__setattr__(self, "_denials", self._denials + (denial.event,))
+        object.__setattr__(self, "_denials", (*self._denials, denial.event))
 
     def _validate_output_paths(
         self,
         service_name: str,
-        args: tuple[Any, ...],
-        kwargs: Mapping[str, Any],
+        args: tuple[object, ...],
+        kwargs: Mapping[str, object],
     ) -> None:
         output_root = _PLUGIN_OUTPUT_ROOT.get()
         if output_root is None:
             return
-        candidates = [
-            value
-            for key, value in kwargs.items()
-            if self._looks_like_output_path(str(key), value)
-        ]
-        if args and self._operation_accepts_output_path(service_name):
-            candidates.append(args[0])
+        candidates: list[Path] = []
+        for key, value in kwargs.items():
+            if self._looks_like_output_path(str(key), value) and _is_path_value(value):
+                candidates.append(Path(value))
+        for index in self._positional_output_path_indices(service_name):
+            if len(args) > index:
+                value = args[index]
+                if _is_path_value(value):
+                    candidates.append(Path(value))
         for candidate in candidates:
-            candidate_path = Path(candidate)
-            if not self._is_relative_to(candidate_path, output_root):
+            if not self._is_relative_to(candidate, output_root):
                 denied = PluginServiceDenied(
                     service_name,
                     reason="output_dir_outside_allowed_root",
-                    path=str(candidate_path),
+                    path=str(candidate),
                 )
                 self._record_denial(denied)
                 raise denied
 
-    def require(self, name: str) -> Callable[..., Any]:
+    def require(self, name: str) -> PluginOperation:
         try:
             return self.operations[name]
         except KeyError as exc:
@@ -349,7 +381,7 @@ class PluginServices:
             self._record_denial(denied)
             raise denied from exc
 
-    def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
+    def call(self, name: str, *args: object, **kwargs: object) -> object:
         operation = self.require(name)
         self._validate_output_paths(name, args, kwargs)
         return operation(*args, **kwargs)
@@ -371,30 +403,33 @@ class TargetPlugin(Protocol):
     supported_flows: tuple[str, ...]
     services: PluginServices
 
-    def execute(self, flow: str, request: Mapping[str, Any]) -> Any:
+    def execute(self, flow: str, request: Mapping[str, object]) -> object:
         ...
 
 
 class TargetHandler:
     def __init__(
         self,
-        target_name: Any,
-        flows: Any,
-        extension_methods: Any=(),
-        plugin: Any=None,
+        target_name: str,
+        flows: Mapping[str, FlowHandler],
+        extension_methods: Iterable[str] = (),
+        plugin: object | None = None,
     ) -> None:
         self.target_name = target_name
         self.flows = dict(flows)
         self.extension_methods = tuple(extension_methods)
         self.plugin = plugin
 
-    def run(self, flow: Any, **kwargs: Any) -> Any:
+    def run(self, flow: str, **kwargs: object) -> object:
         handler = self.flows.get(flow)
         if handler is None:
             raise ValueError(
                 "Target {} does not support flow: {}".format(self.target_name, flow)
             )
-        output_dir = Path(kwargs.get("output_dir", "outputs")).resolve()
+        raw_output_dir = kwargs.get("output_dir", "outputs")
+        if not _is_path_value(raw_output_dir):
+            raise TypeError("output_dir must be path-like")
+        output_dir = Path(raw_output_dir).resolve()
         token = _PLUGIN_OUTPUT_ROOT.set(output_dir)
         try:
             return handler(**kwargs)

@@ -3,6 +3,7 @@ import queue
 import subprocess
 import threading
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from types import TracebackType
 from typing import Any, Protocol
 
@@ -251,10 +252,8 @@ class StdioMCPClient:
         if process is None:
             return
         if process.stdin is not None:
-            try:
+            with suppress(OSError):
                 process.stdin.close()
-            except OSError:
-                pass
         if process.poll() is None:
             process.terminate()
             try:

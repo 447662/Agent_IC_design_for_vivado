@@ -8,7 +8,10 @@
 # Date: 2026-05-15
 # -----------------------------------------------------------------------------
 
-from typing import Any
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
+from types import ModuleType, TracebackType
+from typing import Any, Protocol, cast
 import importlib.util
 import hashlib
 import html
@@ -20,9 +23,11 @@ from uuid import uuid4
 
 
 AGENT_MODULE_DIR = Path(__file__).resolve().parent
+PathLike = str | os.PathLike[str]
+MaybeText = str | None
 
 
-def _load_bootstrap_module() -> Any:
+def _load_bootstrap_module() -> ModuleType:
     module_name = "agent_bootstrap"
     if module_name in sys.modules:
         return sys.modules[module_name]
@@ -39,18 +44,18 @@ def _load_bootstrap_module() -> Any:
 load_local_modules = _load_bootstrap_module().load_local_modules
 load_local_modules(AGENT_MODULE_DIR)
 
-from agent_runtime import (
-    CommandRunner,
-    TargetHandler,
-)
+from agent_runtime import CommandRunner, TargetHandler
 from agent_contracts import AgentRequest, AgentRun, AgentRunStatus
-from agent_execution import AgentExecutionEngine
-from agent_provider import ConfiguredAgentProvider
+from agent_execution import AgentExecutionEngine, ToolHandler
+from agent_provider import AgentProvider, ConfiguredAgentProvider
 import agent_capabilities as capabilities
 import agent_document_facades as document_facades
+import agent_legacy_target_facades as legacy_target_facades
 import agent_runtime_facades as runtime_facades
 import agent_skill_execution as skill_execution
 import agent_skill_listing as skill_listing
+import agent_waveform
+import target_checks
 import agent_workflow as workflow
 from agent_skill_tool import SkillExecutionTool
 from agent_cli import build_requirement, parse_args, parse_seed_list
@@ -63,23 +68,13 @@ from agent_design_spec import (
     write_default_design_spec,
 )
 from agent_diagnostics import run_agent_diagnostic
-from agent_reports import (
-    render_markdown_document_html as render_markdown_html_document,
-)
-from agent_waveform import (
-    analyze_waveform as analyze_waveform_flow,
-)
-from agent_sim_smoke import (
-    run_sim_smoke as run_sim_smoke_flow,
-)
-from capability_preflight import PreflightStatus, build_default_preflight
-from artifact_manifest import (
-    extract_tool_version,
-    snapshot_project_artifacts,
-)
-from coverage_closure import (
-    write_coverage_closure_report as build_coverage_closure_report,
-)
+from agent_reports import render_markdown_document_html as render_markdown_html_document
+from agent_waveform import analyze_waveform as analyze_waveform_flow
+from agent_sim_smoke import CommandRunnerLike
+from agent_sim_smoke import run_sim_smoke as run_sim_smoke_flow
+from capability_preflight import FlowPreflight, PreflightStatus, build_default_preflight
+from artifact_manifest import extract_tool_version, snapshot_project_artifacts
+from coverage_closure import write_coverage_closure_report as build_coverage_closure_report
 from coverage_gates import (
     COVERAGE_METRIC_LABELS,
     COVERAGE_METRIC_ORDER,
@@ -98,8 +93,11 @@ from skill_runtime import (
     SkillExecutionRequest,
     SkillExecutionResult,
     SkillExecutionStatus,
+    SkillExecutor,
+    SkillHandler,
     SkillLoader,
     SkillResultValidator,
+    ToolRunRecord,
 )
 from waveform_samples import write_waveform_sample_report as build_waveform_sample_report
 from wave_visibility import (
@@ -115,11 +113,9 @@ from adapters.report import (
     write_target_design_spec as adapter_write_target_design_spec,
     write_target_verification_plan as adapter_write_target_verification_plan,
 )
-from adapters.vivado import (
-    launch_vivado_gui as adapter_launch_vivado_gui,
-    resolve_vivado_command as adapter_resolve_vivado_command,
-    run_vivado_batch as adapter_run_vivado_batch,
-)
+from adapters.vivado import launch_vivado_gui as adapter_launch_vivado_gui
+from adapters.vivado import resolve_vivado_command as adapter_resolve_vivado_command
+from adapters.vivado import run_vivado_batch as adapter_run_vivado_batch
 from adapters.waveform import (
     run_rwave_batch_json as adapter_run_rwave_batch_json,
     run_rwave_json as adapter_run_rwave_json,
@@ -145,14 +141,24 @@ from target_scaffolder import create_target_scaffold as build_target_scaffold
 from target_service_host import TargetServiceHost
 
 
+class AgentCommandRunner(CommandRunnerLike, Protocol):
+    def cleanup(self, *, include_preserved: bool = False) -> None: ...
+
+
 subprocess = capabilities.subprocess
+get_vcd_analyzer_path = agent_waveform.resolve_vcd_analyzer_path
+get_rwave_source_dir = agent_waveform.resolve_rwave_source_dir
+get_rwave_command = agent_waveform.resolve_rwave_command
+run_rtl_project_checks = target_checks.check_rtl_project
+shutil = runtime_facades.shutil
 
 
-def _configure_text_stream(stream: Any) -> Any:
-    try:
-        stream.reconfigure(encoding="utf-8", errors="replace", write_through=True)
-    except (AttributeError, OSError, ValueError):
-        pass
+def _configure_text_stream(stream: object) -> None:
+    reconfigure = getattr(stream, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+    with suppress(OSError, ValueError):
+        reconfigure(encoding="utf-8", errors="replace", write_through=True)
 
 
 _configure_text_stream(sys.stdout)
@@ -162,17 +168,17 @@ _configure_text_stream(sys.stderr)
 class DigitalICAgent:
     def __init__(
         self,
-        config_path: Any = None,
-        command_runner: Any = None,
-        skill_executor: Any = None,
-        preflight: Any = None,
-        agent_provider: Any = None,
-        agent_tools: Any = None,
+        config_path: PathLike | None = None,
+        command_runner: AgentCommandRunner | None = None,
+        skill_executor: SkillExecutor | None = None,
+        preflight: FlowPreflight | None = None,
+        agent_provider: AgentProvider | None = None,
+        agent_tools: Mapping[str, ToolHandler] | None = None,
     ) -> None:
         self.base_dir = Path(__file__).resolve().parent
         self.trae_dir = self.base_dir.parent
         self.project_root = self.trae_dir.parent
-        self.command_runner = command_runner or CommandRunner()
+        self.command_runner: AgentCommandRunner = command_runner or CommandRunner()
         self.vivado_timeout = int(os.environ.get("VIVADO_TIMEOUT_SECONDS", "1800"))
         self.config_path = Path(config_path) if config_path else self.base_dir / "agent.json"
         self.agent_config = self.load_config()
@@ -212,30 +218,41 @@ class DigitalICAgent:
     def __enter__(self) -> "DigitalICAgent":
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
-    def build_skill_action_handlers(self) -> Any:
-        return skill_execution.build_skill_action_handlers(self)
+    def build_skill_action_handlers(self) -> Mapping[str, SkillHandler]:
+        return cast(
+            Mapping[str, SkillHandler],
+            skill_execution.build_skill_action_handlers(self),
+        )
 
     @staticmethod
     def _skill_result(
-        request: Any,
-        status: Any,
-        artifacts: Any,
-        message: Any,
-        failure_reason: Any = None,
-        diagnostics: Any = (),
-        tool_runs: Any = (),
-    ) -> Any:
-        return skill_execution.skill_result(
-            request,
-            status,
-            artifacts,
-            message,
-            failure_reason=failure_reason,
-            diagnostics=diagnostics,
-            tool_runs=tool_runs,
+        request: SkillExecutionRequest,
+        status: SkillExecutionStatus,
+        artifacts: Sequence[PathLike],
+        message: str,
+        failure_reason: str | None = None,
+        diagnostics: Sequence[str] = (),
+        tool_runs: Sequence[ToolRunRecord] = (),
+    ) -> SkillExecutionResult:
+        return cast(
+            SkillExecutionResult,
+            skill_execution.skill_result(
+                request,
+                status,
+                artifacts,
+                message,
+                failure_reason=failure_reason,
+                diagnostics=diagnostics,
+                tool_runs=tool_runs,
+            ),
         )
 
     def execute_design_document_skill(self, request: Any) -> Any:
@@ -360,19 +377,19 @@ class DigitalICAgent:
     write_waveform_sample_report = build_waveform_sample_report
     write_coverage_closure_report = build_coverage_closure_report
 
-    def refresh_project_overview(self, output_dir: Any = "outputs") -> Any:
+    def refresh_project_overview(self, output_dir: PathLike = "outputs") -> Any:
         return runtime_facades.refresh_project_overview(self, output_dir)
 
-    def record_artifact_run(self, *args: Any, **kwargs: Any) -> Any:
+    def record_artifact_run(self, *args: object, **kwargs: object) -> Any:
         return runtime_facades.record_artifact_run(self, *args, **kwargs)
 
-    def resolve_vcd_analyzer_path(self) -> Any:
+    def resolve_vcd_analyzer_path(self) -> Path:
         return runtime_facades.resolve_vcd_analyzer_path(self)
 
-    def resolve_rwave_source_dir(self) -> Any:
+    def resolve_rwave_source_dir(self) -> Path | None:
         return runtime_facades.resolve_rwave_source_dir(self)
 
-    def resolve_rwave_command(self) -> Any:
+    def resolve_rwave_command(self) -> str | None:
         return runtime_facades.resolve_rwave_command(self)
 
     run_rwave_json = adapter_run_rwave_json
@@ -382,12 +399,12 @@ class DigitalICAgent:
 
     def analyze_waveform(
         self,
-        waveform_path: Any,
-        condition: Any = None,
-        show: Any = None,
-        limit: Any = 20,
-        waveform_backend: Any = "auto",
-        report_title: Any = "波形分析报告",
+        waveform_path: PathLike,
+        condition: MaybeText = None,
+        show: MaybeText = None,
+        limit: int = 20,
+        waveform_backend: str = "auto",
+        report_title: str = "波形分析报告",
     ) -> Any:
         return runtime_facades.analyze_waveform(
             self,
@@ -401,29 +418,29 @@ class DigitalICAgent:
 
     def analyze_vcd(
         self,
-        vcd_path: Any,
-        condition: Any = None,
-        show: Any = None,
-        limit: Any = 20,
-        waveform_backend: Any = "auto",
+        vcd_path: PathLike,
+        condition: MaybeText = None,
+        show: MaybeText = None,
+        limit: int = 20,
+        waveform_backend: str = "auto",
     ) -> Any:
         return runtime_facades.analyze_vcd(self, vcd_path, condition, show, limit, waveform_backend)
 
     def check_rtl_project(
         self,
-        target_name: Any,
-        output_dir: Any,
-        rtl_name: Any,
-        tb_name: Any,
-        sim_script_name: Any,
-        project_script_name: Any,
-        gui_script_name: Any,
-        xpr_name: Any,
-        vcd_name: Any,
-        wave_db_resolver: Any,
-        rtl_markers: Any,
-        tb_markers: Any,
-    ) -> Any:
+        target_name: str,
+        output_dir: PathLike,
+        rtl_name: str,
+        tb_name: str,
+        sim_script_name: str,
+        project_script_name: str,
+        gui_script_name: str,
+        xpr_name: str,
+        vcd_name: str,
+        wave_db_resolver: Callable[[Path], Path],
+        rtl_markers: Sequence[tuple[str, str]],
+        tb_markers: Sequence[tuple[str, str]],
+    ) -> bool:
         return runtime_facades.check_rtl_project(
             self,
             target_name,
@@ -440,47 +457,47 @@ class DigitalICAgent:
             tb_markers,
         )
 
-    def open_rtl_wave(self, target: Any, output_dir: Any = "outputs") -> Any:
+    def open_rtl_wave(self, target: str, output_dir: PathLike = "outputs") -> Any:
         return runtime_facades.open_rtl_wave(self, target, output_dir=output_dir)
 
-    def write_smoke_loop_vcd(self, output_dir: Any) -> Any:
+    def write_smoke_loop_vcd(self, output_dir: PathLike) -> Path:
         return runtime_facades.write_smoke_loop_vcd(self, output_dir)
 
     def run_smoke_loop(
-        self, output_dir: Any = "outputs", limit: Any = 20, waveform_backend: Any = "auto"
-    ) -> Any:
+        self, output_dir: PathLike = "outputs", limit: int = 20, waveform_backend: str = "auto"
+    ) -> bool:
         return runtime_facades.run_smoke_loop(self, output_dir, limit, waveform_backend)
 
-    def detect_simulator(self) -> Any:
+    def detect_simulator(self) -> str | None:
         return runtime_facades.detect_simulator(self)
 
     resolve_vivado_command = adapter_resolve_vivado_command
     run_vivado_batch = adapter_run_vivado_batch
     launch_vivado_gui = adapter_launch_vivado_gui
 
-    def write_sim_smoke_sources(self, output_dir: Any) -> Any:
+    def write_sim_smoke_sources(self, output_dir: PathLike) -> tuple[Path, Path, Path, Path]:
         return runtime_facades.write_sim_smoke_sources(self, output_dir)
 
     def run_icarus_sim_smoke(
-        self, output_dir: Any, limit: Any = 20, waveform_backend: Any = "auto"
-    ) -> Any:
+        self, output_dir: PathLike, limit: int = 20, waveform_backend: str = "auto"
+    ) -> bool:
         return runtime_facades.run_icarus_sim_smoke(self, output_dir, limit, waveform_backend)
 
     def write_vivado_sim_script(
-        self, sim_dir: Any, rtl_path: Any, tb_path: Any, vcd_path: Any
-    ) -> Any:
+        self, sim_dir: PathLike, rtl_path: PathLike, tb_path: PathLike, vcd_path: PathLike
+    ) -> Path:
         return runtime_facades.write_vivado_sim_script(self, sim_dir, rtl_path, tb_path, vcd_path)
 
-    def open_vivado_wave_gui(self, sim_dir: Any, vcd_path: Any) -> Any:
+    def open_vivado_wave_gui(self, sim_dir: PathLike, vcd_path: PathLike) -> bool:
         return runtime_facades.open_vivado_wave_gui(self, sim_dir, vcd_path)
 
     def run_vivado_sim_smoke(
         self,
-        output_dir: Any,
-        limit: Any = 20,
-        open_wave_gui: Any = True,
-        waveform_backend: Any = "auto",
-    ) -> Any:
+        output_dir: PathLike,
+        limit: int = 20,
+        open_wave_gui: bool = True,
+        waveform_backend: str = "auto",
+    ) -> bool:
         return runtime_facades.run_vivado_sim_smoke(
             self,
             output_dir,
@@ -491,21 +508,21 @@ class DigitalICAgent:
 
     def run_sim_smoke(
         self,
-        output_dir: Any = "outputs",
-        limit: Any = 20,
-        open_wave_gui: Any = True,
-        waveform_backend: Any = "auto",
-    ) -> Any:
+        output_dir: PathLike = "outputs",
+        limit: int = 20,
+        open_wave_gui: bool = True,
+        waveform_backend: str = "auto",
+    ) -> bool:
         return runtime_facades.run_sim_smoke(self, output_dir, limit, open_wave_gui, waveform_backend)
 
-    def normalize_rtl_target(self, target: Any) -> Any:
+    def normalize_rtl_target(self, target: str) -> str:
         return runtime_facades.normalize_rtl_target(self, target)
 
-    def render_vivado_tclstore_bootstrap(self) -> Any:
+    def render_vivado_tclstore_bootstrap(self) -> str:
         return runtime_facades.render_vivado_tclstore_bootstrap(self)
 
     def generate_rtl_project(
-        self, target: Any, output_dir: Any = "outputs", data_width: Any = 8, addr_width: Any = 4
+        self, target: str, output_dir: PathLike = "outputs", data_width: int = 8, addr_width: int = 4
     ) -> Any:
         return runtime_facades.generate_rtl_project(
             self,
@@ -516,7 +533,7 @@ class DigitalICAgent:
         )
 
     def run_rtl_sim(
-        self, target: Any, output_dir: Any = "outputs", open_wave_gui: Any = True
+        self, target: str, output_dir: PathLike = "outputs", open_wave_gui: bool = True
     ) -> Any:
         return runtime_facades.run_rtl_sim(
             self,
@@ -526,7 +543,7 @@ class DigitalICAgent:
         )
 
     def run_uvm_smoke(
-        self, target: Any, output_dir: Any = "outputs", open_wave_gui: Any = True
+        self, target: str, output_dir: PathLike = "outputs", open_wave_gui: bool = True
     ) -> Any:
         return runtime_facades.run_uvm_smoke(
             self,
@@ -537,11 +554,11 @@ class DigitalICAgent:
 
     def run_uvm_coverage(
         self,
-        target: Any,
-        output_dir: Any = "outputs",
-        coverage_threshold: Any = None,
-        coverage_percent: Any = None,
-        coverage_thresholds: Any = None,
+        target: str,
+        output_dir: PathLike = "outputs",
+        coverage_threshold: float | None = None,
+        coverage_percent: float | None = None,
+        coverage_thresholds: Mapping[str, float] | None = None,
     ) -> Any:
         return runtime_facades.run_uvm_coverage(
             self,
@@ -553,17 +570,17 @@ class DigitalICAgent:
         )
 
     def run_uvm_random_regression(
-        self, target: Any, output_dir: Any = "outputs", seeds: Any = None
+        self, target: str, output_dir: PathLike = "outputs", seeds: Sequence[int] | None = None
     ) -> Any:
         return runtime_facades.run_uvm_random_regression(self, target, output_dir=output_dir, seeds=seeds)
 
     def open_uvm_wave(
-        self, target: Any, output_dir: Any = "outputs", wave_kind: Any = "coverage"
+        self, target: str, output_dir: PathLike = "outputs", wave_kind: str = "coverage"
     ) -> Any:
         return runtime_facades.open_uvm_wave(self, target, output_dir=output_dir, wave_kind=wave_kind)
 
     def regress_rtl(
-        self, target: Any, output_dir: Any = "outputs", open_wave_gui: Any = False
+        self, target: str, output_dir: PathLike = "outputs", open_wave_gui: bool = False
     ) -> Any:
         return runtime_facades.regress_rtl(
             self,
@@ -582,6 +599,9 @@ class DigitalICAgent:
             output_dir=output_dir,
             skip_tool_check=skip_tool_check,
         )
+
+
+legacy_target_facades.install_legacy_target_facades(DigitalICAgent)
 
 
 def create_agent() -> Any:

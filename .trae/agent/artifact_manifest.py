@@ -6,11 +6,15 @@ import os
 import platform
 import re
 import sys
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, NotRequired, TypedDict, cast
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, NotRequired, Protocol, TypedDict, TypeAlias, cast
 
+from agent_errors import AgentError, ErrorCategory
+from agent_observability import append_observability_event, build_observability_event
 from history_rotation import (
     DEFAULT_ACTIVE_RECORD_LIMIT,
     build_rotation_metadata,
@@ -19,6 +23,14 @@ from history_rotation import (
 
 RunStatus = Literal["PASS", "FAIL"]
 ArtifactStatus = Literal["CURRENT", "MISSING", "N/A", "STALE"]
+JsonPrimitive: TypeAlias = str | int | float | bool | None
+JsonValue: TypeAlias = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
+ToolMetadata: TypeAlias = dict[str, JsonValue]
+
+
+class VivadoCommandResolver(Protocol):
+    def resolve_vivado_command(self) -> str | None:
+        ...
 
 
 class ArtifactFingerprint(TypedDict):
@@ -28,13 +40,44 @@ class ArtifactFingerprint(TypedDict):
     modified_at: str
 
 
-class ArtifactEntry(ArtifactFingerprint, total=False):
+class ArtifactEntryCore(TypedDict):
     id: str
     path: str
     declared_status: str
     status: ArtifactStatus
     exists: bool
     observed_at: str
+    produced_by_run_id: str | None
+
+
+class ArtifactEntry(ArtifactEntryCore, total=False):
+    sha256: NotRequired[str]
+    size_bytes: NotRequired[int]
+    created_at: NotRequired[str]
+    modified_at: NotRequired[str]
+
+
+class TargetArtifactSpec(TypedDict):
+    id: str
+    path: str
+    status: str
+
+
+class TargetArtifactInfo(TypedDict):
+    artifact_manifest: list[TargetArtifactSpec]
+
+
+class ExtraArtifactEntry(TypedDict):
+    id: str
+    path: Path
+    status: str
+
+
+class ArtifactSnapshotEntry(TypedDict):
+    sha256: str | None
+    size_bytes: int | None
+    created_at: str | None
+    modified_at: str | None
     produced_by_run_id: str | None
 
 
@@ -45,12 +88,15 @@ class RuntimeRun(TypedDict):
     recorded_at: str
     command: list[str]
     command_digest: str
-    options: dict[str, Any]
-    tools: dict[str, dict[str, Any]]
+    options: dict[str, JsonValue]
+    tools: dict[str, ToolMetadata]
     input_files: dict[str, ArtifactFingerprint]
     input_digest: str
     artifacts: list[ArtifactEntry]
     error: str | None
+    error_category: ErrorCategory | None
+    error_exit_code: int | None
+    error_stage: str | None
 
 
 class RotationHistory(TypedDict):
@@ -104,7 +150,7 @@ def utc_timestamp() -> str:
     )
 
 
-def normalize_json_value(value: Any) -> Any:
+def normalize_json_value(value: object) -> JsonValue:
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -119,7 +165,12 @@ def normalize_json_value(value: Any) -> Any:
     return str(value)
 
 
-def build_replay_command(flow: Any, target_name: Any, output_dir: Any, options: Any=None) -> Any:
+def build_replay_command(
+    flow: str,
+    target_name: str,
+    output_dir: str | Path,
+    options: Mapping[str, object] | None = None,
+) -> list[str]:
     options = dict(options or {})
     command = [
         sys.executable,
@@ -145,8 +196,10 @@ def build_replay_command(flow: Any, target_name: Any, output_dir: Any, options: 
             command.extend([flag, str(value)])
 
     seeds = options.get("seeds")
-    if seeds:
+    if isinstance(seeds, Sequence) and not isinstance(seeds, str | bytes):
         command.extend(["--uvm-seeds", ",".join(str(seed) for seed in seeds)])
+    elif seeds is not None:
+        command.extend(["--uvm-seeds", str(seeds)])
 
     description = options.get("description")
     requirement = options.get("requirement")
@@ -157,15 +210,19 @@ def build_replay_command(flow: Any, target_name: Any, output_dir: Any, options: 
     return command
 
 
-def extract_tool_version(command: Any) -> Any:
+def extract_tool_version(command: object) -> str | None:
     if not command:
         return None
     match = re.search(r"(?<!\d)(20\d{2}\.\d+)(?!\d)", str(command))
     return match.group(1) if match else None
 
 
-def collect_tools(agent: Any, flow: Any, options: Any=None) -> Any:
-    tools = {
+def collect_tools(
+    agent: VivadoCommandResolver,
+    flow: str,
+    options: Mapping[str, object] | None = None,
+) -> dict[str, ToolMetadata]:
+    tools: dict[str, ToolMetadata] = {
         "python": {
             "version": platform.python_version(),
             "executable": sys.executable,
@@ -182,13 +239,14 @@ def collect_tools(agent: Any, flow: Any, options: Any=None) -> Any:
         }
     if flow in WAVEFORM_FLOWS:
         options = dict(options or {})
+        waveform_backend = options.get("waveform_backend", "auto")
         tools["waveform"] = {
-            "backend": options.get("waveform_backend", "auto"),
+            "backend": str(waveform_backend),
         }
     return tools
 
 
-def json_digest(value: Any) -> Any:
+def json_digest(value: object) -> str:
     encoded = json.dumps(
         normalize_json_value(value),
         ensure_ascii=False,
@@ -234,6 +292,7 @@ def snapshot_project_artifacts(project_dir: str | Path) -> dict[str, ArtifactFin
         relative_path = path.relative_to(project_root).as_posix()
         if (
             relative_path == "artifacts.json"
+            or relative_path == "artifacts.timeline.jsonl"
             or relative_path == "artifacts.archive.jsonl.gz"
             or relative_path.startswith(".artifacts.json.")
         ):
@@ -242,11 +301,11 @@ def snapshot_project_artifacts(project_dir: str | Path) -> dict[str, ArtifactFin
     return snapshot
 
 
-def snapshot_project_inputs(project_dir: Any) -> Any:
+def snapshot_project_inputs(project_dir: str | Path) -> dict[str, ArtifactFingerprint]:
     project_root = Path(project_dir).resolve()
     if not project_root.is_dir():
         return {}
-    snapshot = {}
+    snapshot: dict[str, ArtifactFingerprint] = {}
     for path in project_root.rglob("*"):
         if not path.is_file():
             continue
@@ -265,17 +324,24 @@ def snapshot_project_inputs(project_dir: Any) -> Any:
     return snapshot
 
 
-def input_file_digest_payload(input_files: Any) -> Any:
+def input_file_digest_payload(
+    input_files: Mapping[str, ArtifactFingerprint] | None,
+) -> dict[str, dict[str, str | int]]:
     return {
         str(path).replace("\\", "/"): {
-            "sha256": fingerprint.get("sha256"),
-            "size_bytes": fingerprint.get("size_bytes"),
+            "sha256": fingerprint["sha256"],
+            "size_bytes": fingerprint["size_bytes"],
         }
         for path, fingerprint in sorted(dict(input_files or {}).items())
     }
 
 
-def build_run_input_digest(options: Any, command: Any, tools: Any, input_files: Any) -> Any:
+def build_run_input_digest(
+    options: Mapping[str, object],
+    command: Sequence[object],
+    tools: Mapping[str, object],
+    input_files: Mapping[str, ArtifactFingerprint],
+) -> str:
     return json_digest(
         {
             "options": normalize_json_value(dict(options or {})),
@@ -294,7 +360,7 @@ def artifact_status(declared_status: str, exists: bool, is_current: bool = False
     return "CURRENT" if is_current else "STALE"
 
 
-def normalize_artifact_path(project_dir: Any, artifact_path: Any) -> Any:
+def normalize_artifact_path(project_dir: str | Path, artifact_path: str | Path) -> Path:
     project_root = Path(project_dir).resolve()
     artifact_path = Path(artifact_path)
     resolved_path = (
@@ -311,15 +377,15 @@ def normalize_artifact_path(project_dir: Any, artifact_path: Any) -> Any:
 
 
 def build_artifact_entry(
-    project_dir: Any,
-    artifact_id: Any,
-    relative_path: Any,
-    declared_status: Any,
-    run_id: Any,
-    observed_at: Any,
-    baseline: Any=None,
-    run_status: Any="PASS",
-) -> Any:
+    project_dir: str | Path,
+    artifact_id: str,
+    relative_path: str | Path,
+    declared_status: str,
+    run_id: str,
+    observed_at: str,
+    baseline: Mapping[str, object] | None = None,
+    run_status: RunStatus = "PASS",
+) -> ArtifactEntry:
     project_dir = Path(project_dir).resolve()
     relative_path = normalize_artifact_path(project_dir, relative_path)
     artifact_path = project_dir / relative_path
@@ -339,7 +405,7 @@ def build_artifact_entry(
         )
     if run_status != "PASS" and not baseline:
         is_current = False
-    entry = {
+    entry: ArtifactEntry = {
         "id": str(artifact_id),
         "path": str(relative_path).replace("\\", "/"),
         "declared_status": str(declared_status),
@@ -349,16 +415,23 @@ def build_artifact_entry(
             is_current=is_current,
         ),
         "exists": exists,
-        "observed_at": observed_at,
-        "produced_by_run_id": run_id if is_current else None,
+        "observed_at": str(observed_at),
+        "produced_by_run_id": str(run_id) if is_current else None,
     }
     if fingerprint is not None:
-        entry.update(fingerprint)
+        entry["sha256"] = fingerprint["sha256"]
+        entry["size_bytes"] = fingerprint["size_bytes"]
+        entry["created_at"] = fingerprint["created_at"]
+        entry["modified_at"] = fingerprint["modified_at"]
     return entry
 
 
-def normalize_extra_artifact(project_dir: Any, item: Any) -> Any:
-    artifact_path = Path(item["path"])
+def normalize_extra_artifact(
+    project_dir: str | Path,
+    item: Mapping[str, object],
+) -> ExtraArtifactEntry:
+    raw_path = item["path"]
+    artifact_path = raw_path if isinstance(raw_path, Path) else Path(str(raw_path))
     relative_path = normalize_artifact_path(project_dir, artifact_path)
     return {
         "id": str(item.get("id") or relative_path.as_posix()),
@@ -368,20 +441,21 @@ def normalize_extra_artifact(project_dir: Any, item: Any) -> Any:
 
 
 def collect_artifacts(
-    target_info: Any,
-    project_dir: Any,
-    run_id: Any,
-    observed_at: Any,
-    run_status: Any,
-    baseline: Any=None,
-    extra_artifacts: Any=None,
-) -> Any:
-    artifacts = []
-    seen_paths = set()
+    target_info: TargetArtifactInfo,
+    project_dir: str | Path,
+    run_id: str,
+    observed_at: str,
+    run_status: RunStatus,
+    baseline: Mapping[str, object] | None = None,
+    extra_artifacts: Sequence[Mapping[str, object]] | None = None,
+) -> list[ArtifactEntry]:
+    artifacts: list[ArtifactEntry] = []
+    seen_paths: set[str] = set()
     baseline = dict(baseline or {})
     for item in target_info.get("artifact_manifest", []):
         relative_path = Path(item["path"])
         relative_text = relative_path.as_posix()
+        baseline_entry = baseline.get(relative_text)
         entry = build_artifact_entry(
             project_dir,
             item["id"],
@@ -389,26 +463,27 @@ def collect_artifacts(
             item["status"],
             run_id,
             observed_at,
-            baseline=baseline.get(relative_text),
+            baseline=baseline_entry if isinstance(baseline_entry, Mapping) else None,
             run_status=run_status,
         )
         artifacts.append(entry)
         seen_paths.add(entry["path"])
 
     for raw_item in extra_artifacts or []:
-        item = normalize_extra_artifact(project_dir, raw_item)
-        relative_text = item["path"].as_posix()
+        extra_item = normalize_extra_artifact(project_dir, raw_item)
+        relative_text = extra_item["path"].as_posix()
         if relative_text in seen_paths:
             continue
+        baseline_entry = baseline.get(relative_text)
         artifacts.append(
             build_artifact_entry(
                 project_dir,
-                item["id"],
-                item["path"],
-                item["status"],
+                extra_item["id"],
+                extra_item["path"],
+                extra_item["status"],
                 run_id,
                 observed_at,
-                baseline=baseline.get(relative_text),
+                baseline=baseline_entry if isinstance(baseline_entry, Mapping) else None,
                 run_status=run_status,
             )
         )
@@ -416,11 +491,13 @@ def collect_artifacts(
     return artifacts
 
 
-def _latest_artifact_snapshot(manifest: Any) -> Any:
+def _latest_artifact_snapshot(
+    manifest: RuntimeManifest,
+) -> dict[str, ArtifactSnapshotEntry]:
     runs = manifest.get("runs", [])
     if not runs:
         return {}
-    snapshot = {}
+    snapshot: dict[str, ArtifactSnapshotEntry] = {}
     for item in runs[-1].get("artifacts", []):
         if not item.get("exists"):
             continue
@@ -437,7 +514,7 @@ def _latest_artifact_snapshot(manifest: Any) -> Any:
     return snapshot
 
 
-def atomic_write_json(path: Any, value: Any) -> Any:
+def atomic_write_json(path: str | Path, value: object) -> None:
     path = Path(path)
     temporary_path = path.with_name(
         f".{path.name}.{uuid.uuid4().hex}.tmp"
@@ -494,7 +571,9 @@ def record_artifact_run(
     command: Any=None,
     artifact_snapshot: Any=None,
     max_active_runs: Any=DEFAULT_ACTIVE_RECORD_LIMIT,
-) -> Any:
+    run_id: Any=None,
+) -> Path:
+    stage_started = time.perf_counter()
     status = str(status).upper()
     if status not in RUN_STATUSES:
         raise ValueError(f"invalid runtime flow status: {status}")
@@ -507,8 +586,11 @@ def record_artifact_run(
     manifest_path = project_dir / "artifacts.json"
     manifest = load_runtime_manifest(manifest_path, target_name)
     recorded_at = utc_timestamp()
-    normalized_options = normalize_json_value(dict(options or {}))
-    run_id = uuid.uuid4().hex
+    normalized_options = cast(
+        dict[str, JsonValue],
+        normalize_json_value(dict(options or {})),
+    )
+    run_id = str(run_id or uuid.uuid4().hex)
     replay_command = list(
         command
         or build_replay_command(
@@ -525,6 +607,18 @@ def record_artifact_run(
         if artifact_snapshot is not None
         else _latest_artifact_snapshot(manifest)
     )
+
+    error_text = None
+    error_category = None
+    error_exit_code = None
+    error_stage = None
+    if isinstance(error, AgentError):
+        error_text = error.to_json()
+        error_category = error.category
+        error_exit_code = error.exit_code
+        error_stage = error.stage
+    elif error:
+        error_text = str(error)
 
     run = cast(RuntimeRun, {
         "run_id": run_id,
@@ -551,7 +645,10 @@ def record_artifact_run(
             baseline=baseline,
             extra_artifacts=extra_artifacts,
         ),
-        "error": str(error) if error else None,
+        "error": error_text,
+        "error_category": error_category,
+        "error_exit_code": error_exit_code,
+        "error_stage": error_stage,
     })
     manifest["runs"].append(run)
     active_runs, archive_path, archived_runs = rotate_json_records(
@@ -573,4 +670,29 @@ def record_artifact_run(
         manifest["history"] = cast(RotationHistory, history)
     manifest["updated_at"] = recorded_at
     atomic_write_json(manifest_path, manifest)
-    return manifest_path
+    append_observability_event(
+        project_dir / "artifacts.timeline.jsonl",
+        build_observability_event(
+            run_id=run_id,
+            flow=str(flow),
+            stage="artifact_manifest",
+            event="flow_finished",
+            status=cast(RunStatus, status),
+            duration_ms=max(0, int((time.perf_counter() - stage_started) * 1000)),
+            exit_code=error_exit_code,
+            error_category=error_category,
+            tool_versions={
+                str(name): str(metadata.get("version"))
+                for name, metadata in tools.items()
+                if metadata.get("version") is not None
+            },
+            details={
+                "target": target_name,
+                "manifest_path": manifest_path,
+                "artifact_count": len(run["artifacts"]),
+                "options": normalized_options,
+                "error": error_text,
+            },
+        ),
+    )
+    return Path(manifest_path)

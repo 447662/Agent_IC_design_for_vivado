@@ -6,6 +6,7 @@ import sys
 
 LOCAL_MODULES = (
     "history_rotation",
+    "agent_errors",
     "agent_contracts",
     "intent_router",
     "mcp_client",
@@ -52,6 +53,7 @@ LOCAL_MODULES = (
     "target_scaffolder",
     "agent_sync_fifo",
     "agent_round_robin_arbiter",
+    "agent_legacy_target_facades",
     "agent_async_fifo_render",
     "agent_async_fifo_reports",
     "agent_async_fifo_runtime",

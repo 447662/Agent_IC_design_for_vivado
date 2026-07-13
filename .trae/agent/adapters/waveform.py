@@ -40,7 +40,7 @@ def run_rwave_json(self: Any, *args: Any) -> Any:
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("rwave returned invalid JSON: {}".format(exc))
+        raise RuntimeError("rwave returned invalid JSON: {}".format(exc)) from exc
     data["_waveform_backend"] = "rwave"
     return data
 
@@ -75,7 +75,7 @@ def run_rwave_batch_json(self: Any, waveform_path: Any, command_lines: Any) -> A
         try:
             row = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise RuntimeError("rwave batch returned invalid JSON: {}".format(exc))
+            raise RuntimeError("rwave batch returned invalid JSON: {}".format(exc)) from exc
 
         result_id = row.get("id")
         if not result_id:
@@ -120,7 +120,7 @@ def run_vcd_analyzer_json(self: Any, *args: Any) -> Any:
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("vcd_analyzer returned invalid JSON: {}".format(exc))
+        raise RuntimeError("vcd_analyzer returned invalid JSON: {}".format(exc)) from exc
     data["_waveform_backend"] = "vcd_analyzer"
     return data
 
@@ -152,6 +152,6 @@ def run_waveform_analyzer_json(self: Any, *args: Any, backend: Any="auto") -> An
         try:
             data = self.run_vcd_analyzer_json(*args)
         except (FileNotFoundError, RuntimeError):
-            raise rwave_error
+            raise rwave_error from None
         data["_waveform_backend_fallback_reason"] = str(rwave_error)
         return data

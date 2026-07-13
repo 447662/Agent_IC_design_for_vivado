@@ -2,6 +2,7 @@ from typing import Any
 import sys
 
 from agent_cli import build_requirement, parse_seed_list
+from agent_errors import AgentError
 
 
 def _status_exit(report: Any) -> int:
@@ -18,6 +19,8 @@ def _run_boolean_flow(label: str, callback: Any, errors: tuple[type[Exception], 
         return 0 if callback() else 1
     except errors as exc:
         print("{} failed: {}".format(label, exc), file=sys.stderr)
+        if isinstance(exc, AgentError):
+            return exc.exit_code
         return 1
 
 
@@ -257,6 +260,26 @@ def _run_uvm_coverage(args: Any, agent: Any) -> int:
 
 def _handle_target_analysis_flows(args: Any, agent: Any) -> Any:
     if args.analyze_rtl_vcd:
+        if args.analyze_rtl_vcd == "sync-fifo":
+            return _run_boolean_flow(
+                "RTL VCD analysis",
+                lambda: agent.analyze_sync_fifo_vcd(
+                    output_dir=args.output_dir,
+                    limit=args.vcd_limit,
+                    waveform_backend=args.wave_backend,
+                ),
+                (OSError, ValueError),
+            )
+        if args.analyze_rtl_vcd == "round-robin-arbiter":
+            return _run_boolean_flow(
+                "RTL VCD analysis",
+                lambda: agent.analyze_round_robin_arbiter_vcd(
+                    output_dir=args.output_dir,
+                    limit=args.vcd_limit,
+                    waveform_backend=args.wave_backend,
+                ),
+                (OSError, ValueError),
+            )
         return _run_boolean_flow(
             "RTL VCD analysis",
             lambda: agent.run_target_flow(

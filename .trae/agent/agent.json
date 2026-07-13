@@ -36,7 +36,7 @@
   "mcpServers": {
     "synthpilot": {
       "command": "uvx",
-      "args": ["synthpilot"],
+      "args": ["synthpilot==0.1.0"],
       "description": "SynthPilot MCP：FPGA/ASIC设计工具集成",
       "required": true,
       "installGuide": "https://synthpilot.dev/install"
