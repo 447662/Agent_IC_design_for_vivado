@@ -1,15 +1,39 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
 [project]
 name = "digital-ic-agent"
-version = "1.0.0"
+dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = []
 
+[project.scripts]
+digital-ic-agent = "digital_ic_agent.agent:main"
+
 [dependency-groups]
 dev = [
+    "hatchling==1.27.0",
     "mypy==1.17.1",
     "pytest==8.4.2",
     "pytest-cov==7.0.0",
     "ruff==0.12.0",
+]
+
+[tool.hatch.version]
+path = "src/digital_ic_agent/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/digital_ic_agent"]
+force-include = { ".trae/agent" = "digital_ic_agent/_legacy_agent", ".trae/skills" = "digital_ic_agent/skills" }
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/digital_ic_agent",
+    ".trae/agent",
+    ".trae/skills",
+    "pyproject.toml",
+    "README.md",
 ]
 
 [tool.pytest.ini_options]
@@ -30,7 +54,7 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "B904", "B905", "UP017", "SIM105", "SIM300", "RUF005"]
 
 [tool.ruff.lint.per-file-ignores]
 ".trae/agent/agent.py" = ["E402", "F401"]
@@ -40,6 +64,7 @@ python_version = "3.11"
 files = [
     "src/digital_ic_agent",
     ".trae/agent/agent.py",
+    ".trae/agent/agent_errors.py",
     ".trae/agent/agent_contracts.py",
     ".trae/agent/agent_execution.py",
     ".trae/agent/agent_provider.py",
@@ -84,6 +109,7 @@ files = [
     ".trae/agent/target_registry.py",
     ".trae/agent/target_service_host.py",
     ".trae/agent/target_plugins.py",
+    ".trae/agent/plugin_guard_runner.py",
     ".trae/agent/target_handlers",
     ".trae/agent/target_examples",
     ".trae/agent/target_scaffolder.py",
@@ -105,7 +131,7 @@ branch = true
 source = [".trae/agent", "src/digital_ic_agent"]
 
 [tool.coverage.report]
-fail_under = 68
+fail_under = 85
 show_missing = true
 skip_covered = true
 precision = 1

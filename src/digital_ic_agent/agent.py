@@ -1,10 +1,6 @@
 from typing import Any
 
-from digital_ic_agent._legacy import AGENT_DIR, load_legacy_module
-
-
-if str(AGENT_DIR) not in __import__("sys").path:
-    __import__("sys").path.append(str(AGENT_DIR))
+from digital_ic_agent._legacy import load_legacy_module
 
 _legacy_agent = load_legacy_module("agent", "agent.py")
 
