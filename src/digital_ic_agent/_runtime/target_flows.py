@@ -7,7 +7,10 @@ from os import PathLike
 from typing import Any, Literal, NotRequired, Protocol, TextIO, TypedDict, cast
 
 from digital_ic_agent._runtime.agent_observability import append_observability_event, build_observability_event
-from digital_ic_agent._runtime.artifact_manifest import snapshot_project_artifacts
+from digital_ic_agent._runtime.artifact_manifest import (
+    file_fingerprint,
+    snapshot_project_artifacts,
+)
 from digital_ic_agent._runtime.agent_errors import AgentError, CapabilityError, ToolExecutionError
 from digital_ic_agent._runtime.agent_runtime import PluginServices
 from digital_ic_agent._runtime.capability_preflight import PreflightReport
@@ -21,6 +24,12 @@ from digital_ic_agent._runtime.target_plugins import (
     build_target_handlers as build_plugin_target_handlers,
     load_target_handler_plugins,
 )
+from digital_ic_agent._runtime.verification_verdict import (
+    VerificationVerdict,
+    failed_verdict,
+    load_verification_verdict,
+    write_verification_verdict,
+)
 
 
 BUILTIN_HANDLER_MODULES = (
@@ -28,6 +37,12 @@ BUILTIN_HANDLER_MODULES = (
     "digital_ic_agent._runtime.target_handlers.round_robin_arbiter",
     "digital_ic_agent._runtime.target_handlers.sync_fifo",
 )
+
+CANONICAL_VERDICT_FLOWS = {
+    "sim-rtl",
+    "uvm-smoke",
+    "uvm-coverage",
+}
 
 
 PLUGIN_OPERATION_NAMES = (
@@ -244,6 +259,64 @@ def validate_target_handlers(agent: TargetHandlerValidationAgent) -> bool:
     return True
 
 
+def _failure_verdict(
+    project_dir: Path,
+    code: str,
+    message: str,
+) -> VerificationVerdict:
+    verdict = failed_verdict(code, message, source="target_flow")
+    write_verification_verdict(project_dir, verdict)
+    return verdict
+
+
+def _resolve_canonical_verdict(
+    project_dir: Path,
+    flow: str,
+    handler_result: object,
+    artifact_snapshot: Mapping[str, object],
+) -> tuple[VerificationVerdict | None, object]:
+    if flow not in CANONICAL_VERDICT_FLOWS:
+        return None, handler_result
+
+    verdict_path = project_dir / "reports" / "verification_verdict.json"
+    if not verdict_path.is_file():
+        verdict = _failure_verdict(
+            project_dir,
+            "CANONICAL_VERDICT_MISSING",
+            "Verification flow did not produce verification_verdict.json",
+        )
+        return verdict, False
+    try:
+        verdict = load_verification_verdict(verdict_path)
+    except ValueError as exc:
+        verdict = _failure_verdict(
+            project_dir,
+            "CANONICAL_VERDICT_INVALID",
+            str(exc),
+        )
+        return verdict, False
+
+    baseline = artifact_snapshot.get("reports/verification_verdict.json")
+    if isinstance(baseline, Mapping):
+        baseline_digest = baseline.get("sha256")
+        if baseline_digest == file_fingerprint(verdict_path)["sha256"]:
+            verdict = _failure_verdict(
+                project_dir,
+                "CANONICAL_VERDICT_STALE",
+                "Verification flow reused a verdict from an earlier run",
+            )
+            return verdict, False
+
+    if verdict.passed and not bool(handler_result):
+        verdict = _failure_verdict(
+            project_dir,
+            "VERDICT_RESULT_MISMATCH",
+            "Handler returned failure while canonical verdict reported PASS",
+        )
+        return verdict, False
+    return verdict, verdict.passed
+
+
 def run_target_flow(
     agent: RunTargetFlowAgent,
     target: str,
@@ -293,6 +366,13 @@ def run_target_flow(
                 "target": target_name,
             },
         )
+        verdict = None
+        if flow in CANONICAL_VERDICT_FLOWS:
+            verdict = _failure_verdict(
+                project_dir,
+                "PREFLIGHT_FAILED",
+                error_message,
+            )
         agent.record_artifact_run(
             target_name,
             flow,
@@ -302,6 +382,9 @@ def run_target_flow(
             options=kwargs,
             artifact_snapshot=artifact_snapshot,
             run_id=run_id,
+            verification_verdict=(
+                None if verdict is None else verdict.to_dict()
+            ),
         )
         return False
     try:
@@ -340,6 +423,13 @@ def run_target_flow(
                 details=event_details,
             ),
         )
+        verdict = None
+        if flow in CANONICAL_VERDICT_FLOWS:
+            verdict = _failure_verdict(
+                project_dir,
+                "TARGET_FLOW_EXCEPTION",
+                str(handler_error),
+            )
         agent.record_artifact_run(
             target_name,
             flow,
@@ -349,9 +439,18 @@ def run_target_flow(
             options=kwargs,
             artifact_snapshot=artifact_snapshot,
             run_id=run_id,
+            verification_verdict=(
+                None if verdict is None else verdict.to_dict()
+            ),
         )
         raise
 
+    verdict, result = _resolve_canonical_verdict(
+        project_dir,
+        flow,
+        result,
+        artifact_snapshot,
+    )
     status: Literal["PASS", "FAIL"] = "PASS" if result else "FAIL"
     tool_error = None
     if not result:
@@ -390,5 +489,8 @@ def run_target_flow(
         options=kwargs,
         artifact_snapshot=artifact_snapshot,
         run_id=run_id,
+        verification_verdict=(
+            None if verdict is None else verdict.to_dict()
+        ),
     )
     return result

@@ -34,6 +34,7 @@ class EvidencePayload(TypedDict):
 
 class VerificationVerdictPayload(TypedDict):
     schema_version: int
+    generated_at: str
     status: VerdictStatus
     passed: bool
     reasons: list[VerificationReasonPayload]
@@ -77,6 +78,11 @@ class VerificationVerdict:
     status: VerdictStatus
     reasons: tuple[VerificationReason, ...]
     evidence: Mapping[str, EvidencePayload]
+    generated_at: str = field(
+        default_factory=lambda: datetime.now(UTC).isoformat(
+            timespec="milliseconds"
+        ).replace("+00:00", "Z")
+    )
 
     @property
     def passed(self) -> bool:
@@ -85,6 +91,7 @@ class VerificationVerdict:
     def to_dict(self) -> VerificationVerdictPayload:
         return {
             "schema_version": 1,
+            "generated_at": self.generated_at,
             "status": self.status,
             "passed": self.passed,
             "reasons": [reason.to_dict() for reason in self.reasons],
@@ -293,6 +300,101 @@ def evaluate_verification(request: VerificationRequest) -> VerificationVerdict:
         reasons=tuple(reasons),
         evidence=MappingProxyType(evidence),
     )
+
+
+def failed_verdict(
+    code: str,
+    message: str,
+    source: str | None = None,
+) -> VerificationVerdict:
+    return VerificationVerdict(
+        status="FAIL",
+        reasons=(VerificationReason(code=code, message=message, source=source),),
+        evidence=MappingProxyType({}),
+    )
+
+
+def verification_verdict_from_payload(
+    payload: object,
+) -> VerificationVerdict:
+    if not isinstance(payload, dict):
+        raise ValueError("verification verdict must be an object")
+    if payload.get("schema_version") != 1:
+        raise ValueError("unsupported verification verdict schema")
+    status = payload.get("status")
+    if status not in {"PASS", "FAIL"}:
+        raise ValueError("invalid verification verdict status")
+    passed = payload.get("passed")
+    if not isinstance(passed, bool) or passed != (status == "PASS"):
+        raise ValueError("verification verdict passed/status mismatch")
+    generated_at = payload.get("generated_at")
+    if not isinstance(generated_at, str) or not generated_at.strip():
+        raise ValueError("verification verdict generated_at is required")
+    try:
+        parsed_generated_at = datetime.fromisoformat(
+            generated_at.replace("Z", "+00:00")
+        )
+    except ValueError as exc:
+        raise ValueError("invalid verification verdict generated_at") from exc
+    if parsed_generated_at.tzinfo is None:
+        raise ValueError("verification verdict generated_at must include timezone")
+
+    raw_reasons = payload.get("reasons")
+    if not isinstance(raw_reasons, list):
+        raise ValueError("verification verdict reasons must be a list")
+    reasons: list[VerificationReason] = []
+    for raw_reason in raw_reasons:
+        if not isinstance(raw_reason, dict):
+            raise ValueError("verification verdict reason must be an object")
+        code = raw_reason.get("code")
+        message = raw_reason.get("message")
+        source = raw_reason.get("source")
+        if not isinstance(code, str) or not code:
+            raise ValueError("verification verdict reason code is required")
+        if not isinstance(message, str) or not message:
+            raise ValueError("verification verdict reason message is required")
+        if source is not None and not isinstance(source, str):
+            raise ValueError("verification verdict reason source must be a string")
+        reasons.append(
+            VerificationReason(code=code, message=message, source=source)
+        )
+    if status == "PASS" and reasons:
+        raise ValueError("passing verification verdict cannot contain reasons")
+    if status == "FAIL" and not reasons:
+        raise ValueError("failing verification verdict requires a reason")
+
+    raw_evidence = payload.get("evidence")
+    if not isinstance(raw_evidence, dict):
+        raise ValueError("verification verdict evidence must be an object")
+    evidence: dict[str, EvidencePayload] = {}
+    for source, raw_summary in raw_evidence.items():
+        if not isinstance(source, str) or not isinstance(raw_summary, dict):
+            raise ValueError("invalid verification verdict evidence entry")
+        sha256 = raw_summary.get("sha256")
+        size_bytes = raw_summary.get("size_bytes")
+        if (
+            not isinstance(sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", sha256) is None
+            or not isinstance(size_bytes, int)
+            or isinstance(size_bytes, bool)
+            or size_bytes < 0
+        ):
+            raise ValueError("invalid verification verdict evidence summary")
+        evidence[source] = {"sha256": sha256, "size_bytes": size_bytes}
+    return VerificationVerdict(
+        status=status,
+        reasons=tuple(reasons),
+        evidence=MappingProxyType(evidence),
+        generated_at=generated_at,
+    )
+
+
+def load_verification_verdict(path: Path) -> VerificationVerdict:
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid verification verdict file: {path}") from exc
+    return verification_verdict_from_payload(payload)
 
 
 def _read_evidence_file(path: Path) -> str:

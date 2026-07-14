@@ -20,6 +20,10 @@ from digital_ic_agent._runtime.history_rotation import (
     build_rotation_metadata,
     rotate_json_records,
 )
+from digital_ic_agent._runtime.verification_verdict import (
+    VerificationVerdictPayload,
+    verification_verdict_from_payload,
+)
 
 RunStatus = Literal["PASS", "FAIL"]
 ArtifactStatus = Literal["CURRENT", "MISSING", "N/A", "STALE"]
@@ -97,6 +101,7 @@ class RuntimeRun(TypedDict):
     error_category: ErrorCategory | None
     error_exit_code: int | None
     error_stage: str | None
+    verification_verdict: NotRequired[VerificationVerdictPayload]
 
 
 class RotationHistory(TypedDict):
@@ -572,6 +577,7 @@ def record_artifact_run(
     artifact_snapshot: Any=None,
     max_active_runs: Any=DEFAULT_ACTIVE_RECORD_LIMIT,
     run_id: Any=None,
+    verification_verdict: Any=None,
 ) -> Path:
     stage_started = time.perf_counter()
     status = str(status).upper()
@@ -620,6 +626,18 @@ def record_artifact_run(
     elif error:
         error_text = str(error)
 
+    normalized_verdict = None
+    if verification_verdict is not None:
+        parsed_verdict = verification_verdict_from_payload(
+            verification_verdict
+        )
+        if parsed_verdict.status != status:
+            raise ValueError(
+                "verification verdict status mismatch: "
+                f"run={status}, verdict={parsed_verdict.status}"
+            )
+        normalized_verdict = parsed_verdict.to_dict()
+
     run = cast(RuntimeRun, {
         "run_id": run_id,
         "flow": str(flow),
@@ -650,6 +668,8 @@ def record_artifact_run(
         "error_exit_code": error_exit_code,
         "error_stage": error_stage,
     })
+    if normalized_verdict is not None:
+        run["verification_verdict"] = normalized_verdict
     manifest["runs"].append(run)
     active_runs, archive_path, archived_runs = rotate_json_records(
         manifest["runs"],

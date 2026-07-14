@@ -786,7 +786,7 @@ def test_target_flow_timeline_rebuilds_preflight_handler_and_manifest_stages(tmp
         missing_required: tuple[str, ...] = ()
 
     class PassingHandler:
-        flows = {"sim-rtl": object()}
+        flows = {"generate-rtl": object()}
         plugin = None
 
         def run(self, _flow: str, **_kwargs: object) -> object:
@@ -798,7 +798,7 @@ def test_target_flow_timeline_rebuilds_preflight_handler_and_manifest_stages(tmp
                 "name": "sample-target",
                 "display_name": "Sample Target",
                 "design_family": "test",
-                "flows": ["sim-rtl"],
+                "flows": ["generate-rtl"],
                 "artifact_manifest": [],
             }
         }
@@ -820,7 +820,7 @@ def test_target_flow_timeline_rebuilds_preflight_handler_and_manifest_stages(tmp
         target_flows.run_target_flow(
             FakeAgent(),
             "sample-target",
-            "sim-rtl",
+            "generate-rtl",
             output_dir=tmp_path,
         )
         is True
