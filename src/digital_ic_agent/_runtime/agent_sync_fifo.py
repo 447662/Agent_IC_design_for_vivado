@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import html
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +10,12 @@ from digital_ic_agent._runtime.target_flow_messages import (
     build_sync_fifo_sim_completed_lines,
     build_sync_fifo_vcd_analysis_lines,
     emit_sync_fifo_lines,
+)
+from digital_ic_agent._runtime.verification_verdict import (
+    VerificationVerdict,
+    evaluate_process_results,
+    format_verification_failure,
+    write_verification_verdict,
 )
 
 class SyncFifoMixin:
@@ -87,7 +94,7 @@ class SyncFifoMixin:
 
         return True
 
-    def write_sync_fifo_sim_report(self, project_dir: Any, vcd_path: Any, wave_db_path: Any, sim_result: Any=None, project_result: Any=None, limit: Any=20) -> Any:
+    def write_sync_fifo_sim_report(self, project_dir: Any, vcd_path: Any, wave_db_path: Any, sim_result: Any=None, project_result: Any=None, limit: Any=20, verdict: VerificationVerdict | None=None) -> Any:
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +108,11 @@ class SyncFifoMixin:
         except (FileNotFoundError, RuntimeError) as exc:
             analysis_error = str(exc)
 
+        status: str = (
+            verdict.status
+            if verdict is not None
+            else ("PASS" if analysis_error is None else "PASS_WITH_ANALYSIS_WARNING")
+        )
         lines = [
             "# sync-fifo 仿真报告",
             "",
@@ -108,7 +120,7 @@ class SyncFifoMixin:
             "",
             "- 目标：`sync-fifo`",
             "- 仿真器：Vivado/xsim",
-            "- 状态：{}".format("PASS" if analysis_error is None else "PASS_WITH_ANALYSIS_WARNING"),
+            "- 状态：{}".format(status),
             "- VCD：`{}`".format(vcd_path),
             "- WDB：`{}`".format(wave_db_path),
             "- Vivado 工程：`{}`".format(project_dir / "vivado_project" / "sync_fifo_project.xpr"),
@@ -158,8 +170,7 @@ class SyncFifoMixin:
 
         report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        status = "PASS" if analysis_error is None else "PASS_WITH_ANALYSIS_WARNING"
-        if project_result is not None and project_result.returncode != 0:
+        if verdict is None and project_result is not None and project_result.returncode != 0:
             status = "PASS_WITH_PROJECT_WARNING"
         signal_count = analysis["info"].get("signal_count", "unknown") if analysis else "unknown"
         write_count = analysis["write_events"].get("total", analysis["write_events"].get("shown", "unknown")) if analysis else "unknown"
@@ -680,31 +691,34 @@ vivado -mode gui -source open_sync_fifo_project_gui.tcl
             )
             return False
 
+        started_at = datetime.now(UTC)
         sim_result = self.run_vivado_batch(
             vivado_command,
             "run_vivado_sync_fifo.tcl",
             sim_dir,
         )
-        if sim_result.returncode != 0:
-            emit_sync_fifo_lines(
-                build_sync_fifo_error_lines(
-                    sim_result.stderr.strip() or sim_result.stdout.strip() or "sync FIFO simulation failed"
-                ),
-                stream=sys.stderr,
-            )
-            return False
-
         vcd_path = sim_dir / "sync_fifo_trace.vcd"
         wave_db_path = self.resolve_sync_fifo_wave_db(sim_dir)
-        if not vcd_path.exists():
-            emit_sync_fifo_lines(
-                build_sync_fifo_error_lines("Simulation did not generate VCD: {}".format(vcd_path)),
-                stream=sys.stderr,
+        xsim_log_path = sim_dir / "xsim.log"
+        sim_verdict = evaluate_process_results(
+            process_results={"simulation": sim_result},
+            evidence_paths={"xsim.log": xsim_log_path},
+            required_pass_markers=("SYNC_FIFO_SCOREBOARD_PASS",),
+            required_artifact_paths=(vcd_path, wave_db_path, xsim_log_path),
+            started_at=started_at,
+            coverage_required=False,
+        )
+        if not sim_verdict.passed:
+            self.write_sync_fifo_sim_report(
+                project_dir=project_dir,
+                vcd_path=vcd_path,
+                wave_db_path=wave_db_path,
+                sim_result=sim_result,
+                verdict=sim_verdict,
             )
-            return False
-        if not wave_db_path.exists():
+            write_verification_verdict(project_dir, sim_verdict)
             emit_sync_fifo_lines(
-                build_sync_fifo_error_lines("Simulation did not generate WDB: {}".format(wave_db_path)),
+                build_sync_fifo_error_lines(format_verification_failure(sim_verdict)),
                 stream=sys.stderr,
             )
             return False
@@ -715,9 +729,15 @@ vivado -mode gui -source open_sync_fifo_project_gui.tcl
             sim_dir,
             extra_args=["-nojournal", "-nolog", "-notrace"],
         )
-        project_warning = None
-        if project_result.returncode != 0:
-            project_warning = project_result.stderr.strip() or project_result.stdout.strip() or "Vivado project generation failed"
+        xpr_path = project_dir / "vivado_project" / "sync_fifo_project.xpr"
+        verdict = evaluate_process_results(
+            process_results={"simulation": sim_result, "project": project_result},
+            evidence_paths={"xsim.log": xsim_log_path},
+            required_pass_markers=("SYNC_FIFO_SCOREBOARD_PASS",),
+            required_artifact_paths=(vcd_path, wave_db_path, xsim_log_path, xpr_path),
+            started_at=started_at,
+            coverage_required=False,
+        )
 
         report_path = self.write_sync_fifo_sim_report(
             project_dir=project_dir,
@@ -725,21 +745,24 @@ vivado -mode gui -source open_sync_fifo_project_gui.tcl
             wave_db_path=wave_db_path,
             sim_result=sim_result,
             project_result=project_result,
+            verdict=verdict,
         )
+        write_verification_verdict(project_dir, verdict)
+        if not verdict.passed:
+            emit_sync_fifo_lines(
+                build_sync_fifo_error_lines(format_verification_failure(verdict)),
+                stream=sys.stderr,
+            )
+            return False
         emit_sync_fifo_lines(
             build_sync_fifo_sim_completed_lines(
                 project_dir,
                 vcd_path,
                 wave_db_path,
-                project_warning,
+                None,
                 report_path,
             )
         )
-        if project_warning is not None:
-            emit_sync_fifo_lines(
-                build_sync_fifo_error_lines("Vivado project warning: {}".format(project_warning)),
-                stream=sys.stderr,
-            )
-        if open_wave_gui and project_warning is None:
+        if open_wave_gui:
             self.open_sync_fifo_project_gui(project_dir)
         return True

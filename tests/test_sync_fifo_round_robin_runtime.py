@@ -48,6 +48,10 @@ def test_p5_2_run_sync_fifo_vivado_sim_creates_project_and_can_skip_gui(
                 "wdb placeholder",
                 encoding="utf-8",
             )
+            Path(cwd, "xsim.log").write_text(
+                "SYNC_FIFO_SCOREBOARD_PASS\n",
+                encoding="utf-8",
+            )
         if "create_sync_fifo_project.tcl" in command:
             xpr = Path(cwd).parent / "vivado_project" / "sync_fifo_project.xpr"
             xpr.parent.mkdir(parents=True, exist_ok=True)
@@ -232,7 +236,13 @@ def test_p5_2_sync_fifo_vivado_sim_failure_and_warning_paths(monkeypatch, tmp_pa
         if script_name == "run_vivado_sync_fifo.tcl":
             Path(cwd, "sync_fifo_trace.vcd").write_text("vcd", encoding="utf-8")
             Path(cwd, "sync_fifo_smoke.wdb").write_text("wdb", encoding="utf-8")
-            return subprocess.CompletedProcess([command, script_name], 0, stdout="ok", stderr="")
+            Path(cwd, "xsim.log").write_text(
+                "SYNC_FIFO_SCOREBOARD_PASS\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                [command, script_name], 0, stdout="SYNC_FIFO_SCOREBOARD_PASS", stderr=""
+            )
         return subprocess.CompletedProcess(
             [command, script_name],
             1,
@@ -259,7 +269,8 @@ def test_p5_2_sync_fifo_vivado_sim_failure_and_warning_paths(monkeypatch, tmp_pa
     assert services.run_sync_fifo_vivado_sim(
         output_dir=tmp_path / "project-warning",
         open_wave_gui=True,
-    ) is True
+    ) is False
+    assert opened == []
 
 
 def test_sync_fifo_sim_rejects_scoreboard_false_pass_and_writes_fail_reports(
@@ -308,7 +319,6 @@ def test_sync_fifo_sim_rejects_scoreboard_false_pass_and_writes_fail_reports(
     )
     assert verdict["status"] == "FAIL"
     assert "FAIL_MARKER_FOUND" in {reason["code"] for reason in verdict["reasons"]}
-    assert opened == []
 
 
 def test_p5_3_run_round_robin_arbiter_vivado_sim_creates_project_and_can_skip_gui(
@@ -340,6 +350,10 @@ def test_p5_3_run_round_robin_arbiter_vivado_sim_creates_project_and_can_skip_gu
             )
             Path(cwd, "round_robin_arbiter_smoke.wdb").write_text(
                 "wdb placeholder",
+                encoding="utf-8",
+            )
+            Path(cwd, "xsim.log").write_text(
+                "ROUND_ROBIN_ARBITER_SCOREBOARD_PASS\n",
                 encoding="utf-8",
             )
         if "create_round_robin_arbiter_project.tcl" in command:
@@ -388,61 +402,6 @@ def test_p5_3_run_round_robin_arbiter_vivado_sim_creates_project_and_can_skip_gu
         output_dir=tmp_path,
         open_wave_gui=False,
     ) is True
-
-
-def test_round_robin_sim_rejects_scoreboard_false_pass_and_writes_fail_reports(
-    monkeypatch,
-    tmp_path,
-):
-    module = load_agent_module()
-    agent = module.DigitalICAgent()
-    services = agent.target_services
-    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: "vivado")
-
-    def false_pass_run(_command, script_name, cwd, **_kwargs):
-        sim_dir = Path(cwd)
-        if script_name == "run_vivado_round_robin_arbiter.tcl":
-            (sim_dir / "round_robin_arbiter_trace.vcd").write_text(
-                "vcd\n", encoding="utf-8"
-            )
-            (sim_dir / "round_robin_arbiter_smoke.wdb").write_text(
-                "wdb\n", encoding="utf-8"
-            )
-            evidence = (
-                "ROUND_ROBIN_ARBITER_SCOREBOARD_PASS\n"
-                "Fatal: ROUND_ROBIN_ARBITER_SCOREBOARD_FAIL errors=5\n"
-            )
-            (sim_dir / "xsim.log").write_text(evidence, encoding="utf-8")
-            return subprocess.CompletedProcess([script_name], 0, stdout=evidence, stderr="")
-        raise AssertionError("Project generation must not run after a failed verdict")
-
-    monkeypatch.setattr(agent, "run_vivado_batch", false_pass_run)
-    monkeypatch.setattr(
-        services,
-        "collect_round_robin_arbiter_vcd_analysis",
-        lambda **_kwargs: {
-            "info": {},
-            "grant_events": {"total": 0},
-            "fairness_events": {"total": 0},
-        },
-    )
-
-    assert services.run_round_robin_arbiter_vivado_sim(
-        output_dir=tmp_path,
-        open_wave_gui=False,
-    ) is False
-
-    project_dir = tmp_path / "round-robin-arbiter"
-    assert "- 状态：FAIL" in (project_dir / "reports" / "sim_report.md").read_text(
-        encoding="utf-8"
-    )
-    verdict = json.loads(
-        (project_dir / "reports" / "verification_verdict.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert verdict["status"] == "FAIL"
-    assert "FAIL_MARKER_FOUND" in {reason["code"] for reason in verdict["reasons"]}
 
     sim_dir = tmp_path / "round-robin-arbiter" / "sim"
     assert calls == [
@@ -505,6 +464,60 @@ def test_round_robin_sim_rejects_scoreboard_false_pass_and_writes_fail_reports(
     assert artifacts["vivado_project"]["status"] == "CURRENT"
     assert artifacts["vivado_project"]["produced_by_run_id"] == latest_run["run_id"]
 
+
+def test_round_robin_sim_rejects_scoreboard_false_pass_and_writes_fail_reports(
+    monkeypatch,
+    tmp_path,
+):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    services = agent.target_services
+    monkeypatch.setattr(agent, "resolve_vivado_command", lambda: "vivado")
+
+    def false_pass_run(_command, script_name, cwd, **_kwargs):
+        sim_dir = Path(cwd)
+        if script_name == "run_vivado_round_robin_arbiter.tcl":
+            (sim_dir / "round_robin_arbiter_trace.vcd").write_text(
+                "vcd\n", encoding="utf-8"
+            )
+            (sim_dir / "round_robin_arbiter_smoke.wdb").write_text(
+                "wdb\n", encoding="utf-8"
+            )
+            evidence = (
+                "ROUND_ROBIN_ARBITER_SCOREBOARD_PASS\n"
+                "Fatal: ROUND_ROBIN_ARBITER_SCOREBOARD_FAIL errors=5\n"
+            )
+            (sim_dir / "xsim.log").write_text(evidence, encoding="utf-8")
+            return subprocess.CompletedProcess([script_name], 0, stdout=evidence, stderr="")
+        raise AssertionError("Project generation must not run after a failed verdict")
+
+    monkeypatch.setattr(agent, "run_vivado_batch", false_pass_run)
+    monkeypatch.setattr(
+        services,
+        "collect_round_robin_arbiter_vcd_analysis",
+        lambda **_kwargs: {
+            "info": {},
+            "grant_events": {"total": 0},
+            "fairness_events": {"total": 0},
+        },
+    )
+
+    assert services.run_round_robin_arbiter_vivado_sim(
+        output_dir=tmp_path,
+        open_wave_gui=False,
+    ) is False
+
+    project_dir = tmp_path / "round-robin-arbiter"
+    assert "- 状态：FAIL" in (project_dir / "reports" / "sim_report.md").read_text(
+        encoding="utf-8"
+    )
+    verdict = json.loads(
+        (project_dir / "reports" / "verification_verdict.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert verdict["status"] == "FAIL"
+    assert "FAIL_MARKER_FOUND" in {reason["code"] for reason in verdict["reasons"]}
 
 def test_p5_3_round_robin_wave_db_resolution_and_gui_paths(monkeypatch, tmp_path):
     module = load_agent_module()
@@ -635,7 +648,16 @@ def test_p5_3_round_robin_vivado_sim_failure_and_warning_paths(monkeypatch, tmp_
                 "wdb",
                 encoding="utf-8",
             )
-            return subprocess.CompletedProcess([command, script_name], 0, stdout="ok", stderr="")
+            Path(cwd, "xsim.log").write_text(
+                "ROUND_ROBIN_ARBITER_SCOREBOARD_PASS\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                [command, script_name],
+                0,
+                stdout="ROUND_ROBIN_ARBITER_SCOREBOARD_PASS",
+                stderr="",
+            )
         return subprocess.CompletedProcess(
             [command, script_name],
             1,
@@ -662,5 +684,5 @@ def test_p5_3_round_robin_vivado_sim_failure_and_warning_paths(monkeypatch, tmp_
     assert services.run_round_robin_arbiter_vivado_sim(
         output_dir=tmp_path / "project-warning",
         open_wave_gui=True,
-    ) is True
+    ) is False
     assert opened == []

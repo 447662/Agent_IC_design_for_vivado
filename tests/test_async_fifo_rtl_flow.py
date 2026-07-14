@@ -149,11 +149,20 @@ def test_run_async_fifo_vivado_sim_creates_project_and_can_skip_gui(
                 "wdb placeholder",
                 encoding="utf-8",
             )
+            Path(cwd, "xsim.log").write_text(
+                "ASYNC_FIFO_SCOREBOARD_PASS\n",
+                encoding="utf-8",
+            )
         if "create_async_fifo_project.tcl" in command:
             xpr = Path(cwd).parent / "vivado_project" / "async_fifo_project.xpr"
             xpr.parent.mkdir(parents=True, exist_ok=True)
             xpr.write_text("<Project />\n", encoding="utf-8")
-        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="ASYNC_FIFO_SCOREBOARD_PASS",
+            stderr="",
+        )
 
     def fail_if_gui_opens(*args, **kwargs):
         raise AssertionError("GUI should be skipped")
@@ -317,7 +326,13 @@ def test_run_async_fifo_vivado_sim_failure_paths_and_gui(monkeypatch, tmp_path):
                 encoding="utf-8",
             )
             (sim_dir / "async_fifo_smoke.wdb").write_text("wdb", encoding="utf-8")
-            return subprocess.CompletedProcess([script_name], 0, stdout="ok", stderr="")
+            (sim_dir / "xsim.log").write_text(
+                "ASYNC_FIFO_SCOREBOARD_PASS\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                [script_name], 0, stdout="ASYNC_FIFO_SCOREBOARD_PASS", stderr=""
+            )
         return subprocess.CompletedProcess(
             [script_name],
             1,
@@ -339,7 +354,17 @@ def test_run_async_fifo_vivado_sim_failure_paths_and_gui(monkeypatch, tmp_path):
                 encoding="utf-8",
             )
             (sim_dir / "async_fifo_smoke.wdb").write_text("wdb", encoding="utf-8")
-        return subprocess.CompletedProcess([script_name], 0, stdout="ok", stderr="")
+            (sim_dir / "xsim.log").write_text(
+                "ASYNC_FIFO_SCOREBOARD_PASS\n",
+                encoding="utf-8",
+            )
+        if script_name == "create_async_fifo_project.tcl":
+            xpr = sim_dir.parent / "vivado_project" / "async_fifo_project.xpr"
+            xpr.parent.mkdir(parents=True, exist_ok=True)
+            xpr.write_text("<Project />\n", encoding="utf-8")
+        return subprocess.CompletedProcess(
+            [script_name], 0, stdout="ASYNC_FIFO_SCOREBOARD_PASS", stderr=""
+        )
 
     monkeypatch.setattr(plugin, "run_vivado_batch", success_run)
     monkeypatch.setattr(
@@ -448,11 +473,20 @@ def test_async_fifo_regression_runs_parameter_matrix_and_writes_summary(
                 "wdb placeholder",
                 encoding="utf-8",
             )
+            Path(cwd, "xsim.log").write_text(
+                "ASYNC_FIFO_SCOREBOARD_PASS\n",
+                encoding="utf-8",
+            )
         if "create_async_fifo_project.tcl" in command:
             xpr = Path(cwd).parent / "vivado_project" / "async_fifo_project.xpr"
             xpr.parent.mkdir(parents=True, exist_ok=True)
             xpr.write_text("<Project />\n", encoding="utf-8")
-        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="ASYNC_FIFO_SCOREBOARD_PASS",
+            stderr="",
+        )
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
     monkeypatch.setattr(plugin, "collect_async_fifo_vcd_analysis", lambda **_kwargs: _vcd_summary(4))

@@ -267,25 +267,28 @@ class AsyncFifoRegressionReportMixin:
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
         return md_path
 
-    def write_async_fifo_summary_report(self, project_dir: Any, vcd_path: Any, wave_db_path: Any, analysis: Any=None, analysis_error: Any=None, regression_path: Any=None) -> Any:
+    def write_async_fifo_summary_report(self, project_dir: Any, vcd_path: Any, wave_db_path: Any, analysis: Any=None, analysis_error: Any=None, regression_path: Any=None, verdict_status: Any=None) -> Any:
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
         summary_path = reports_dir / "sim_summary.md"
         html_path = reports_dir / "sim_summary.html"
         wcfg = self.parse_async_fifo_wcfg_summary(project_dir)
+        scenario_status = "UNVERIFIED" if verdict_status == "FAIL" else "PASS"
         scenarios = [
-            ("basic_ordered", "PASS", "基础有序写入/读出路径"),
-            ("full_boundary", "PASS", "写满边界、full 拉高与溢出写阻断"),
-            ("empty_boundary", "PASS", "读空边界、empty 拉高与空读阻断"),
-            ("reset_recovery", "PASS", "仿真中途复位后的恢复能力"),
-            ("mixed_stress", "PASS", "异步写读并发压力场景"),
+            ("basic_ordered", scenario_status, "基础有序写入/读出路径"),
+            ("full_boundary", scenario_status, "写满边界、full 拉高与溢出写阻断"),
+            ("empty_boundary", scenario_status, "读空边界、empty 拉高与空读阻断"),
+            ("reset_recovery", scenario_status, "仿真中途复位后的恢复能力"),
+            ("mixed_stress", scenario_status, "异步写读并发压力场景"),
         ]
         wcfg_status = "PASS" if wcfg["valid"] else "FAIL"
         regression_path = regression_path or (reports_dir / "regression_matrix.md")
 
         lines = [
             "# async-fifo 仿真摘要",
+            "",
+            "- 总体状态：{}".format(verdict_status or "UNKNOWN"),
             "",
             "## 产物路径",
             "",

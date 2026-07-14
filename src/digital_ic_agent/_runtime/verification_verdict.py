@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, Mapping, Sequence, TypedDict
+from typing import Literal, Mapping, Protocol, Sequence, TypedDict
+from uuid import uuid4
 
 
 VerdictStatus = Literal["PASS", "FAIL"]
+MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
+
+
+class ProcessResult(Protocol):
+    returncode: int
+    stdout: str | None
+    stderr: str | None
 
 
 class VerificationReasonPayload(TypedDict):
@@ -59,6 +68,7 @@ class VerificationRequest:
     evidence: Mapping[str, str] = field(default_factory=dict)
     required_pass_markers: Sequence[str] = ()
     coverage_gates: Mapping[str, str] = field(default_factory=dict)
+    coverage_required: bool | None = None
     required_artifacts: Sequence[ArtifactRequirement] = ()
 
 
@@ -114,6 +124,12 @@ def _evaluate_return_codes(
     request: VerificationRequest,
     reasons: list[VerificationReason],
 ) -> None:
+    if not request.return_codes:
+        _add_reason(
+            reasons,
+            "RETURN_CODE_POLICY_MISSING",
+            "At least one tool return code is required",
+        )
     for tool, return_code in sorted(request.return_codes.items()):
         if return_code != 0:
             _add_reason(
@@ -139,6 +155,12 @@ def _evaluate_evidence(
         return summaries
 
     combined = "\n".join(nonempty_evidence.values())
+    if not request.required_pass_markers:
+        _add_reason(
+            reasons,
+            "PASS_MARKER_POLICY_MISSING",
+            "At least one required pass marker must be declared",
+        )
     for marker in request.required_pass_markers:
         if marker not in combined:
             _add_reason(
@@ -183,6 +205,18 @@ def _evaluate_coverage(
     request: VerificationRequest,
     reasons: list[VerificationReason],
 ) -> None:
+    if request.coverage_required is None:
+        _add_reason(
+            reasons,
+            "COVERAGE_POLICY_UNDECLARED",
+            "The caller must explicitly declare whether coverage is required",
+        )
+    elif request.coverage_required and not request.coverage_gates:
+        _add_reason(
+            reasons,
+            "COVERAGE_POLICY_MISSING",
+            "Coverage is required but no coverage gates were provided",
+        )
     for metric, raw_status in sorted(request.coverage_gates.items()):
         status = str(raw_status).strip().upper()
         if status == "PASS":
@@ -213,6 +247,12 @@ def _evaluate_artifacts(
     request: VerificationRequest,
     reasons: list[VerificationReason],
 ) -> None:
+    if not request.required_artifacts:
+        _add_reason(
+            reasons,
+            "ARTIFACT_POLICY_MISSING",
+            "At least one required artifact must be declared",
+        )
     for requirement in request.required_artifacts:
         path = Path(requirement.path)
         source = str(path)
@@ -253,3 +293,99 @@ def evaluate_verification(request: VerificationRequest) -> VerificationVerdict:
         reasons=tuple(reasons),
         evidence=MappingProxyType(evidence),
     )
+
+
+def _read_evidence_file(path: Path) -> str:
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        return f"ERROR: [Common EVIDENCE_READ_ERROR] {type(exc).__name__}"
+    if size > MAX_EVIDENCE_BYTES:
+        return f"ERROR: [Common EVIDENCE_TOO_LARGE] {size} bytes"
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"ERROR: [Common EVIDENCE_READ_ERROR] {type(exc).__name__}"
+
+
+def evaluate_process_results(
+    *,
+    process_results: Mapping[str, ProcessResult],
+    evidence_paths: Mapping[str, Path],
+    required_pass_markers: Sequence[str],
+    required_artifact_paths: Sequence[Path],
+    started_at: datetime,
+    coverage_required: bool,
+    coverage_gates: Mapping[str, str] | None = None,
+) -> VerificationVerdict:
+    evidence: dict[str, str] = {}
+    for name, result in process_results.items():
+        if result.stdout:
+            evidence[f"{name}.stdout"] = result.stdout
+        if result.stderr:
+            evidence[f"{name}.stderr"] = result.stderr
+    for name, path in evidence_paths.items():
+        evidence[name] = _read_evidence_file(path)
+
+    return evaluate_verification(
+        VerificationRequest(
+            return_codes={
+                name: result.returncode
+                for name, result in process_results.items()
+            },
+            evidence=evidence,
+            required_pass_markers=tuple(required_pass_markers),
+            coverage_gates=dict(coverage_gates or {}),
+            coverage_required=coverage_required,
+            required_artifacts=tuple(
+                ArtifactRequirement(path=path, started_at=started_at)
+                for path in required_artifact_paths
+            ),
+        )
+    )
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    temporary.write_text(content, encoding="utf-8")
+    temporary.replace(path)
+
+
+def write_verification_verdict(
+    project_dir: Path,
+    verdict: VerificationVerdict,
+) -> tuple[Path, Path]:
+    reports_dir = Path(project_dir) / "reports"
+    json_path = reports_dir / "verification_verdict.json"
+    markdown_path = reports_dir / "verification_verdict.md"
+    payload = verdict.to_dict()
+    _atomic_write_text(
+        json_path,
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+    )
+    lines = [
+        "# Verification Verdict",
+        "",
+        f"- Schema version: `{payload['schema_version']}`",
+        f"- Status: **{verdict.status}**",
+        f"- Evidence sources: `{len(verdict.evidence)}`",
+        "",
+        "## Reasons",
+        "",
+    ]
+    if verdict.reasons:
+        for reason in verdict.reasons:
+            source = f" (`{reason.source}`)" if reason.source else ""
+            lines.append(f"- `{reason.code}`{source}: {reason.message}")
+    else:
+        lines.append("- All required verification conditions passed.")
+    _atomic_write_text(markdown_path, "\n".join(lines) + "\n")
+    return json_path, markdown_path
+
+
+def format_verification_failure(verdict: VerificationVerdict) -> str:
+    return "; ".join(
+        f"{reason.code}: {reason.message}"
+        for reason in verdict.reasons
+    ) or "verification failed without a reason"

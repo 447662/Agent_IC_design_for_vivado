@@ -13,6 +13,7 @@ from digital_ic_agent._runtime.wave_visibility import (
     evaluate_wave_open_check,
     render_window_capture_script,
 )
+from digital_ic_agent._runtime.verification_verdict import VerificationVerdict
 
 
 class AsyncFifoSimulationReportMixin:
@@ -44,6 +45,7 @@ class AsyncFifoSimulationReportMixin:
         sim_result: CompletedProcessLike | None = None,
         project_result: CompletedProcessLike | None = None,
         limit: int = 20,
+        verdict: VerificationVerdict | None = None,
     ) -> Path:
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
@@ -57,6 +59,11 @@ class AsyncFifoSimulationReportMixin:
         except (FileNotFoundError, RuntimeError) as exc:
             analysis_error = str(exc)
 
+        status = (
+            verdict.status
+            if verdict is not None
+            else ("PASS" if analysis_error is None else "PASS_WITH_ANALYSIS_WARNING")
+        )
         lines = [
             "# async-fifo Simulation Report",
             "",
@@ -64,7 +71,7 @@ class AsyncFifoSimulationReportMixin:
             "",
             "- Target: `async-fifo`",
             "- Simulator: Vivado/xsim",
-            "- Status: PASS" if analysis_error is None else "- Status: PASS_WITH_ANALYSIS_WARNING",
+            f"- Status: {status}",
             "- VCD: `{}`".format(vcd_path),
             "- WDB: `{}`".format(wave_db_path),
             "- Vivado project: `{}`".format(project_dir / "vivado_project" / "async_fifo_project.xpr"),
@@ -125,6 +132,7 @@ class AsyncFifoSimulationReportMixin:
             analysis=analysis,
             analysis_error=analysis_error,
             regression_path=regression_path,
+            verdict_status=status,
         )
         return report_path
 

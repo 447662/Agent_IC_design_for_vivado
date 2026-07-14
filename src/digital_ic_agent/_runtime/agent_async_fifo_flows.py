@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +11,11 @@ from digital_ic_agent._runtime.agent_async_fifo_runtime_support import (
     build_async_fifo_uvm_coverage_completed_lines,
     build_async_fifo_uvm_smoke_completed_lines,
     emit_async_fifo_lines,
+)
+from digital_ic_agent._runtime.verification_verdict import (
+    evaluate_process_results,
+    format_verification_failure,
+    write_verification_verdict,
 )
 
 
@@ -63,33 +69,34 @@ class AsyncFifoFlowMixin:
             )
             return False
 
+        started_at = datetime.now(UTC)
         sim_result = self.run_vivado_batch(
             vivado_command,
             "run_vivado_async_fifo.tcl",
             sim_dir,
         )
-        if sim_result.returncode != 0:
-            emit_async_fifo_lines(
-                build_async_fifo_error_lines(
-                    sim_result.stderr.strip()
-                    or sim_result.stdout.strip()
-                    or "async FIFO simulation failed"
-                ),
-                stream=sys.stderr,
-            )
-            return False
-
         vcd_path = sim_dir / "async_fifo_trace.vcd"
         wave_db_path = self.resolve_async_fifo_wave_db(sim_dir)
-        if not vcd_path.exists():
-            emit_async_fifo_lines(
-                build_async_fifo_error_lines("Simulation did not generate VCD: {}".format(vcd_path)),
-                stream=sys.stderr,
+        xsim_log_path = sim_dir / "xsim.log"
+        sim_verdict = evaluate_process_results(
+            process_results={"simulation": sim_result},
+            evidence_paths={"xsim.log": xsim_log_path},
+            required_pass_markers=("ASYNC_FIFO_SCOREBOARD_PASS",),
+            required_artifact_paths=(vcd_path, wave_db_path, xsim_log_path),
+            started_at=started_at,
+            coverage_required=False,
+        )
+        if not sim_verdict.passed:
+            self.write_async_fifo_sim_report(
+                project_dir=project_dir,
+                vcd_path=vcd_path,
+                wave_db_path=wave_db_path,
+                sim_result=sim_result,
+                verdict=sim_verdict,
             )
-            return False
-        if not wave_db_path.exists():
+            write_verification_verdict(project_dir, sim_verdict)
             emit_async_fifo_lines(
-                build_async_fifo_error_lines("Simulation did not generate WDB: {}".format(wave_db_path)),
+                build_async_fifo_error_lines(format_verification_failure(sim_verdict)),
                 stream=sys.stderr,
             )
             return False
@@ -100,16 +107,15 @@ class AsyncFifoFlowMixin:
             sim_dir,
             extra_args=["-nojournal", "-nolog", "-notrace"],
         )
-        if project_result.returncode != 0:
-            emit_async_fifo_lines(
-                build_async_fifo_error_lines(
-                    project_result.stderr.strip()
-                    or project_result.stdout.strip()
-                    or "Vivado project generation failed"
-                ),
-                stream=sys.stderr,
-            )
-            return False
+        xpr_path = project_dir / "vivado_project" / "async_fifo_project.xpr"
+        verdict = evaluate_process_results(
+            process_results={"simulation": sim_result, "project": project_result},
+            evidence_paths={"xsim.log": xsim_log_path},
+            required_pass_markers=("ASYNC_FIFO_SCOREBOARD_PASS",),
+            required_artifact_paths=(vcd_path, wave_db_path, xsim_log_path, xpr_path),
+            started_at=started_at,
+            coverage_required=False,
+        )
 
         report_path = self.write_async_fifo_sim_report(
             project_dir=project_dir,
@@ -117,7 +123,15 @@ class AsyncFifoFlowMixin:
             wave_db_path=wave_db_path,
             sim_result=sim_result,
             project_result=project_result,
+            verdict=verdict,
         )
+        write_verification_verdict(project_dir, verdict)
+        if not verdict.passed:
+            emit_async_fifo_lines(
+                build_async_fifo_error_lines(format_verification_failure(verdict)),
+                stream=sys.stderr,
+            )
+            return False
         emit_async_fifo_lines(
             build_async_fifo_sim_completed_lines(
                 project_dir,
