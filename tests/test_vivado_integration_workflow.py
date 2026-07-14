@@ -132,7 +132,10 @@ def test_vivado_runner_covers_p0_3_release_gate_matrix():
     assert "ManifestCurrentArtifactPaths" in script
     assert "produced_by_run_id" in script
     assert '"CURRENT"' in script
-    assert "Assert-ScoreboardMarker" in script
+    assert "Assert-CanonicalVerdict" in script
+    assert "Assert-ScoreboardMarker" not in script
+    assert "verification_verdict.json" in script
+    assert "$LatestRun.verification_verdict" in script
 
     uvm_smoke_block = script.split('Name = "uvm-smoke"', maxsplit=1)[1].split(
         'Name = "uvm-coverage"',
@@ -175,7 +178,7 @@ def test_vivado_runner_rejects_false_passes_for_each_release_gate_target():
 
     assert "THIS_TOKEN_IS_INTENTIONALLY_INVALID_VERILOG" in script
     assert "accepted invalid RTL syntax" in script
-    assert "Real simulator output did not contain" in script
+    assert "Canonical verification verdict is not PASS" in script
     assert "Vivado startup or license preflight did not report PASS" in script
 
 
