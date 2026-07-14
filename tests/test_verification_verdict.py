@@ -26,6 +26,7 @@ def _request(tmp_path: Path, **overrides: object) -> VerificationRequest:
         "evidence": {"xsim.log": f"{PASS_MARKER}\nUVM_ERROR : 0\nUVM_FATAL : 0\n"},
         "required_pass_markers": (PASS_MARKER,),
         "coverage_gates": {"functional": "PASS", "statement": "PASS"},
+        "coverage_required": True,
         "required_artifacts": (ArtifactRequirement(path=wave),),
     }
     values.update(overrides)
@@ -40,6 +41,27 @@ def test_verification_verdict_accepts_only_complete_positive_evidence(tmp_path: 
     assert verdict.reasons == ()
     assert verdict.to_dict()["schema_version"] == 1
     json.dumps(verdict.to_dict())
+
+
+def test_verification_verdict_rejects_missing_verification_policy():
+    verdict = evaluate_verification(
+        VerificationRequest(
+            return_codes={},
+            evidence={"xsim.log": "clean\n"},
+            required_pass_markers=(),
+            coverage_gates={},
+            coverage_required=True,
+            required_artifacts=(),
+        )
+    )
+
+    assert verdict.status == "FAIL"
+    assert {reason.code for reason in verdict.reasons} >= {
+        "RETURN_CODE_POLICY_MISSING",
+        "PASS_MARKER_POLICY_MISSING",
+        "COVERAGE_POLICY_MISSING",
+        "ARTIFACT_POLICY_MISSING",
+    }
 
 
 @pytest.mark.parametrize(
