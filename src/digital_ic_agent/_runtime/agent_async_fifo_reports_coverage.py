@@ -213,6 +213,7 @@ class AsyncFifoCoverageReportMixin:
         coverage_threshold: Any=None,
         coverage_percent: Any=None,
         coverage_thresholds: Any=None,
+        verdict: Any=None,
     ) -> Any:
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
@@ -315,7 +316,12 @@ class AsyncFifoCoverageReportMixin:
                         coverage_gap,
                     )
 
-        passed = smoke_passed and coverage_ready and coverage_gate_passed
+        passed = (
+            smoke_passed
+            and coverage_ready
+            and coverage_gate_passed
+            and (verdict is None or verdict.passed)
+        )
         status = "PASS" if passed else "FAIL"
         coverage_types_text = " / ".join(coverage_summary["coverage_types"]) or "未识别"
         current_coverage_text = "N/A" if coverage_percent is None else "{:.1f}%".format(float(coverage_percent))

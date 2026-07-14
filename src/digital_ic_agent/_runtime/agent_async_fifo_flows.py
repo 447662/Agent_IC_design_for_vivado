@@ -192,28 +192,35 @@ class AsyncFifoFlowMixin:
             )
             return False
 
+        started_at = datetime.now(UTC)
         sim_result = self.run_vivado_batch(
             vivado_command,
             "run_vivado_async_fifo_uvm.tcl",
             sim_dir,
         )
-        if sim_result.returncode != 0:
-            self.write_async_fifo_uvm_smoke_report(project_dir, sim_result=sim_result)
+        log_path = sim_dir / "async_fifo_uvm_smoke.log"
+        wdb_path = sim_dir / "async_fifo_uvm_smoke.wdb"
+        verdict = evaluate_process_results(
+            process_results={"vivado_uvm_smoke": sim_result},
+            evidence_paths={"async_fifo_uvm_smoke.log": log_path},
+            required_pass_markers=(
+                "ASYNC_FIFO_UVM_SCOREBOARD_PASS",
+                "ASYNC_FIFO_UVM_TEST_DONE",
+            ),
+            required_artifact_paths=(log_path, wdb_path),
+            started_at=started_at,
+            coverage_required=False,
+        )
+        write_verification_verdict(project_dir, verdict)
+        report = self.write_async_fifo_uvm_smoke_report(
+            project_dir,
+            sim_result=sim_result,
+            verdict=verdict,
+        )
+        if not verdict.passed:
             emit_async_fifo_lines(
                 build_async_fifo_error_lines(
-                    sim_result.stderr.strip()
-                    or sim_result.stdout.strip()
-                    or "async FIFO UVM smoke failed"
-                ),
-                stream=sys.stderr,
-            )
-            return False
-
-        report = self.write_async_fifo_uvm_smoke_report(project_dir, sim_result=sim_result)
-        if not report["passed"]:
-            emit_async_fifo_lines(
-                build_async_fifo_error_lines(
-                    "UVM smoke markers were not found in the simulation log."
+                    format_verification_failure(verdict)
                 ),
                 stream=sys.stderr,
             )
@@ -259,41 +266,14 @@ class AsyncFifoFlowMixin:
             env = os.environ.copy()
             env["ASYNC_FIFO_UVM_SEED"] = str(int(seed))
 
+        started_at = datetime.now(UTC)
         sim_result = self.run_vivado_batch(
             vivado_command,
             "run_vivado_async_fifo_uvm_coverage.tcl",
             sim_dir,
             env=env,
         )
-        if sim_result.returncode != 0:
-            self.write_async_fifo_uvm_coverage_report(project_dir, sim_result=sim_result)
-            summary_report = self.write_async_fifo_uvm_coverage_summary_report(
-                project_dir,
-                sim_result=sim_result,
-                coverage_threshold=coverage_threshold,
-                coverage_percent=coverage_percent,
-                coverage_thresholds=coverage_thresholds,
-            )
-            self.write_async_fifo_coverage_history(
-                project_dir,
-                summary_report,
-                status="FAIL",
-                vivado_command=vivado_command,
-                seed=seed,
-            )
-            self.write_async_fifo_reports_index(project_dir)
-            emit_async_fifo_lines(
-                build_async_fifo_error_lines(
-                    sim_result.stderr.strip()
-                    or sim_result.stdout.strip()
-                    or "async FIFO UVM coverage failed"
-                ),
-                stream=sys.stderr,
-            )
-            return False
-
         functional_report = self.write_async_fifo_uvm_functional_coverage_report(project_dir)
-        report = self.write_async_fifo_uvm_coverage_report(project_dir, sim_result=sim_result)
         auto_percent = coverage_percent
         if auto_percent is None:
             percent_summary = self.extract_async_fifo_coverage_percent(project_dir / "reports" / "uvm_coverage_percent.txt")
@@ -306,65 +286,82 @@ class AsyncFifoFlowMixin:
             coverage_percent=auto_percent,
             coverage_thresholds=coverage_thresholds,
         )
-        if not report["passed"]:
-            self.write_async_fifo_coverage_history(
-                project_dir,
-                summary_report,
-                status="FAIL",
-                vivado_command=vivado_command,
-                seed=seed,
-            )
-            self.write_async_fifo_reports_index(project_dir)
-            emit_async_fifo_lines(
-                build_async_fifo_error_lines(
-                    "UVM coverage markers or xsim.codeCov database were not found."
+        configured_results = [
+            str(gate["result"])
+            for gate in summary_report["coverage_gates"].values()
+            if gate["threshold"] is not None
+        ]
+        if not configured_results:
+            configured_gate = "SKIP"
+        elif "FAIL" in configured_results:
+            configured_gate = "FAIL"
+        elif "MISSING" in configured_results:
+            configured_gate = "MISSING"
+        else:
+            configured_gate = "PASS"
+        log_path = sim_dir / "async_fifo_uvm_coverage.log"
+        wdb_path = sim_dir / "async_fifo_uvm_coverage.wdb"
+        code_cov_info = (
+            sim_dir
+            / "coverage"
+            / "xsim.codeCov"
+            / "async_fifo_uvm_cov"
+            / "xsim.CCInfo"
+        )
+        verdict = evaluate_process_results(
+            process_results={"vivado_uvm_coverage": sim_result},
+            evidence_paths={"async_fifo_uvm_coverage.log": log_path},
+            required_pass_markers=(
+                "ASYNC_FIFO_UVM_SCOREBOARD_PASS",
+                "ASYNC_FIFO_UVM_TEST_DONE",
+                "ASYNC_FIFO_UVM_FCOV_PASS",
+                "ASYNC_FIFO_UVM_ASSERT_PASS",
+            ),
+            required_artifact_paths=(log_path, wdb_path, code_cov_info),
+            started_at=started_at,
+            coverage_required=True,
+            coverage_gates={
+                "configured_thresholds": configured_gate,
+                "functional": "PASS" if functional_report["passed"] else "FAIL",
+                "xsim_code_coverage": (
+                    "PASS"
+                    if summary_report["coverage_summary"]["available"]
+                    else "MISSING"
                 ),
-                stream=sys.stderr,
-            )
-            return False
-        functional_log = ""
-        if functional_report["log_path"].exists():
-            functional_log = functional_report["log_path"].read_text(encoding="utf-8", errors="replace")
-        if "ASYNC_FIFO_SVA_FAIL" in functional_log:
-            self.write_async_fifo_coverage_history(
-                project_dir,
-                summary_report,
-                status="FAIL",
-                vivado_command=vivado_command,
-                seed=seed,
-            )
-            self.write_async_fifo_reports_index(project_dir)
-            emit_async_fifo_lines(
-                build_async_fifo_error_lines("UVM assertion failure marker was found."),
-                stream=sys.stderr,
-            )
-            return False
-        if not summary_report["coverage_gate_passed"]:
-            self.write_async_fifo_coverage_history(
-                project_dir,
-                summary_report,
-                status="FAIL",
-                vivado_command=vivado_command,
-                seed=seed,
-            )
-            self.write_async_fifo_reports_index(project_dir)
+            },
+        )
+        write_verification_verdict(project_dir, verdict)
+        report = self.write_async_fifo_uvm_coverage_report(
+            project_dir,
+            sim_result=sim_result,
+            verdict=verdict,
+        )
+        summary_report = self.write_async_fifo_uvm_coverage_summary_report(
+            project_dir,
+            sim_result=sim_result,
+            coverage_threshold=coverage_threshold,
+            coverage_percent=auto_percent,
+            coverage_thresholds=coverage_thresholds,
+            verdict=verdict,
+        )
+
+        self.write_async_fifo_coverage_history(
+            project_dir,
+            summary_report,
+            status=verdict.status,
+            vivado_command=vivado_command,
+            seed=seed,
+        )
+        self.write_async_fifo_reports_index(project_dir)
+        if not verdict.passed:
             emit_async_fifo_lines(
                 build_async_fifo_error_lines(
-                    "UVM coverage threshold gate failed.",
+                    format_verification_failure(verdict),
                     "UVM coverage summary: {}".format(summary_report["markdown_path"]),
                 ),
                 stream=sys.stderr,
             )
             return False
-
-        self.write_async_fifo_coverage_history(
-            project_dir,
-            summary_report,
-            status="PASS",
-            vivado_command=vivado_command,
-            seed=seed,
-        )
-        self.write_async_fifo_reports_index(project_dir)
         emit_async_fifo_lines(
             build_async_fifo_uvm_coverage_completed_lines(
                 report,

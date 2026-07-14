@@ -64,7 +64,12 @@ class AsyncFifoUvmReportMixin:
         )
         return uvm_dir
 
-    def write_async_fifo_uvm_smoke_report(self, project_dir: Any, sim_result: Any=None) -> Any:
+    def write_async_fifo_uvm_smoke_report(
+        self,
+        project_dir: Any,
+        sim_result: Any=None,
+        verdict: Any=None,
+    ) -> Any:
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
         sim_dir = project_dir / "sim"
@@ -81,7 +86,11 @@ class AsyncFifoUvmReportMixin:
         if sim_result is not None:
             tool_text = "\n".join(part for part in [sim_result.stdout, sim_result.stderr] if part)
         combined = "\n".join(part for part in [log_text, tool_text] if part)
-        passed = "ASYNC_FIFO_UVM_SCOREBOARD_PASS" in combined and "ASYNC_FIFO_UVM_TEST_DONE" in combined
+        passed = (
+            "ASYNC_FIFO_UVM_SCOREBOARD_PASS" in combined
+            and "ASYNC_FIFO_UVM_TEST_DONE" in combined
+            and (verdict is None or verdict.passed)
+        )
         status = "PASS" if passed else "FAIL"
 
         lines = [
@@ -145,7 +154,12 @@ class AsyncFifoUvmReportMixin:
         html_path.write_text("\n".join(html_lines), encoding="utf-8")
         return {"passed": passed, "markdown_path": md_path, "html_path": html_path, "log_path": log_path, "wdb_path": wdb_path}
 
-    def write_async_fifo_uvm_coverage_report(self, project_dir: Any, sim_result: Any=None) -> Any:
+    def write_async_fifo_uvm_coverage_report(
+        self,
+        project_dir: Any,
+        sim_result: Any=None,
+        verdict: Any=None,
+    ) -> Any:
         project_dir = Path(project_dir)
         reports_dir = project_dir / "reports"
         sim_dir = project_dir / "sim"
@@ -167,7 +181,7 @@ class AsyncFifoUvmReportMixin:
         combined = "\n".join(part for part in [log_text, tool_text] if part)
         smoke_passed = "ASYNC_FIFO_UVM_SCOREBOARD_PASS" in combined and "ASYNC_FIFO_UVM_TEST_DONE" in combined
         coverage_ready = code_cov_info.exists()
-        passed = smoke_passed and coverage_ready
+        passed = smoke_passed and coverage_ready and (verdict is None or verdict.passed)
         status = "PASS" if passed else "FAIL"
 
         lines = [

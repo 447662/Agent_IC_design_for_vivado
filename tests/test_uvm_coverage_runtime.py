@@ -402,7 +402,9 @@ def test_run_async_fifo_uvm_coverage_writes_report(monkeypatch, tmp_path):
         sim_dir = Path(cwd)
         (sim_dir / "async_fifo_uvm_coverage.log").write_text(
             "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\n"
-            "ASYNC_FIFO_UVM_TEST_DONE\n",
+            "ASYNC_FIFO_UVM_TEST_DONE\n"
+            "ASYNC_FIFO_UVM_FCOV_PASS full=1 empty=1 reset=1 mixed=1\n"
+            "ASYNC_FIFO_UVM_ASSERT_PASS\n",
             encoding="utf-8",
         )
         (sim_dir / "async_fifo_uvm_coverage.wdb").write_text(
@@ -425,7 +427,12 @@ def test_run_async_fifo_uvm_coverage_writes_report(monkeypatch, tmp_path):
     monkeypatch.setattr(module.subprocess, "run", fake_run)
 
     assert (
-        plugin.run_async_fifo_uvm_coverage(output_dir=tmp_path) is True
+        plugin.run_async_fifo_uvm_coverage(
+            output_dir=tmp_path,
+            coverage_threshold=0.0,
+            coverage_percent=100.0,
+        )
+        is True
     )
 
     project_dir = tmp_path / "async-fifo"
@@ -473,8 +480,8 @@ def test_run_async_fifo_uvm_coverage_refreshes_reports_index(
     (sim_dir / "async_fifo_uvm_coverage.log").write_text(
         "ASYNC_FIFO_UVM_SCOREBOARD_PASS writes=8 reads=8\n"
         "ASYNC_FIFO_UVM_TEST_DONE\n"
-        "ASYNC_FIFO_UVM_FCOV_PASS samples=18\n"
-        "ASYNC_FIFO_SVA_PASS\n",
+        "ASYNC_FIFO_UVM_FCOV_PASS full=1 empty=1 reset=1 mixed=1 samples=18\n"
+        "ASYNC_FIFO_UVM_ASSERT_PASS\n",
         encoding="utf-8",
     )
     (sim_dir / "async_fifo_uvm_coverage.wdb").write_text(
