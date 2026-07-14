@@ -70,34 +70,39 @@ function Assert-FreshFile {
     }
 }
 
-function Assert-ScoreboardMarker {
+function Assert-CanonicalVerdict {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ProjectDirectory,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$Markers
+        [object]$LatestRun,
+
+        [Parameter(Mandatory = $true)]
+        [datetime]$StartedAt
     )
 
-    $evidenceFiles = @(
-        Get-ChildItem -LiteralPath $ProjectDirectory -Recurse -File |
-            Where-Object { $_.Extension -in @(".log", ".jou", ".md", ".txt") }
-    )
-    foreach ($marker in $Markers) {
-        $scoreboardMatches = @()
-        if ($evidenceFiles.Count -gt 0) {
-            $scoreboardMatches = @(
-                Select-String `
-                    -Path $evidenceFiles.FullName `
-                    -Pattern $marker `
-                    -SimpleMatch `
-                    -ErrorAction SilentlyContinue
-            )
-        }
-        if ($scoreboardMatches.Count -eq 0) {
-            throw "Real simulator output did not contain $marker"
-        }
+    $verdictPath = Join-Path $ProjectDirectory "reports\verification_verdict.json"
+    Assert-FreshFile -Path $verdictPath -StartedAt $StartedAt
+    $verdict = Get-Content -LiteralPath $verdictPath -Raw -Encoding utf8 |
+        ConvertFrom-Json
+    if ($verdict.status -ne "PASS" -or $verdict.passed -ne $true) {
+        throw "Canonical verification verdict is not PASS: $verdictPath"
     }
+    if ($LatestRun.PSObject.Properties.Name -notcontains "verification_verdict") {
+        throw "Runtime manifest does not embed the canonical verification verdict"
+    }
+    if ($LatestRun.status -ne $verdict.status) {
+        throw "Runtime manifest status disagrees with canonical verification verdict"
+    }
+    $embeddedVerdict = $LatestRun.verification_verdict
+    $embeddedJson = $embeddedVerdict | ConvertTo-Json -Depth 20 -Compress
+    $verdictJson = $verdict | ConvertTo-Json -Depth 20 -Compress
+    if ($embeddedJson -ne $verdictJson) {
+        throw "Runtime manifest embeds a different canonical verification verdict"
+    }
+
+    return $verdict
 }
 
 function Assert-RuntimeManifest {
@@ -441,14 +446,14 @@ foreach ($targetGate in $targetGates) {
                 -StartedAt $script:GateStartedAt
         }
 
-        Assert-ScoreboardMarker `
-            -ProjectDirectory $projectDirectory `
-            -Markers $flowGate.Markers
-
         $latestRun = Assert-RuntimeManifest `
             -ManifestPath (Join-Path $projectDirectory "artifacts.json") `
             -ExpectedFlow $flowGate.Name `
             -ManifestCurrentArtifactPaths $flowGate.ManifestCurrentArtifacts
+        $canonicalVerdict = Assert-CanonicalVerdict `
+            -ProjectDirectory $projectDirectory `
+            -LatestRun $latestRun `
+            -StartedAt $script:GateStartedAt
 
         $gateSummaries += [ordered]@{
             target = $targetGate.Target
@@ -457,7 +462,7 @@ foreach ($targetGate in $targetGates) {
             exit_code = $flowResult.ExitCode
             required_artifacts = $flowGate.RequiredArtifacts
             manifest_current_artifacts = $flowGate.ManifestCurrentArtifacts
-            scoreboard_markers = $flowGate.Markers
+            canonical_verdict = $canonicalVerdict
         }
     }
 }
