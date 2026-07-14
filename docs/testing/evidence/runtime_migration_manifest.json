@@ -89,12 +89,14 @@
     "agent_async_fifo_reports_sim.py",
     "agent_async_fifo_reports_uvm.py",
     "agent_async_fifo_runtime_support.py",
+    "agent_machine_cli.py",
     "coverage_closure_core.py",
     "coverage_closure_render.py",
     "project_overview_core.py",
     "project_overview_render.py",
     "target_dashboard.py",
-    "target_flow_messages.py"
+    "target_flow_messages.py",
+    "verification_verdict.py"
   ],
   "compatibility": [
     ".trae/agent/README.md",

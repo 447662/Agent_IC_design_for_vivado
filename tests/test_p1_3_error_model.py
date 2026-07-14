@@ -579,6 +579,7 @@ def test_non_cli_print_calls_are_limited_to_output_emitters():
     allowed_cli_modules = {
         "agent_cli.py",
         "agent_cli_dispatch.py",
+        "agent_machine_cli.py",
     }
 
     violations: list[str] = []
