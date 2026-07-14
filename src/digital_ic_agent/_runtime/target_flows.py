@@ -39,9 +39,11 @@ BUILTIN_HANDLER_MODULES = (
 )
 
 CANONICAL_VERDICT_FLOWS = {
+    "regress-rtl",
     "sim-rtl",
     "uvm-smoke",
     "uvm-coverage",
+    "uvm-random-regress",
 }
 
 

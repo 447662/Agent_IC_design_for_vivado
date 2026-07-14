@@ -410,6 +410,58 @@ def _read_evidence_file(path: Path) -> str:
         return f"ERROR: [Common EVIDENCE_READ_ERROR] {type(exc).__name__}"
 
 
+def aggregate_verification_verdicts(
+    verdict_paths: Sequence[Path],
+) -> VerificationVerdict:
+    reasons: list[VerificationReason] = []
+    evidence: dict[str, EvidencePayload] = {}
+    if not verdict_paths:
+        _add_reason(
+            reasons,
+            "CHILD_VERDICT_POLICY_MISSING",
+            "At least one child verification verdict is required",
+        )
+    for raw_path in verdict_paths:
+        path = Path(raw_path)
+        source = str(path)
+        if not path.is_file():
+            _add_reason(
+                reasons,
+                "CHILD_VERDICT_MISSING",
+                "Child verification verdict is missing",
+                source,
+            )
+            continue
+        content = _read_evidence_file(path)
+        encoded = content.encode("utf-8", errors="replace")
+        evidence[source] = {
+            "sha256": hashlib.sha256(encoded).hexdigest(),
+            "size_bytes": len(encoded),
+        }
+        try:
+            child = load_verification_verdict(path)
+        except ValueError as exc:
+            _add_reason(
+                reasons,
+                "CHILD_VERDICT_INVALID",
+                str(exc),
+                source,
+            )
+            continue
+        if not child.passed:
+            _add_reason(
+                reasons,
+                "CHILD_VERDICT_FAILED",
+                "Child verification verdict reported FAIL",
+                source,
+            )
+    return VerificationVerdict(
+        status="FAIL" if reasons else "PASS",
+        reasons=tuple(reasons),
+        evidence=MappingProxyType(evidence),
+    )
+
+
 def evaluate_process_results(
     *,
     process_results: Mapping[str, ProcessResult],

@@ -13,6 +13,7 @@ from digital_ic_agent._runtime.agent_async_fifo_runtime_support import (
     emit_async_fifo_lines,
 )
 from digital_ic_agent._runtime.verification_verdict import (
+    aggregate_verification_verdicts,
     evaluate_process_results,
     format_verification_failure,
     write_verification_verdict,
@@ -147,7 +148,7 @@ class AsyncFifoFlowMixin:
     def run_async_fifo_regression(self, output_dir: Any="outputs", open_wave_gui: Any=False) -> Any:
         root_project_dir = self.write_async_fifo_project(output_dir)
         self.write_async_fifo_regression_matrix(root_project_dir)
-        results = []
+        results: list[dict[str, Any]] = []
         all_passed = True
 
         for case in self.async_fifo_regression_cases():
@@ -168,6 +169,16 @@ class AsyncFifoFlowMixin:
             })
 
         self.write_async_fifo_regression_summary(root_project_dir, results)
+        verdict = aggregate_verification_verdicts(
+            tuple(
+                Path(result["output_dir"])
+                / "reports"
+                / "verification_verdict.json"
+                for result in results
+            )
+        )
+        write_verification_verdict(root_project_dir, verdict)
+        all_passed = all_passed and verdict.passed
         if open_wave_gui and all_passed:
             self.open_async_fifo_project_gui(root_project_dir)
         return all_passed
@@ -375,7 +386,7 @@ class AsyncFifoFlowMixin:
         if seeds is None:
             seeds = [101, 202, 303]
         project_dir = Path(output_dir) / "async-fifo"
-        results = []
+        results: list[dict[str, Any]] = []
         all_passed = True
         for seed in seeds:
             seed_value = int(seed)
@@ -415,4 +426,13 @@ class AsyncFifoFlowMixin:
                 ),
             })
         self.write_async_fifo_uvm_random_regression_report(project_dir, results)
-        return all_passed
+        verdict = aggregate_verification_verdicts(
+            tuple(
+                Path(result["project"])
+                / "reports"
+                / "verification_verdict.json"
+                for result in results
+            )
+        )
+        write_verification_verdict(project_dir, verdict)
+        return all_passed and verdict.passed
