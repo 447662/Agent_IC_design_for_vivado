@@ -9,8 +9,12 @@ import pytest
 
 from digital_ic_agent._runtime.verification_verdict import (
     ArtifactRequirement,
+    VerificationVerdict,
     VerificationRequest,
+    aggregate_verification_verdicts,
     evaluate_verification,
+    failed_verdict,
+    write_verification_verdict,
 )
 
 
@@ -182,3 +186,51 @@ def test_verification_verdict_ignores_zero_uvm_counts_and_failure_words_in_marke
     )
 
     assert verdict.status == "PASS"
+
+
+def test_aggregate_verdict_requires_every_child_to_pass(tmp_path: Path):
+    pass_dir = tmp_path / "pass"
+    fail_dir = tmp_path / "fail"
+    pass_verdict = VerificationVerdict(status="PASS", reasons=(), evidence={})
+    write_verification_verdict(pass_dir, pass_verdict)
+    write_verification_verdict(
+        fail_dir,
+        failed_verdict("CHILD_SIM_FAILED", "child simulation failed"),
+    )
+
+    verdict = aggregate_verification_verdicts(
+        (
+            pass_dir / "reports" / "verification_verdict.json",
+            fail_dir / "reports" / "verification_verdict.json",
+        )
+    )
+
+    assert verdict.status == "FAIL"
+    assert "CHILD_VERDICT_FAILED" in {reason.code for reason in verdict.reasons}
+    assert len(verdict.evidence) == 2
+
+
+def test_aggregate_verdict_fails_closed_for_missing_child(tmp_path: Path):
+    verdict = aggregate_verification_verdicts(
+        (tmp_path / "missing" / "verification_verdict.json",)
+    )
+
+    assert verdict.status == "FAIL"
+    assert verdict.reasons[0].code == "CHILD_VERDICT_MISSING"
+
+
+def test_aggregate_verdict_passes_when_all_children_pass(tmp_path: Path):
+    paths = []
+    for name in ("one", "two", "three"):
+        project_dir = tmp_path / name
+        write_verification_verdict(
+            project_dir,
+            VerificationVerdict(status="PASS", reasons=(), evidence={}),
+        )
+        paths.append(project_dir / "reports" / "verification_verdict.json")
+
+    verdict = aggregate_verification_verdicts(tuple(paths))
+
+    assert verdict.status == "PASS"
+    assert verdict.reasons == ()
+    assert len(verdict.evidence) == 3

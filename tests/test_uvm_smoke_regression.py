@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -218,6 +219,9 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(
     module = load_agent_module()
     agent = module.DigitalICAgent()
     plugin = async_fifo_plugin(agent)
+    verdict_module = importlib.import_module(
+        "digital_ic_agent._runtime.verification_verdict"
+    )
     calls = []
 
     def fake_run(
@@ -242,6 +246,14 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(
             "wdb",
             encoding="utf-8",
         )
+        verdict_module.write_verification_verdict(
+            project_dir,
+            verdict_module.VerificationVerdict(
+                status="PASS",
+                reasons=(),
+                evidence={},
+            ),
+        )
         return True
 
     monkeypatch.setattr(plugin, "run_async_fifo_uvm_coverage", fake_run)
@@ -260,6 +272,15 @@ def test_run_async_fifo_uvm_random_regression_writes_seed_report(
     ]
     assert report.exists()
     assert html_report.exists()
+    parent_verdict = json.loads(
+        (
+            tmp_path
+            / "async-fifo"
+            / "reports"
+            / "verification_verdict.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert parent_verdict["status"] == "PASS"
     text = report.read_text(encoding="utf-8")
     assert "Seed | Status" in text
     assert "| 11 | PASS |" in text

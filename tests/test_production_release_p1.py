@@ -339,6 +339,16 @@ def test_async_fifo_flows_cover_regression_gui_and_uvm_launch_failures(tmp_path)
             return ({"name": "base", "data_width": 8, "addr_width": 4},)
 
         def run_async_fifo_vivado_sim(self, **_kwargs):
+            from digital_ic_agent._runtime.verification_verdict import (
+                VerificationVerdict,
+                write_verification_verdict,
+            )
+
+            child_project_dir = Path(_kwargs["output_dir"]) / "async-fifo"
+            write_verification_verdict(
+                child_project_dir,
+                VerificationVerdict(status="PASS", reasons=(), evidence={}),
+            )
             return True
 
         def write_async_fifo_regression_summary(self, _project_dir, _results):

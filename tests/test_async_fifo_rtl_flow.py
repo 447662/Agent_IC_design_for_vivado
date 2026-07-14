@@ -500,6 +500,15 @@ def test_async_fifo_regression_runs_parameter_matrix_and_writes_summary(
     summary_html = tmp_path / "async-fifo" / "reports" / "regression_summary.html"
     assert summary_md.exists()
     assert summary_html.exists()
+    parent_verdict = json.loads(
+        (
+            tmp_path
+            / "async-fifo"
+            / "reports"
+            / "verification_verdict.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert parent_verdict["status"] == "PASS"
     text = summary_md.read_text(encoding="utf-8")
     html_text = summary_html.read_text(encoding="utf-8")
     assert "dw8_aw4" in text
