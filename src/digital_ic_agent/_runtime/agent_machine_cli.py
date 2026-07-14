@@ -21,6 +21,7 @@ from digital_ic_agent._runtime.intent_contract import (
 )
 from digital_ic_agent._runtime.reference_library import (
     ReferenceLibraryError,
+    fetch_openhw_repository,
     index_reference_library,
     reference_status,
     search_references,
@@ -95,10 +96,14 @@ def build_machine_parser() -> argparse.ArgumentParser:
     spec_validate.add_argument("--verification-intent", required=True, type=Path)
 
     reference = subparsers.add_parser("reference", help="Manage local references")
-    reference.add_argument("reference_command", choices=("status", "index", "search", "show"))
+    reference.add_argument(
+        "reference_command",
+        choices=("status", "index", "search", "show", "fetch-openhw"),
+    )
     reference.add_argument("--workspace", type=Path, default=Path.cwd())
     reference.add_argument("--query", default=None)
     reference.add_argument("--record-id", default=None)
+    reference.add_argument("--repository", default=None)
 
     for command in ("diagnose", "status", "resume", "report"):
         command_parser = subparsers.add_parser(command)
@@ -338,13 +343,23 @@ def run_machine_cli(argv: Sequence[str] | None = None) -> int:
                         "--query is required for reference search",
                     )
                 data = search_references(args.workspace, args.query)
-            else:
+            elif reference_command == "show":
                 if not args.record_id:
                     raise ReferenceLibraryError(
                         "REFERENCE_RECORD_ID_REQUIRED",
                         "--record-id is required for reference show",
                     )
                 data = show_reference(args.workspace, args.record_id)
+            else:
+                if not args.repository:
+                    raise ReferenceLibraryError(
+                        "OPENHW_REPOSITORY_REQUIRED",
+                        "--repository is required for reference fetch-openhw",
+                    )
+                data = fetch_openhw_repository(
+                    args.workspace,
+                    args.repository,
+                )
         except ReferenceLibraryError as exc:
             if reference_command != "status":
                 data = {"reference_status": reference_status(args.workspace)}

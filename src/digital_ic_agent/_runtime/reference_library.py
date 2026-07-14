@@ -5,8 +5,10 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import uuid
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -56,6 +58,9 @@ MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 MAX_MEMBER_BYTES = 4 * 1024 * 1024
 MAX_TEXT_BYTES = 4 * 1024 * 1024
 MAX_SHOW_CHARS = 20_000
+OPENHW_REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
+GITHUB_PROXY = "http://127.0.0.1:7897"
+GitRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class ReferenceLibraryError(ValueError):
@@ -112,6 +117,19 @@ def _reference_files(workspace: Path) -> list[Path]:
         for name in LEGACY_INPUTS
         if (path := workspace / name).is_file() and not path.is_symlink()
     )
+    openhw_root = workspace / LAYOUT["cache"] / "openhwgroup"
+    if openhw_root.is_dir():
+        resolved_root = openhw_root.resolve()
+        files.extend(
+            path
+            for path in openhw_root.rglob("*")
+            if (
+                path.is_file()
+                and not path.is_symlink()
+                and ".git" not in path.relative_to(openhw_root).parts
+                and path.resolve().is_relative_to(resolved_root)
+            )
+        )
     return sorted(set(files), key=lambda path: str(path).casefold())
 
 
@@ -162,7 +180,11 @@ def _associated_license(path: Path, license_files: list[Path]) -> str:
     source_stem = path.stem.casefold()
     for license_path in license_files:
         license_stem = license_path.stem.casefold()
-        if source_stem not in license_stem and license_path.parent != path.parent:
+        if (
+            source_stem not in license_stem
+            and license_path.parent != path.parent
+            and license_path.parent not in path.parents
+        ):
             continue
         if license_path.stat().st_size > MAX_TEXT_BYTES:
             continue
@@ -330,19 +352,24 @@ def _record(
     archive: str | None,
     license_id: str,
     imported_at: str,
+    repository: str | None = None,
+    commit: str | None = None,
 ) -> dict[str, Any]:
     encoded = content.encode("utf-8", errors="replace")
     sha256 = hashlib.sha256(encoded).hexdigest()
     language = _language(path)
     module, interface_summary = _rtl_metadata(content, language)
-    record_key = json.dumps((source, archive, path, sha256), separators=(",", ":"))
+    record_key = json.dumps(
+        (source, archive, repository, commit, path, sha256),
+        separators=(",", ":"),
+    )
     record_id = hashlib.sha256(record_key.encode()).hexdigest()[:24]
     return {
         "record_id": record_id,
         "source": source,
         "archive": archive,
-        "repository": None,
-        "commit": None,
+        "repository": repository,
+        "commit": commit,
         "path": path,
         "sha256": sha256,
         "license": license_id,
@@ -357,7 +384,13 @@ def _record(
     }
 
 
-def _read_file_record(path: Path, workspace: Path, license_id: str, imported_at: str) -> dict[str, Any] | None:
+def _read_file_record(
+    path: Path,
+    workspace: Path,
+    license_id: str,
+    imported_at: str,
+    openhw_repositories: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
     suffix = path.suffix.casefold()
     relative = path.relative_to(workspace).as_posix()
     if suffix == ".pdf":
@@ -368,13 +401,23 @@ def _read_file_record(path: Path, workspace: Path, license_id: str, imported_at:
         content = _decode_text(path.read_bytes())
     else:
         return None
+    relative_parts = Path(relative).parts
+    repository_record = None
+    if relative_parts[:3] == ("references", "cache", "openhwgroup") and len(relative_parts) > 3:
+        repository_record = openhw_repositories.get(relative_parts[3])
     return _record(
-        source="local-file",
+        source="openhwgroup" if repository_record is not None else "local-file",
         path=relative,
         content=content,
         archive=None,
         license_id=license_id,
         imported_at=imported_at,
+        repository=(
+            None if repository_record is None else str(repository_record["url"])
+        ),
+        commit=(
+            None if repository_record is None else str(repository_record["commit"])
+        ),
     )
 
 
@@ -433,6 +476,19 @@ def _collect_records(workspace: Path) -> list[dict[str, Any]]:
     imported_at = _timestamp()
     files = _reference_files(workspace)
     license_files = [path for path in files if _is_license_file(path)]
+    openhw_repositories: dict[str, dict[str, Any]] = {}
+    openhw_catalog = _openhw_catalog_path(workspace)
+    if openhw_catalog.is_file():
+        try:
+            catalog_payload = json.loads(openhw_catalog.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ReferenceLibraryError(
+                "OPENHW_CATALOG_INVALID",
+                f"Invalid OpenHWGroup catalog: {openhw_catalog}",
+            ) from exc
+        for item in catalog_payload.get("repositories", []):
+            if isinstance(item, dict) and isinstance(item.get("repository"), str):
+                openhw_repositories[item["repository"]] = item
     records: list[dict[str, Any]] = []
     for path in files:
         if _is_license_file(path):
@@ -445,6 +501,7 @@ def _collect_records(workspace: Path) -> list[dict[str, Any]]:
             workspace,
             _associated_license(path, license_files),
             imported_at,
+            openhw_repositories,
         )
         if record is not None:
             records.append(record)
@@ -635,3 +692,205 @@ def show_reference(workspace: Path, record_id: str) -> dict[str, Any]:
         "index_status": status["index_status"],
         "reference_status": status,
     }
+
+
+def _run_git(
+    runner: GitRunner,
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return runner(
+            command,
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except OSError as exc:
+        raise ReferenceLibraryError("GIT_UNAVAILABLE", str(exc)) from exc
+
+
+def _is_connection_failure(result: subprocess.CompletedProcess[str]) -> bool:
+    text = "\n".join((result.stdout or "", result.stderr or "")).casefold()
+    return any(
+        marker in text
+        for marker in (
+            "could not resolve host",
+            "failed to connect",
+            "connection timed out",
+            "connection was reset",
+            "network is unreachable",
+        )
+    )
+
+
+def _openhw_catalog_path(workspace: Path) -> Path:
+    return (
+        Path(workspace).resolve()
+        / LAYOUT["catalog"]
+        / "openhwgroup-repositories.json"
+    )
+
+
+def _record_openhw_repository(workspace: Path, record: dict[str, Any]) -> None:
+    catalog_path = _openhw_catalog_path(workspace)
+    if catalog_path.is_file():
+        try:
+            catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ReferenceLibraryError(
+                "OPENHW_CATALOG_INVALID",
+                f"Invalid OpenHWGroup catalog: {catalog_path}",
+            ) from exc
+    else:
+        catalog = {
+            "schema_version": "digital-ic-agent.openhw-catalog.v1",
+            "repositories": [],
+        }
+    repositories = catalog.get("repositories")
+    if not isinstance(repositories, list):
+        raise ReferenceLibraryError(
+            "OPENHW_CATALOG_INVALID",
+            f"Invalid OpenHWGroup catalog: {catalog_path}",
+        )
+    repositories[:] = [
+        item
+        for item in repositories
+        if not isinstance(item, dict) or item.get("repository") != record["repository"]
+    ]
+    repositories.append(record)
+    _atomic_write_json(catalog_path, catalog)
+
+
+def _openhw_provenance(
+    workspace: Path,
+    repository: str,
+    cache_path: Path,
+    runner: GitRunner,
+    *,
+    proxy_retry: bool,
+    cached: bool,
+) -> dict[str, Any]:
+    commit_result = _run_git(
+        runner,
+        ["git", "-C", str(cache_path), "rev-parse", "HEAD"],
+    )
+    remote_result = _run_git(
+        runner,
+        ["git", "-C", str(cache_path), "remote", "get-url", "origin"],
+    )
+    if commit_result.returncode != 0 or remote_result.returncode != 0:
+        raise ReferenceLibraryError(
+            "OPENHW_PROVENANCE_FAILED",
+            "Unable to read OpenHWGroup repository provenance",
+        )
+    commit = (commit_result.stdout or "").strip()
+    expected_url = f"https://github.com/openhwgroup/{repository}.git"
+    remote_url = (remote_result.stdout or "").strip()
+    if re.fullmatch(r"[0-9a-fA-F]{40}", commit) is None or remote_url != expected_url:
+        raise ReferenceLibraryError(
+            "OPENHW_PROVENANCE_INVALID",
+            "OpenHWGroup repository provenance did not match the requested source",
+        )
+    license_id = "LICENSE_UNKNOWN"
+    for license_path in sorted(cache_path.glob("LICENSE*")):
+        if license_path.is_file() and license_path.stat().st_size <= MAX_TEXT_BYTES:
+            license_id = _detect_license(_decode_text(license_path.read_bytes()))
+            if license_id != "LICENSE_UNKNOWN":
+                break
+    notice_present = any(path.is_file() for path in cache_path.glob("NOTICE*"))
+    record = {
+        "repository": repository,
+        "url": expected_url,
+        "commit": commit.lower(),
+        "cache_path": str(cache_path),
+        "license": license_id,
+        "notice_present": notice_present,
+        "fetched_at": _timestamp(),
+        "cached": cached,
+        "proxy_retry": proxy_retry,
+        "executed_repository_code": False,
+    }
+    _record_openhw_repository(workspace, record)
+    return record
+
+
+def fetch_openhw_repository(
+    workspace: Path,
+    repository: str,
+    *,
+    runner: GitRunner = subprocess.run,
+) -> dict[str, Any]:
+    if OPENHW_REPOSITORY_PATTERN.fullmatch(repository or "") is None:
+        raise ReferenceLibraryError(
+            "OPENHW_REPOSITORY_INVALID",
+            "OpenHWGroup repository must be a simple repository name",
+        )
+    workspace = Path(workspace).resolve()
+    ensure_reference_layout(workspace)
+    cache_path = (
+        workspace / LAYOUT["cache"] / "openhwgroup" / repository
+    )
+    expected_url = f"https://github.com/openhwgroup/{repository}.git"
+    if cache_path.exists():
+        if not cache_path.is_dir():
+            raise ReferenceLibraryError(
+                "OPENHW_CACHE_CONFLICT",
+                f"OpenHWGroup cache path is not a directory: {cache_path}",
+            )
+        return _openhw_provenance(
+            workspace,
+            repository,
+            cache_path,
+            runner,
+            proxy_retry=False,
+            cached=True,
+        )
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    clone_arguments = [
+        "clone",
+        "--depth",
+        "1",
+        "--single-branch",
+        "--filter=blob:none",
+        expected_url,
+        str(cache_path),
+    ]
+    result = _run_git(runner, ["git", *clone_arguments])
+    proxy_retry = False
+    if result.returncode != 0 and _is_connection_failure(result):
+        if cache_path.exists():
+            raise ReferenceLibraryError(
+                "OPENHW_CLONE_PARTIAL",
+                "Git left a partial cache directory; it was preserved for inspection",
+            )
+        proxy_retry = True
+        result = _run_git(
+            runner,
+            [
+                "git",
+                "-c",
+                f"http.proxy={GITHUB_PROXY}",
+                "-c",
+                f"https.proxy={GITHUB_PROXY}",
+                *clone_arguments,
+            ],
+        )
+    if result.returncode != 0:
+        raise ReferenceLibraryError(
+            "OPENHW_CLONE_FAILED",
+            (result.stderr or result.stdout or "git clone failed").strip(),
+        )
+    return _openhw_provenance(
+        workspace,
+        repository,
+        cache_path,
+        runner,
+        proxy_retry=proxy_retry,
+        cached=False,
+    )
