@@ -91,6 +91,18 @@ def _write_workspace_state(workspace: Path, state: dict[str, Any]) -> None:
     _atomic_write_json(_state_path(workspace), state)
 
 
+def consume_reference_reminder(workspace: Path) -> bool:
+    try:
+        state = load_workspace_state(workspace)
+    except WorkspaceError:
+        return True
+    if state.get("reference_reminder_shown") is True:
+        return False
+    state["reference_reminder_shown"] = True
+    _write_workspace_state(workspace, state)
+    return True
+
+
 def workspace_status(workspace: Path) -> dict[str, Any]:
     workspace = Path(workspace).resolve()
     return {

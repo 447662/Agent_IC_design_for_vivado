@@ -19,6 +19,13 @@ from digital_ic_agent._runtime.intent_contract import (
     IntentFileError,
     validate_intent_files,
 )
+from digital_ic_agent._runtime.reference_library import (
+    ReferenceLibraryError,
+    index_reference_library,
+    reference_status,
+    search_references,
+    show_reference,
+)
 from digital_ic_agent._runtime.verification_verdict import (
     load_verification_verdict,
     verification_verdict_from_payload,
@@ -310,6 +317,50 @@ def run_machine_cli(argv: Sequence[str] | None = None) -> int:
                     else "Intent contracts require clarification or correction"
                 ),
                 data={"issues": [issue.to_dict() for issue in result.issues]},
+            )
+    elif args.command == "reference":
+        reference_command = str(args.reference_command)
+        command_name = f"reference {reference_command}"
+        try:
+            if reference_command == "status":
+                data = reference_status(args.workspace)
+                if data["status"] == "REFERENCE_LIBRARY_EMPTY":
+                    raise ReferenceLibraryError(
+                        "REFERENCE_LIBRARY_EMPTY",
+                        "Reference library is empty",
+                    )
+            elif reference_command == "index":
+                data = index_reference_library(args.workspace)
+            elif reference_command == "search":
+                if not args.query:
+                    raise ReferenceLibraryError(
+                        "REFERENCE_QUERY_REQUIRED",
+                        "--query is required for reference search",
+                    )
+                data = search_references(args.workspace, args.query)
+            else:
+                if not args.record_id:
+                    raise ReferenceLibraryError(
+                        "REFERENCE_RECORD_ID_REQUIRED",
+                        "--record-id is required for reference show",
+                    )
+                data = show_reference(args.workspace, args.record_id)
+        except ReferenceLibraryError as exc:
+            if reference_command != "status":
+                data = {"reference_status": reference_status(args.workspace)}
+            response = _failure(
+                exc.code,
+                str(exc),
+                command=command_name,
+                data=data,
+            )
+        else:
+            response = _response(
+                command=command_name,
+                status="PASS",
+                error_code=None,
+                message=f"Reference {reference_command} completed",
+                data=data,
             )
     elif args.command in {"status", "resume", "diagnose", "report"}:
         try:

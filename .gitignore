@@ -17,3 +17,8 @@ dist/
 outputs/
 dfx_runtime.txt
 *.zip
+*.pdf
+/references/inbox/
+/references/cache/
+/references/index/
+/references/catalog/
