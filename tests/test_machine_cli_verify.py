@@ -157,6 +157,51 @@ def test_machine_verify_checks_expected_flow(
     assert payload["error_code"] == "FLOW_MISMATCH"
 
 
+def test_machine_verify_executes_workspace_and_emits_canonical_json(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    machine_cli = importlib.import_module(
+        "digital_ic_agent._runtime.agent_machine_cli"
+    )
+    workspace = tmp_path / "workspace"
+    verdict = _payload("PASS")
+
+    def fake_verify_workspace(
+        received_workspace: Path,
+        *,
+        vivado_bin: Path | None,
+    ) -> dict[str, object]:
+        assert received_workspace == workspace
+        assert vivado_bin == tmp_path / "vivado-bin"
+        return {
+            "workspace": str(workspace),
+            "iteration": 1,
+            "iteration_dir": str(workspace / "iterations" / "0001"),
+            "verdict": verdict,
+        }
+
+    monkeypatch.setattr(machine_cli, "verify_workspace", fake_verify_workspace)
+    module = importlib.import_module("digital_ic_agent._runtime.agent")
+
+    assert module.main(
+        [
+            "verify",
+            "--workspace",
+            str(workspace),
+            "--vivado-bin",
+            str(tmp_path / "vivado-bin"),
+            "--json",
+        ]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["command"] == "verify"
+    assert payload["status"] == "PASS"
+    assert payload["data"]["iteration"] == 1
+    assert payload["data"]["verdict"]["status"] == "PASS"
+
+
 def test_machine_cli_response_schema_is_packaged_and_strict() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 

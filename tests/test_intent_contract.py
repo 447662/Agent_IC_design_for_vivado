@@ -53,6 +53,17 @@ def _base_verification() -> dict[str, Any]:
     return {
         "schema_version": "digital-ic-agent.verification-intent.v1",
         "module": "stream_counter",
+        "testbench_top": "tb_stream_counter",
+        "source_files": [
+            "rtl/stream_counter.sv",
+            "uvm/stream_counter_if.sv",
+            "uvm/stream_counter_pkg.sv",
+            "uvm/tb_stream_counter.sv",
+        ],
+        "include_dirs": ["uvm"],
+        "uvm_enabled": True,
+        "timescale": "1ns/1ps",
+        "pass_markers": ["STREAM_COUNTER_SCOREBOARD_PASS"],
         "directed_scenarios": [
             {"id": "reset", "description": "Reset clears the counter", "expected": "out_data is zero"}
         ],
@@ -67,6 +78,16 @@ def _base_verification() -> dict[str, Any]:
             {"id": "valid_toggle", "description": "Observe valid high and low", "signals": ["in_valid"]}
         ],
         "code_coverage": {"statement": 90, "branch": 80, "condition": 80, "toggle": 70},
+        "coverage_strategy": {
+            "code_coverage": True,
+            "functional_coverage": True,
+            "export_report": True,
+        },
+        "iteration_limits": {
+            "max_iterations": 3,
+            "max_time_seconds": 900,
+            "no_progress_limit": 1,
+        },
         "exit_criteria": {
             "zero_uvm_errors": True,
             "zero_uvm_fatals": True,
@@ -75,6 +96,39 @@ def _base_verification() -> dict[str, Any]:
             "coverage_must_pass": True
         }
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "code"),
+    [
+        ("testbench_top", "TESTBENCH_TOP_MISSING"),
+        ("source_files", "SOURCE_FILES_MISSING"),
+        ("pass_markers", "PASS_MARKERS_MISSING"),
+        ("coverage_strategy", "COVERAGE_STRATEGY_MISSING"),
+        ("iteration_limits", "ITERATION_LIMITS_MISSING"),
+    ],
+)
+def test_verification_execution_policy_must_be_explicit(
+    field: str,
+    code: str,
+) -> None:
+    verification = _base_verification()
+    del verification[field]
+
+    result = validate_intents(_base_design(), verification)
+
+    assert result.status == "AMBIGUOUS"
+    assert code in {issue.code for issue in result.issues}
+
+
+def test_verification_source_manifest_rejects_workspace_escape() -> None:
+    verification = _base_verification()
+    verification["source_files"] = ["../outside.sv"]
+
+    result = validate_intents(_base_design(), verification)
+
+    assert result.status == "FAIL"
+    assert "SOURCE_PATH_INVALID" in {issue.code for issue in result.issues}
 
 
 def _resolve(document: dict[str, Any], path: str) -> tuple[Any, str | int]:
