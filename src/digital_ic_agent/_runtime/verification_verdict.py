@@ -109,7 +109,7 @@ _ASSERTION_FAIL_PATTERN = re.compile(
     r"(?:SVA_FAIL|ASSERT(?:ION)?_FAIL)\b|^\s*Assertion failed\b"
 )
 _TOOL_ERROR_PATTERN = re.compile(
-    r"(?im)^\s*(?:#\s*)?ERROR:\s*\[(?:VRFC|XSIM|Synth|Common)\b"
+    r"(?im)^\s*(?:#\s*)?ERROR:\s*\[(?:VRFC|XSIM|Simtcl|Synth|Common)\b"
 )
 _UVM_COUNT_PATTERN = re.compile(
     r"(?im)^\s*(?:#\s*)?UVM_(ERROR|FATAL)\s*:\s*(\d+)\b"

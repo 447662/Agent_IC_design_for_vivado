@@ -36,7 +36,10 @@ using the packaged DesignIntent and VerificationIntent schemas. Include module,
 parameters, every port and its semantics, clocks, resets, protocols, timing,
 latency, throughput, exceptional behavior, implementation constraints, directed
 scenarios, random constraints, scoreboard, SVA, functional coverage, code
-coverage, exit criteria, and explicit user acceptance criteria.
+coverage, exit criteria, and explicit user acceptance criteria. VerificationIntent
+must also declare the ordered `source_files`, `include_dirs`, `testbench_top`,
+`uvm_enabled`, `timescale`, required `pass_markers`, `coverage_strategy`, and
+`iteration_limits`; never infer any of these execution policies silently.
 
 Run `digital-ic-agent spec validate --design-intent <design.json>
 --verification-intent <verification.json> --json`. If status is `AMBIGUOUS`, ask
@@ -65,9 +68,12 @@ path, commit or archive hash, and license.
 
 ### 5. Verify And Diagnose
 
-Run `digital-ic-agent verify --project-dir <workspace> --json` after every
-change. Accept PASS only when `status` is `PASS`, `ok` is true, `error_code` is
-null, and verdict agrees with the manifest. On failure, run `digital-ic-agent
+Run `digital-ic-agent verify --workspace <workspace> --vivado-bin <vivado-bin>
+--json` after every change. `--vivado-bin` may be omitted only when xvlog,
+xelab, xsim, and xcrg are already discoverable on PATH. Use `--project-dir`
+only to re-check canonical evidence produced by a legacy target flow. Accept
+PASS only when `status` is `PASS`, `ok` is true, `error_code` is null, and
+verdict agrees with the manifest. On failure, run `digital-ic-agent
 diagnose --workspace <workspace> --json`, patch the smallest responsible area,
 and verify again. Preserve every iteration and never edit logs into a passing state.
 

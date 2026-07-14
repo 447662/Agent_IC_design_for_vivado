@@ -92,11 +92,18 @@
     "agent_machine_cli.py",
     "coverage_closure_core.py",
     "coverage_closure_render.py",
+    "design_workspace.py",
+    "generic_verification.py",
+    "generic_verification_evidence.py",
+    "intent_contract.py",
+    "openhw_reference.py",
     "project_overview_core.py",
     "project_overview_render.py",
+    "reference_library.py",
     "target_dashboard.py",
     "target_flow_messages.py",
-    "verification_verdict.py"
+    "verification_verdict.py",
+    "xcrg_coverage_gates.py"
   ],
   "compatibility": [
     ".trae/agent/README.md",

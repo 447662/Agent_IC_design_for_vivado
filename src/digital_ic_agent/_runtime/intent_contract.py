@@ -4,7 +4,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 
@@ -14,6 +14,8 @@ MAX_INTENT_BYTES = 1024 * 1024
 DESIGN_SCHEMA_VERSION = "digital-ic-agent.design-intent.v1"
 VERIFICATION_SCHEMA_VERSION = "digital-ic-agent.verification-intent.v1"
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_TIMESCALE = re.compile(r"^[1-9][0-9]*(?:s|ms|us|ns|ps|fs)/[1-9][0-9]*(?:s|ms|us|ns|ps|fs)$")
+_SOURCE_SUFFIXES = {".v", ".sv"}
 
 
 @dataclass(frozen=True)
@@ -349,6 +351,249 @@ def _verification_signals(
     return found
 
 
+def _workspace_relative_path(value: object) -> PurePosixPath | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.replace("\\", "/")
+    if re.match(r"^[A-Za-z]:", normalized):
+        return None
+    path = PurePosixPath(normalized)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        return None
+    return path
+
+
+def _validate_execution_policy(
+    verification: Mapping[str, object],
+    issues: list[IntentIssue],
+) -> None:
+    testbench_top = verification.get("testbench_top")
+    if "testbench_top" not in verification:
+        _issue(
+            issues,
+            "TESTBENCH_TOP_MISSING",
+            "verification.testbench_top",
+            "The testbench top must be explicit",
+            "AMBIGUOUS",
+        )
+    elif not isinstance(testbench_top, str) or _IDENTIFIER.fullmatch(testbench_top) is None:
+        _issue(
+            issues,
+            "TESTBENCH_TOP_INVALID",
+            "verification.testbench_top",
+            "The testbench top must be a SystemVerilog identifier",
+        )
+
+    raw_sources = _sequence(verification.get("source_files"))
+    if "source_files" not in verification or not raw_sources:
+        _issue(
+            issues,
+            "SOURCE_FILES_MISSING",
+            "verification.source_files",
+            "The ordered source file manifest must be explicit and non-empty",
+            "AMBIGUOUS",
+        )
+    else:
+        seen_sources: set[str] = set()
+        for index, raw_source in enumerate(raw_sources):
+            source = _workspace_relative_path(raw_source)
+            path = f"verification.source_files.{index}"
+            if source is None or source.suffix.lower() not in _SOURCE_SUFFIXES:
+                _issue(
+                    issues,
+                    "SOURCE_PATH_INVALID",
+                    path,
+                    "Source paths must be safe workspace-relative .v or .sv files",
+                )
+                continue
+            normalized = source.as_posix()
+            if normalized in seen_sources:
+                _issue(issues, "SOURCE_PATH_DUPLICATE", path, f"Duplicate source: {normalized}")
+            seen_sources.add(normalized)
+
+    raw_include_dirs = _sequence(verification.get("include_dirs"))
+    if "include_dirs" not in verification:
+        _issue(
+            issues,
+            "INCLUDE_DIRS_MISSING",
+            "verification.include_dirs",
+            "Include directories must be explicit, including an empty array",
+            "AMBIGUOUS",
+        )
+    elif raw_include_dirs is None:
+        _issue(
+            issues,
+            "FIELD_TYPE_INVALID",
+            "verification.include_dirs",
+            "Include directories must be an array",
+        )
+    else:
+        for index, raw_include_dir in enumerate(raw_include_dirs):
+            if _workspace_relative_path(raw_include_dir) is None:
+                _issue(
+                    issues,
+                    "INCLUDE_PATH_INVALID",
+                    f"verification.include_dirs.{index}",
+                    "Include paths must be safe workspace-relative directories",
+                )
+
+    if "uvm_enabled" not in verification:
+        _issue(
+            issues,
+            "UVM_POLICY_MISSING",
+            "verification.uvm_enabled",
+            "UVM usage must be explicitly enabled or disabled",
+            "AMBIGUOUS",
+        )
+    elif not isinstance(verification.get("uvm_enabled"), bool):
+        _issue(
+            issues,
+            "UVM_POLICY_INVALID",
+            "verification.uvm_enabled",
+            "uvm_enabled must be boolean",
+        )
+
+    timescale = verification.get("timescale")
+    if "timescale" not in verification:
+        _issue(
+            issues,
+            "TIMESCALE_MISSING",
+            "verification.timescale",
+            "Simulation timescale must be explicit",
+            "AMBIGUOUS",
+        )
+    elif not isinstance(timescale, str) or _TIMESCALE.fullmatch(timescale) is None:
+        _issue(
+            issues,
+            "TIMESCALE_INVALID",
+            "verification.timescale",
+            "Timescale must use a form such as 1ns/1ps",
+        )
+
+    pass_markers = _sequence(verification.get("pass_markers"))
+    if "pass_markers" not in verification or not pass_markers:
+        _issue(
+            issues,
+            "PASS_MARKERS_MISSING",
+            "verification.pass_markers",
+            "At least one explicit pass marker is required",
+            "AMBIGUOUS",
+        )
+    elif not all(
+        isinstance(marker, str)
+        and marker.strip()
+        and "\n" not in marker
+        and "\r" not in marker
+        for marker in pass_markers
+    ):
+        _issue(
+            issues,
+            "PASS_MARKER_INVALID",
+            "verification.pass_markers",
+            "Pass markers must be non-empty single-line strings",
+        )
+    elif len({str(marker) for marker in pass_markers}) != len(pass_markers):
+        _issue(
+            issues,
+            "PASS_MARKER_DUPLICATE",
+            "verification.pass_markers",
+            "Pass markers must be unique",
+        )
+
+    strategy = _mapping(verification.get("coverage_strategy"))
+    if strategy is None:
+        _issue(
+            issues,
+            "COVERAGE_STRATEGY_MISSING",
+            "verification.coverage_strategy",
+            "Coverage execution and export policy must be explicit",
+            "AMBIGUOUS",
+        )
+    else:
+        for field in ("code_coverage", "functional_coverage", "export_report"):
+            if not isinstance(strategy.get(field), bool):
+                _issue(
+                    issues,
+                    "COVERAGE_STRATEGY_INVALID",
+                    f"verification.coverage_strategy.{field}",
+                    f"{field} must be boolean",
+                )
+        threshold = strategy.get("functional_threshold")
+        if (
+            not isinstance(threshold, int | float)
+            or isinstance(threshold, bool)
+            or not 0 <= float(threshold) <= 100
+        ):
+            _issue(
+                issues,
+                "COVERAGE_THRESHOLD_INVALID",
+                "verification.coverage_strategy.functional_threshold",
+                "Functional coverage threshold must be between 0 and 100",
+            )
+        coverage_requested = strategy.get("code_coverage") is True or strategy.get(
+            "functional_coverage"
+        ) is True
+        if coverage_requested and strategy.get("export_report") is not True:
+            _issue(
+                issues,
+                "COVERAGE_STRATEGY_CONFLICT",
+                "verification.coverage_strategy.export_report",
+                "Coverage gates require an exported xcrg report",
+            )
+        exit_criteria = _mapping(verification.get("exit_criteria"))
+        if (
+            exit_criteria is not None
+            and exit_criteria.get("coverage_must_pass") is True
+            and not coverage_requested
+        ):
+            _issue(
+                issues,
+                "COVERAGE_STRATEGY_CONFLICT",
+                "verification.exit_criteria.coverage_must_pass",
+                "Coverage cannot be mandatory when all coverage collection is disabled",
+            )
+
+    limits = _mapping(verification.get("iteration_limits"))
+    if limits is None:
+        _issue(
+            issues,
+            "ITERATION_LIMITS_MISSING",
+            "verification.iteration_limits",
+            "Iteration, time, and no-progress limits must be explicit",
+            "AMBIGUOUS",
+        )
+    else:
+        ranges = {
+            "max_iterations": (1, 100),
+            "max_time_seconds": (1, 86400),
+            "no_progress_limit": (1, 100),
+        }
+        for field, (minimum, maximum) in ranges.items():
+            value = limits.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
+                _issue(
+                    issues,
+                    "ITERATION_LIMIT_INVALID",
+                    f"verification.iteration_limits.{field}",
+                    f"{field} must be an integer between {minimum} and {maximum}",
+                )
+        max_iterations = limits.get("max_iterations")
+        no_progress_limit = limits.get("no_progress_limit")
+        if (
+            isinstance(max_iterations, int)
+            and not isinstance(max_iterations, bool)
+            and isinstance(no_progress_limit, int)
+            and not isinstance(no_progress_limit, bool)
+            and no_progress_limit > max_iterations
+        ):
+            _issue(
+                issues,
+                "ITERATION_LIMIT_CONFLICT",
+                "verification.iteration_limits.no_progress_limit",
+                "no_progress_limit cannot exceed max_iterations",
+            )
+
+
 def _validate_verification(
     verification: Mapping[str, object],
     module_name: str | None,
@@ -369,6 +614,7 @@ def _validate_verification(
             "verification.module",
             "VerificationIntent module does not match DesignIntent",
         )
+    _validate_execution_policy(verification, issues)
     directed = _sequence(verification.get("directed_scenarios"))
     if not directed:
         _issue(

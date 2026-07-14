@@ -19,6 +19,10 @@ from digital_ic_agent._runtime.intent_contract import (
     IntentFileError,
     validate_intent_files,
 )
+from digital_ic_agent._runtime.generic_verification import (
+    GenericVerificationError,
+    verify_workspace,
+)
 from digital_ic_agent._runtime.reference_library import (
     ReferenceLibraryError,
     fetch_openhw_repository,
@@ -111,9 +115,12 @@ def build_machine_parser() -> argparse.ArgumentParser:
 
     verify = subparsers.add_parser(
         "verify",
-        help="Validate a canonical project verification verdict",
+        help="Execute a workspace or validate an existing canonical project verdict",
     )
-    verify.add_argument("--project-dir", required=True, type=Path)
+    verify_target = verify.add_mutually_exclusive_group(required=True)
+    verify_target.add_argument("--project-dir", type=Path)
+    verify_target.add_argument("--workspace", type=Path)
+    verify.add_argument("--vivado-bin", type=Path, default=None)
     verify.add_argument("--expected-flow", default=None)
     return parser
 
@@ -418,10 +425,48 @@ def run_machine_cli(argv: Sequence[str] | None = None) -> int:
                 data=data,
             )
     elif args.command == "verify":
-        response = verify_project(
-            args.project_dir,
-            expected_flow=args.expected_flow,
-        )
+        if args.workspace is not None:
+            try:
+                data = verify_workspace(
+                    args.workspace,
+                    vivado_bin=args.vivado_bin,
+                )
+            except (GenericVerificationError, WorkspaceError) as exc:
+                status: CliStatus = (
+                    exc.status
+                    if isinstance(exc, GenericVerificationError)
+                    else "FAIL"
+                )
+                response = _response(
+                    command="verify",
+                    status=status,
+                    error_code=exc.code,
+                    message=str(exc),
+                    data=(
+                        exc.data
+                        if isinstance(exc, GenericVerificationError)
+                        else {}
+                    ),
+                )
+            else:
+                verdict = data["verdict"]
+                passed = isinstance(verdict, dict) and verdict.get("status") == "PASS"
+                response = _response(
+                    command="verify",
+                    status="PASS" if passed else "FAIL",
+                    error_code=None if passed else "VERIFICATION_FAILED",
+                    message=(
+                        "Workspace verification passed"
+                        if passed
+                        else "Workspace verification failed"
+                    ),
+                    data=data,
+                )
+        else:
+            response = verify_project(
+                args.project_dir,
+                expected_flow=args.expected_flow,
+            )
     else:
         response = _failure(
             "COMMAND_NOT_IMPLEMENTED",

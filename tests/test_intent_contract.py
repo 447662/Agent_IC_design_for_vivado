@@ -82,6 +82,7 @@ def _base_verification() -> dict[str, Any]:
             "code_coverage": True,
             "functional_coverage": True,
             "export_report": True,
+            "functional_threshold": 80,
         },
         "iteration_limits": {
             "max_iterations": 3,

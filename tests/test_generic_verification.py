@@ -85,6 +85,7 @@ def _verification_intent(
             "code_coverage": True,
             "functional_coverage": True,
             "export_report": True,
+            "functional_threshold": 80,
         },
         "iteration_limits": {
             "max_iterations": max_iterations,
@@ -128,9 +129,18 @@ def _workspace(tmp_path: Path, **verification_options: int) -> Path:
 
 
 class FakeVivadoRunner:
-    def __init__(self, workspace: Path, *, simulation_passes: bool = True) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        *,
+        simulation_passes: bool = True,
+        compile_passes: bool = True,
+        coverage_report_exists: bool = True,
+    ) -> None:
         self.workspace = workspace
         self.simulation_passes = simulation_passes
+        self.compile_passes = compile_passes
+        self.coverage_report_exists = coverage_report_exists
         self.calls: list[list[str]] = []
 
     def __call__(
@@ -155,6 +165,8 @@ class FakeVivadoRunner:
         tool = Path(command[0]).stem.lower()
         if "--version" in command:
             return subprocess.CompletedProcess(command, 0, "Vivado Simulator v2025.2\n", "")
+        if tool == "xvlog" and not self.compile_passes:
+            return subprocess.CompletedProcess(command, 1, "", "ERROR: [VRFC 10-1] syntax error\n")
         if tool == "xsim":
             marker = "TIMER_SCOREBOARD_PASS\n" if self.simulation_passes else "TEST_FAILED\n"
             (cwd / "xsim.log").write_text(
@@ -162,11 +174,15 @@ class FakeVivadoRunner:
                 encoding="utf-8",
             )
             (cwd / "simulation.wdb").write_text("wave database\n", encoding="utf-8")
+            coverage_info = cwd / "coverage" / "xsim.codeCov" / "timer_cov" / "xsim.CCInfo"
+            coverage_info.parent.mkdir(parents=True)
+            coverage_info.write_text("timer coverage database\n", encoding="utf-8")
         elif tool == "xelab":
             (cwd / "timer_snapshot").mkdir(exist_ok=True)
         elif tool == "xcrg":
             report_dir = Path(command[command.index("-report_dir") + 1])
-            self._write_coverage(report_dir)
+            if self.coverage_report_exists:
+                self._write_coverage(report_dir)
             log_path = Path(command[command.index("-log") + 1])
             log_path.write_text("xcrg completed\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, f"{tool} completed\n", "")
@@ -195,10 +211,13 @@ class FakeVivadoRunner:
         )
 
 
-def _tools(tmp_path: Path) -> Path:
+def _tools(tmp_path: Path, *, include_xcrg: bool = True) -> Path:
     tools = tmp_path / "vivado-bin"
     tools.mkdir()
-    for name in ("xvlog.bat", "xelab.bat", "xsim.bat", "xcrg.bat"):
+    names = ["xvlog.bat", "xelab.bat", "xsim.bat"]
+    if include_xcrg:
+        names.append("xcrg.bat")
+    for name in names:
         (tools / name).write_text("@echo off\n", encoding="utf-8")
     return tools
 
@@ -291,3 +310,59 @@ def test_generic_workspace_verification_records_changed_source_diff(tmp_path: Pa
         encoding="utf-8"
     )
     assert "+assign expired = 1'b0;" in diff
+
+
+def test_generic_workspace_verification_fails_closed_when_tool_is_missing(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path)
+    runner = FakeVivadoRunner(workspace)
+
+    result = verify_workspace(
+        workspace,
+        vivado_bin=_tools(tmp_path, include_xcrg=False),
+        runner=runner,
+    )
+
+    assert result["verdict"]["status"] == "FAIL"
+    assert result["verdict"]["reasons"][0]["code"] == "VIVADO_TOOL_NOT_FOUND"
+    assert result["state"]["stage"] == "VERIFICATION_FAILED"
+    assert runner.calls == []
+    assert (workspace / "iterations" / "0001" / "iteration.json").is_file()
+
+
+def test_generic_workspace_verification_stops_after_compile_failure(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path)
+    runner = FakeVivadoRunner(workspace, compile_passes=False)
+
+    result = verify_workspace(workspace, vivado_bin=_tools(tmp_path), runner=runner)
+
+    assert [Path(command[0]).stem.lower() for command in runner.calls] == [
+        "xvlog",
+        "xvlog",
+    ]
+    reason_codes = {reason["code"] for reason in result["verdict"]["reasons"]}
+    assert {"NONZERO_EXIT", "TOOL_ERROR_FOUND", "PASS_MARKER_MISSING"} <= reason_codes
+    assert result["state"]["stage"] == "VERIFICATION_FAILED"
+
+
+def test_generic_workspace_verification_rejects_missing_coverage_reports(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path)
+    runner = FakeVivadoRunner(workspace, coverage_report_exists=False)
+
+    result = verify_workspace(workspace, vivado_bin=_tools(tmp_path), runner=runner)
+
+    assert result["coverage"]["gates"] == {
+        "branch": "MISSING",
+        "condition": "MISSING",
+        "functional": "MISSING",
+        "statement": "MISSING",
+        "toggle": "MISSING",
+    }
+    reason_codes = {reason["code"] for reason in result["verdict"]["reasons"]}
+    assert "COVERAGE_GATE_MISSING" in reason_codes
+    assert "ARTIFACT_MISSING" in reason_codes

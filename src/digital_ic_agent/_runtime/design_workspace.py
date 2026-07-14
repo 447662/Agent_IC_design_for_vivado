@@ -124,6 +124,41 @@ def resume_workspace(workspace: Path) -> dict[str, Any]:
     }
 
 
+def record_workspace_verification(
+    workspace: Path,
+    *,
+    iteration: int,
+    iteration_dir: Path | None,
+    verdict_status: str,
+    stopped_reason: str | None = None,
+) -> dict[str, Any]:
+    workspace = Path(workspace).resolve()
+    state = load_workspace_state(workspace)
+    if iteration < 0:
+        raise WorkspaceError("ITERATION_INVALID", "Iteration cannot be negative")
+    if verdict_status not in {"PASS", "FAIL"}:
+        raise WorkspaceError("VERDICT_INVALID", "Verdict status must be PASS or FAIL")
+    state["iteration"] = iteration
+    state["last_verdict_status"] = verdict_status
+    if iteration_dir is not None:
+        state["last_iteration_dir"] = str(Path(iteration_dir).resolve())
+    if stopped_reason is not None:
+        state["stage"] = "STOPPED"
+        state["status"] = "FAILED"
+        state["stop_reason"] = stopped_reason
+    elif verdict_status == "PASS":
+        state["stage"] = "VERIFIED"
+        state["status"] = "COMPLETE"
+        state["last_successful_stage"] = "VERIFIED"
+        state.pop("stop_reason", None)
+    else:
+        state["stage"] = "VERIFICATION_FAILED"
+        state["status"] = "FAILED"
+        state.pop("stop_reason", None)
+    _write_workspace_state(workspace, state)
+    return state
+
+
 def _diagnosis_recommendation(code: str) -> str:
     if code.startswith("UVM_"):
         return "Inspect the UVM report and fix the first emitted error or fatal condition."

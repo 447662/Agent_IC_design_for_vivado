@@ -4,10 +4,30 @@
   "title": "VerificationIntent",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "module", "directed_scenarios", "random_constraints", "scoreboard", "assertions", "functional_coverage", "code_coverage", "exit_criteria"],
+  "required": ["schema_version", "module", "testbench_top", "source_files", "include_dirs", "uvm_enabled", "timescale", "pass_markers", "directed_scenarios", "random_constraints", "scoreboard", "assertions", "functional_coverage", "code_coverage", "coverage_strategy", "iteration_limits", "exit_criteria"],
   "properties": {
     "schema_version": {"const": "digital-ic-agent.verification-intent.v1"},
     "module": {"type": "string"},
+    "testbench_top": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+    "source_files": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "include_dirs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "uvm_enabled": {"type": "boolean"},
+    "timescale": {"type": "string", "pattern": "^[1-9][0-9]*(s|ms|us|ns|ps|fs)/[1-9][0-9]*(s|ms|us|ns|ps|fs)$"},
+    "pass_markers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
     "directed_scenarios": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}},
     "random_constraints": {"type": "array", "items": {"$ref": "#/$defs/check"}},
     "scoreboard": {
@@ -31,6 +51,27 @@
         "branch": {"type": "number", "minimum": 0, "maximum": 100},
         "condition": {"type": "number", "minimum": 0, "maximum": 100},
         "toggle": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "coverage_strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code_coverage", "functional_coverage", "export_report", "functional_threshold"],
+      "properties": {
+        "code_coverage": {"type": "boolean"},
+        "functional_coverage": {"type": "boolean"},
+        "export_report": {"type": "boolean"},
+        "functional_threshold": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "iteration_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_iterations", "max_time_seconds", "no_progress_limit"],
+      "properties": {
+        "max_iterations": {"type": "integer", "minimum": 1, "maximum": 100},
+        "max_time_seconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+        "no_progress_limit": {"type": "integer", "minimum": 1, "maximum": 100}
       }
     },
     "exit_criteria": {
