@@ -610,6 +610,13 @@ def create_agent() -> Any:
 
 
 def main(argv: Any = None) -> Any:
+    from digital_ic_agent._runtime.agent_machine_cli import (
+        is_machine_invocation,
+        run_machine_cli,
+    )
+
+    if is_machine_invocation(argv):
+        return run_machine_cli(argv)
     agent = create_agent()
     if agent is None:
         return 1
