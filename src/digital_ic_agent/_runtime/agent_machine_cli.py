@@ -7,7 +7,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from digital_ic_agent._runtime.design_workspace import initialize_workspace
+from digital_ic_agent._runtime.design_workspace import (
+    WorkspaceError,
+    build_workspace_report,
+    diagnose_workspace,
+    initialize_workspace,
+    resume_workspace,
+    workspace_status,
+)
 from digital_ic_agent._runtime.intent_contract import (
     IntentFileError,
     validate_intent_files,
@@ -303,6 +310,46 @@ def run_machine_cli(argv: Sequence[str] | None = None) -> int:
                     else "Intent contracts require clarification or correction"
                 ),
                 data={"issues": [issue.to_dict() for issue in result.issues]},
+            )
+    elif args.command in {"status", "resume", "diagnose", "report"}:
+        try:
+            if args.command == "status":
+                data = workspace_status(args.workspace)
+            elif args.command == "resume":
+                data = resume_workspace(args.workspace)
+            elif args.command == "diagnose":
+                data = diagnose_workspace(args.workspace)
+            else:
+                data = build_workspace_report(args.workspace)
+        except WorkspaceError as exc:
+            response = _failure(
+                exc.code,
+                str(exc),
+                command=str(args.command),
+            )
+        else:
+            verdict_status = None
+            if args.command == "diagnose":
+                verdict_status = data["diagnosis"]["status"]
+            elif args.command == "report":
+                verdict = data["report"]["verdict"]
+                verdict_status = (
+                    None if verdict is None else verdict["status"]
+                )
+            failed = verdict_status in {"FAIL", None} and args.command in {
+                "diagnose",
+                "report",
+            }
+            response = _response(
+                command=str(args.command),
+                status="FAIL" if failed else "PASS",
+                error_code="VERIFICATION_FAILED" if failed else None,
+                message=(
+                    "Workspace verification has not passed"
+                    if failed
+                    else f"Workspace {args.command} completed"
+                ),
+                data=data,
             )
     elif args.command == "verify":
         response = verify_project(
