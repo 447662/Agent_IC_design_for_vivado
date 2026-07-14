@@ -355,6 +355,52 @@ def test_run_async_fifo_vivado_sim_failure_paths_and_gui(monkeypatch, tmp_path):
     assert opened == [tmp_path / "success" / "async-fifo"]
 
 
+def test_async_fifo_sim_rejects_scoreboard_false_pass_and_writes_fail_reports(
+    monkeypatch,
+    tmp_path,
+):
+    module = load_agent_module()
+    agent = module.DigitalICAgent()
+    plugin = async_fifo_plugin(agent)
+    monkeypatch.setattr(plugin, "resolve_vivado_command", lambda: "vivado")
+
+    def false_pass_run(_command, script_name, cwd, **_kwargs):
+        sim_dir = Path(cwd)
+        sim_dir.mkdir(parents=True, exist_ok=True)
+        if script_name == "run_vivado_async_fifo.tcl":
+            (sim_dir / "async_fifo_trace.vcd").write_text("vcd\n", encoding="utf-8")
+            (sim_dir / "async_fifo_smoke.wdb").write_text("wdb\n", encoding="utf-8")
+            evidence = (
+                "ASYNC_FIFO_SCOREBOARD_PASS writes=24 reads=24\n"
+                "Fatal: ASYNC_FIFO_SCOREBOARD_FAIL errors=4\n"
+            )
+            (sim_dir / "xsim.log").write_text(evidence, encoding="utf-8")
+            return subprocess.CompletedProcess([script_name], 0, stdout=evidence, stderr="")
+        raise AssertionError("Project generation must not run after a failed verdict")
+
+    monkeypatch.setattr(plugin, "run_vivado_batch", false_pass_run)
+    monkeypatch.setattr(
+        plugin,
+        "collect_async_fifo_vcd_analysis",
+        lambda **_kwargs: _vcd_summary(),
+    )
+
+    assert plugin.run_async_fifo_vivado_sim(output_dir=tmp_path, open_wave_gui=False) is False
+
+    project_dir = tmp_path / "async-fifo"
+    assert "- Status: FAIL" in (project_dir / "reports" / "sim_report.md").read_text(
+        encoding="utf-8"
+    )
+    verdict = json.loads(
+        (project_dir / "reports" / "verification_verdict.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert verdict["status"] == "FAIL"
+    assert "FAIL_MARKER_FOUND" in {reason["code"] for reason in verdict["reasons"]}
+    assert (project_dir / "reports" / "verification_verdict.md").is_file()
+
+
 def test_async_fifo_regression_matrix_report_documents_parameter_sweeps(tmp_path):
     module = load_agent_module()
     agent = module.DigitalICAgent()
