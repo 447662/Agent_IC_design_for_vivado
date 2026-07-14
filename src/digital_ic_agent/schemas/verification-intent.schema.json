@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/447662/Agent_IC_design_for_vivado/schemas/verification-intent.schema.json",
+  "title": "VerificationIntent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "module", "directed_scenarios", "random_constraints", "scoreboard", "assertions", "functional_coverage", "code_coverage", "exit_criteria"],
+  "properties": {
+    "schema_version": {"const": "digital-ic-agent.verification-intent.v1"},
+    "module": {"type": "string"},
+    "directed_scenarios": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}},
+    "random_constraints": {"type": "array", "items": {"$ref": "#/$defs/check"}},
+    "scoreboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "strategy", "compare_signals"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "strategy": {"type": "string"},
+        "compare_signals": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "assertions": {"type": "array", "items": {"$ref": "#/$defs/check"}},
+    "functional_coverage": {"type": "array", "items": {"$ref": "#/$defs/check"}},
+    "code_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "branch", "condition", "toggle"],
+      "properties": {
+        "statement": {"type": "number", "minimum": 0, "maximum": 100},
+        "branch": {"type": "number", "minimum": 0, "maximum": 100},
+        "condition": {"type": "number", "minimum": 0, "maximum": 100},
+        "toggle": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "exit_criteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zero_uvm_errors", "zero_uvm_fatals", "scoreboard_pass", "all_assertions_pass", "coverage_must_pass"],
+      "properties": {
+        "zero_uvm_errors": {"type": "boolean"},
+        "zero_uvm_fatals": {"type": "boolean"},
+        "scoreboard_pass": {"type": "boolean"},
+        "all_assertions_pass": {"type": "boolean"},
+        "coverage_must_pass": {"type": "boolean"}
+      }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description"],
+      "properties": {
+        "id": {"type": "string"},
+        "description": {"type": "string"},
+        "expected": {"type": "string"},
+        "signals": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

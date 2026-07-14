@@ -22,7 +22,7 @@
       "minLength": 1
     },
     "status": {
-      "enum": ["PASS", "FAIL"]
+      "enum": ["PASS", "FAIL", "AMBIGUOUS"]
     },
     "ok": {
       "type": "boolean"

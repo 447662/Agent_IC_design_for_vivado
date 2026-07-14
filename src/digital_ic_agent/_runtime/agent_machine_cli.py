@@ -7,6 +7,11 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
+from digital_ic_agent._runtime.design_workspace import initialize_workspace
+from digital_ic_agent._runtime.intent_contract import (
+    IntentFileError,
+    validate_intent_files,
+)
 from digital_ic_agent._runtime.verification_verdict import (
     load_verification_verdict,
     verification_verdict_from_payload,
@@ -14,13 +19,23 @@ from digital_ic_agent._runtime.verification_verdict import (
 
 
 CLI_SCHEMA_VERSION = "digital-ic-agent.cli.v1"
-MACHINE_COMMANDS = {"verify"}
+MACHINE_COMMANDS = {
+    "workspace",
+    "spec",
+    "reference",
+    "verify",
+    "diagnose",
+    "status",
+    "resume",
+    "report",
+}
+CliStatus = Literal["PASS", "FAIL", "AMBIGUOUS"]
 
 
 class CliResponse(TypedDict):
     schema_version: str
     command: str
-    status: Literal["PASS", "FAIL"]
+    status: CliStatus
     ok: bool
     error_code: str | None
     message: str
@@ -45,6 +60,36 @@ def build_machine_parser() -> argparse.ArgumentParser:
         description="Deterministic machine interface for Codex",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    workspace = subparsers.add_parser("workspace", help="Manage a design workspace")
+    workspace_commands = workspace.add_subparsers(
+        dest="workspace_command",
+        required=True,
+    )
+    workspace_init = workspace_commands.add_parser(
+        "init",
+        help="Initialize a non-destructive design workspace",
+    )
+    workspace_init.add_argument("--workspace", required=True, type=Path)
+
+    spec = subparsers.add_parser("spec", help="Manage intent contracts")
+    spec_commands = spec.add_subparsers(dest="spec_command", required=True)
+    spec_validate = spec_commands.add_parser(
+        "validate",
+        help="Validate DesignIntent and VerificationIntent",
+    )
+    spec_validate.add_argument("--design-intent", required=True, type=Path)
+    spec_validate.add_argument("--verification-intent", required=True, type=Path)
+
+    reference = subparsers.add_parser("reference", help="Manage local references")
+    reference.add_argument("reference_command", choices=("status", "index", "search", "show"))
+    reference.add_argument("--workspace", type=Path, default=Path.cwd())
+    reference.add_argument("--query", default=None)
+    reference.add_argument("--record-id", default=None)
+
+    for command in ("diagnose", "status", "resume", "report"):
+        command_parser = subparsers.add_parser(command)
+        command_parser.add_argument("--workspace", required=True, type=Path)
+
     verify = subparsers.add_parser(
         "verify",
         help="Validate a canonical project verification verdict",
@@ -67,7 +112,7 @@ def _parse_machine_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def _response(
     *,
     command: str,
-    status: Literal["PASS", "FAIL"],
+    status: CliStatus,
     error_code: str | None,
     message: str,
     data: dict[str, Any] | None = None,
@@ -87,10 +132,11 @@ def _failure(
     code: str,
     message: str,
     *,
+    command: str = "verify",
     data: dict[str, Any] | None = None,
 ) -> CliResponse:
     return _response(
-        command="verify",
+        command=command,
         status="FAIL",
         error_code=code,
         message=message,
@@ -218,12 +264,58 @@ def _emit(response: CliResponse, *, json_output: bool) -> None:
 
 def run_machine_cli(argv: Sequence[str] | None = None) -> int:
     args = _parse_machine_args(argv)
-    if args.command == "verify":
+    if args.command == "workspace" and args.workspace_command == "init":
+        response = _response(
+            command="workspace init",
+            status="PASS",
+            error_code=None,
+            message="Workspace initialized",
+            data=initialize_workspace(args.workspace),
+        )
+    elif args.command == "spec" and args.spec_command == "validate":
+        try:
+            result = validate_intent_files(
+                args.design_intent,
+                args.verification_intent,
+            )
+        except IntentFileError as exc:
+            response = _failure(
+                exc.code,
+                str(exc),
+                command="spec validate",
+            )
+        else:
+            response = _response(
+                command="spec validate",
+                status=result.status,
+                error_code=(
+                    None
+                    if result.status == "PASS"
+                    else (
+                        "INTENT_AMBIGUOUS"
+                        if result.status == "AMBIGUOUS"
+                        else "INTENT_INVALID"
+                    )
+                ),
+                message=(
+                    "Intent contracts passed"
+                    if result.status == "PASS"
+                    else "Intent contracts require clarification or correction"
+                ),
+                data={"issues": [issue.to_dict() for issue in result.issues]},
+            )
+    elif args.command == "verify":
         response = verify_project(
             args.project_dir,
             expected_flow=args.expected_flow,
         )
-    else:  # pragma: no cover - argparse constrains command values
-        raise AssertionError(f"unsupported machine command: {args.command}")
+    else:
+        response = _failure(
+            "COMMAND_NOT_IMPLEMENTED",
+            f"Command is not implemented yet: {args.command}",
+            command=str(args.command),
+        )
     _emit(response, json_output=bool(args.json_output))
-    return 0 if response["ok"] else 1
+    if response["ok"]:
+        return 0
+    return 2 if response["status"] == "AMBIGUOUS" else 1

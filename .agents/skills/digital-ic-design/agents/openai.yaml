@@ -1,0 +1,7 @@
+interface:
+  display_name: "Digital IC Design"
+  short_description: "Codex-driven RTL and UVM design workflow"
+  default_prompt: "Use $digital-ic-design to turn my digital IC requirements into verified RTL and UVM artifacts."
+
+policy:
+  allow_implicit_invocation: true
