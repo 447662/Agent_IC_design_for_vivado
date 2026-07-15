@@ -1,0 +1,18 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "clock_enable_divider", "kind": "sequential"},
+  "parameters": [{"name": "WIDTH", "type": "integer", "default": 8, "minimum": 2}],
+  "ports": [
+    {"name": "clk", "direction": "input", "width": 1, "semantics": "undivided source clock"},
+    {"name": "rst_n", "direction": "input", "width": 1, "semantics": "active-low asynchronous reset"},
+    {"name": "divisor", "direction": "input", "width": "WIDTH", "semantics": "number of source cycles between enable pulses"},
+    {"name": "tick", "direction": "output", "width": 1, "semantics": "one-cycle clock-enable pulse"}
+  ],
+  "clocks": [{"name": "source", "signal": "clk", "edge": "rising", "frequency_hz": 100000000}],
+  "resets": [{"name": "reset", "signal": "rst_n", "active_level": "low", "kind": "asynchronous", "clock": "source"}],
+  "protocols": [],
+  "timing": {"latency_cycles": 1, "throughput_per_cycle": 1},
+  "exceptional_behavior": ["Divisor zero or one emits a tick every cycle", "Changing divisor restarts after the current count reaches its boundary"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["Tick is one cycle wide and occurs every divisor source-clock cycles", "No derived clock is generated"]
+}

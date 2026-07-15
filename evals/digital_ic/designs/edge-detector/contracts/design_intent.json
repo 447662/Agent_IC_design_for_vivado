@@ -1,0 +1,18 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "edge_detector", "kind": "sequential"},
+  "parameters": [],
+  "ports": [
+    {"name": "clk", "direction": "input", "width": 1, "semantics": "sampling clock"},
+    {"name": "rst_n", "direction": "input", "width": 1, "semantics": "active-low asynchronous reset"},
+    {"name": "signal_i", "direction": "input", "width": 1, "semantics": "sampled input"},
+    {"name": "pulse_o", "direction": "output", "width": 1, "semantics": "single-cycle rising-edge indication"}
+  ],
+  "clocks": [{"name": "core", "signal": "clk", "edge": "rising", "frequency_hz": 100000000}],
+  "resets": [{"name": "reset", "signal": "rst_n", "active_level": "low", "kind": "asynchronous", "clock": "core"}],
+  "protocols": [],
+  "timing": {"latency_cycles": 1, "throughput_per_cycle": 1},
+  "exceptional_behavior": ["A high input held across cycles produces only one pulse"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["Each sampled low-to-high transition produces exactly one pulse on the next registered output"]
+}

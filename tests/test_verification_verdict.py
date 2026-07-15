@@ -109,6 +109,19 @@ def test_verification_verdict_rejects_missing_verification_policy():
         ("vrfc-error", {"evidence": {"vivado.log": f"{PASS_MARKER}\nERROR: [VRFC 10-1] parse\n"}}, "TOOL_ERROR_FOUND"),
         ("xelab-error", {"evidence": {"vivado.log": f"{PASS_MARKER}\nERROR: [XSIM 43-1] elaborate\n"}}, "TOOL_ERROR_FOUND"),
         ("simtcl-error", {"evidence": {"xsim.log": f"{PASS_MARKER}\nERROR: [Simtcl 6-50] engine failed\n"}}, "TOOL_ERROR_FOUND"),
+        (
+            "xsim-child-launch-blocked",
+            {
+                "evidence": {
+                    "xsim.log": (
+                        f"{PASS_MARKER}\n"
+                        "ERROR: [Simtcl 6-50] Simulation engine failed to start: "
+                        "Failed to launch child process (child exe not found).\n"
+                    )
+                }
+            },
+            "SIMULATION_ENGINE_LAUNCH_BLOCKED",
+        ),
         ("coverage-fail", {"coverage_gates": {"functional": "FAIL"}}, "COVERAGE_GATE_FAILED"),
         ("coverage-missing", {"coverage_gates": {"functional": "MISSING"}}, "COVERAGE_GATE_MISSING"),
         ("coverage-skip", {"coverage_gates": {"functional": "SKIP"}}, "COVERAGE_GATE_SKIPPED"),

@@ -113,3 +113,37 @@ def test_lifecycle_commands_fail_closed_for_corrupt_state(
         assert exit_code == 1
         assert payload["error_code"] == "STATE_INVALID"
     assert state_path.read_text(encoding="utf-8") == "{broken"
+
+
+def test_diagnose_identifies_windows_app_control_simulation_block(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace = tmp_path / "workspace"
+    exit_code, _ = _json_call(
+        capsys,
+        ["workspace", "init", "--workspace", str(workspace)],
+    )
+    assert exit_code == 0
+    verdict_module = importlib.import_module(
+        "digital_ic_agent._runtime.verification_verdict"
+    )
+    verdict_module.write_verification_verdict(
+        workspace,
+        verdict_module.failed_verdict(
+            "SIMULATION_ENGINE_LAUNCH_BLOCKED",
+            "The simulation engine child process could not be launched",
+            "xsim.log",
+        ),
+    )
+
+    exit_code, payload = _json_call(
+        capsys,
+        ["diagnose", "--workspace", str(workspace)],
+    )
+
+    assert exit_code == 1
+    recommendation = payload["data"]["diagnosis"]["recommendations"][0]["action"]
+    assert "Windows Code Integrity" in recommendation
+    assert "Smart App Control" in recommendation
+    assert "RTL" in recommendation

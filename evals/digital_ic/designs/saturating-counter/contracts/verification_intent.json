@@ -1,0 +1,19 @@
+{
+  "schema_version": "digital-ic-agent.verification-intent.v1",
+  "module": "saturating_counter",
+  "testbench_top": "tb_saturating_counter",
+  "source_files": ["rtl/saturating_counter.sv", "uvm/tb_saturating_counter.sv"],
+  "include_dirs": [],
+  "uvm_enabled": false,
+  "timescale": "1ns/1ps",
+  "pass_markers": ["SATURATING_COUNTER_SCOREBOARD_PASS"],
+  "directed_scenarios": [{"id": "boundaries", "description": "Count beyond both boundaries", "expected": "count saturates"}],
+  "random_constraints": [],
+  "scoreboard": {"enabled": true, "strategy": "integer saturation model", "compare_signals": ["count"]},
+  "assertions": [{"id": "bounds", "description": "Count remains within representable bounds", "signals": ["count"]}],
+  "functional_coverage": [],
+  "code_coverage": {"statement": 0, "branch": 0, "condition": 0, "toggle": 0},
+  "coverage_strategy": {"code_coverage": true, "functional_coverage": false, "export_report": true, "functional_threshold": 0},
+  "iteration_limits": {"max_iterations": 3, "max_time_seconds": 300, "no_progress_limit": 1},
+  "exit_criteria": {"zero_uvm_errors": true, "zero_uvm_fatals": true, "scoreboard_pass": true, "all_assertions_pass": true, "coverage_must_pass": true}
+}

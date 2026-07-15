@@ -69,13 +69,23 @@ path, commit or archive hash, and license.
 ### 5. Verify And Diagnose
 
 Run `digital-ic-agent verify --workspace <workspace> --vivado-bin <vivado-bin>
---json` after every change. `--vivado-bin` may be omitted only when xvlog,
-xelab, xsim, and xcrg are already discoverable on PATH. Use `--project-dir`
-only to re-check canonical evidence produced by a legacy target flow. Accept
-PASS only when `status` is `PASS`, `ok` is true, `error_code` is null, and
-verdict agrees with the manifest. On failure, run `digital-ic-agent
+--json` after every change. The default `--vivado-launch-mode direct` executes
+xvlog, xelab, and xsim as standalone tools. `--vivado-bin` may be omitted only
+when the tools required by the selected mode are discoverable on PATH. Use
+`--project-dir` only to re-check canonical evidence produced by a legacy target
+flow. Accept PASS only when `status` is `PASS`, `ok` is true, `error_code` is
+null, and verdict agrees with the manifest. On failure, run `digital-ic-agent
 diagnose --workspace <workspace> --json`, patch the smallest responsible area,
 and verify again. Preserve every iteration and never edit logs into a passing state.
+
+If and only if canonical diagnosis reports `SIMULATION_ENGINE_LAUNCH_BLOCKED`,
+retry the next eligible iteration with `--vivado-launch-mode project`. Project
+mode invokes `vivado.bat -mode batch`, creates an isolated Vivado project, and
+calls `launch_simulation` exactly once. It must collect compile, elaborate, and
+simulate logs, WDB, coverage DB, and xcrg reports into canonical evidence. Do
+not disable Smart App Control, alter WDAC or Defender exclusions, or accept a
+system security prompt. Project mode is an execution fallback, not permission
+to weaken artifact, freshness, coverage, iteration, or no-progress gates.
 
 ### 6. Close Coverage
 
@@ -100,5 +110,6 @@ licenses, and unresolved risks.
 
 - Every command supports `--json` with `schema_version`, `command`, `status`, `ok`, `error_code`, `message`, and `data`.
 - Use `workspace init`, `spec validate`, `reference status/index/search/show`, `verify`, `diagnose`, `status`, `resume`, and `report`.
+- `verify --workspace` supports `--vivado-launch-mode direct|project`; `direct` is the backward-compatible default.
 - Treat `AMBIGUOUS` as clarification, `FAIL` as correction or blocking, and only `PASS` as success.
 

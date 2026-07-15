@@ -172,9 +172,11 @@ def test_machine_verify_executes_workspace_and_emits_canonical_json(
         received_workspace: Path,
         *,
         vivado_bin: Path | None,
+        vivado_launch_mode: str,
     ) -> dict[str, object]:
         assert received_workspace == workspace
         assert vivado_bin == tmp_path / "vivado-bin"
+        assert vivado_launch_mode == "project"
         return {
             "workspace": str(workspace),
             "iteration": 1,
@@ -192,6 +194,8 @@ def test_machine_verify_executes_workspace_and_emits_canonical_json(
             str(workspace),
             "--vivado-bin",
             str(tmp_path / "vivado-bin"),
+            "--vivado-launch-mode",
+            "project",
             "--json",
         ]
     ) == 0

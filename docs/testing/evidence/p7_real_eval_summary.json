@@ -1,0 +1,988 @@
+{
+  "schema_version": "digital-ic-agent.eval-summary.v1",
+  "status": "PASS",
+  "totals": {
+    "generation": 10,
+    "repair": 10,
+    "negative": 10,
+    "overall": 30,
+    "defects_detected": 10,
+    "repaired": 10
+  },
+  "issues": [],
+  "cases": {
+    "generation": [
+      {
+        "id": "gen-timer",
+        "design_template": "timer",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              75.0
+            ],
+            "condition": [
+              75.0
+            ],
+            "functional": [
+              95.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-apb-register-block",
+        "design_template": "apb-register-block",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              83.3
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-priority-encoder",
+        "design_template": "priority-encoder",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              87.5
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-edge-detector",
+        "design_template": "edge-detector",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-saturating-counter",
+        "design_template": "saturating-counter",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-parity-unit",
+        "design_template": "parity-unit",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              0.0
+            ],
+            "condition": [
+              0.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-gray-codec",
+        "design_template": "gray-codec",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              0.0
+            ],
+            "condition": [
+              0.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-skid-buffer",
+        "design_template": "skid-buffer",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              44.4
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-pulse-stretcher",
+        "design_template": "pulse-stretcher",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              100.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "gen-clock-enable-divider",
+        "design_template": "clock-enable-divider",
+        "status": "PASS",
+        "iteration": 1,
+        "evidence_kind": "real-vivado",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      }
+    ],
+    "repair_prepare": [
+      {
+        "id": "repair-timer-syntax",
+        "design_template": "timer",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "NONZERO_EXIT",
+          "TOOL_ERROR_FOUND"
+        ],
+        "observed_reason_codes": [
+          "ARTIFACT_MISSING",
+          "COVERAGE_GATE_MISSING",
+          "NONZERO_EXIT",
+          "PASS_MARKER_MISSING",
+          "TOOL_ERROR_FOUND"
+        ],
+        "diagnosis_reason_codes": [
+          "ARTIFACT_MISSING",
+          "COVERAGE_GATE_MISSING",
+          "NONZERO_EXIT",
+          "PASS_MARKER_MISSING",
+          "TOOL_ERROR_FOUND"
+        ]
+      },
+      {
+        "id": "repair-timer-off-by-one",
+        "design_template": "timer",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ],
+        "diagnosis_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ]
+      },
+      {
+        "id": "repair-timer-reset",
+        "design_template": "timer",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "ASSERTION_FAIL_FOUND"
+        ],
+        "observed_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "COVERAGE_GATE_FAILED",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ],
+        "diagnosis_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "COVERAGE_GATE_FAILED",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ]
+      },
+      {
+        "id": "repair-apb-address-decode",
+        "design_template": "apb-register-block",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "COVERAGE_GATE_FAILED",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ],
+        "diagnosis_reason_codes": [
+          "COVERAGE_GATE_FAILED",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ]
+      },
+      {
+        "id": "repair-apb-byte-strobes",
+        "design_template": "apb-register-block",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ],
+        "diagnosis_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ]
+      },
+      {
+        "id": "repair-priority-width",
+        "design_template": "priority-encoder",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "COVERAGE_GATE_FAILED",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ],
+        "diagnosis_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "COVERAGE_GATE_FAILED",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ]
+      },
+      {
+        "id": "repair-priority-direction",
+        "design_template": "priority-encoder",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ],
+        "diagnosis_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING",
+          "UVM_ERROR_FOUND"
+        ]
+      },
+      {
+        "id": "repair-edge-delay",
+        "design_template": "edge-detector",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING"
+        ],
+        "diagnosis_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING"
+        ]
+      },
+      {
+        "id": "repair-counter-wrap",
+        "design_template": "saturating-counter",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING"
+        ],
+        "diagnosis_reason_codes": [
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING"
+        ]
+      },
+      {
+        "id": "repair-skid-data-loss",
+        "design_template": "skid-buffer",
+        "status": "PASS",
+        "expected_reason_codes": [
+          "FAIL_MARKER_FOUND"
+        ],
+        "observed_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING"
+        ],
+        "diagnosis_reason_codes": [
+          "ASSERTION_FAIL_FOUND",
+          "FAIL_MARKER_FOUND",
+          "PASS_MARKER_MISSING"
+        ]
+      }
+    ],
+    "repair": [
+      {
+        "id": "repair-timer-syntax",
+        "design_template": "timer",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "f9003ffd76b34998b100d2d86702f3eb49c9753adf1de8d7e871e267127324c3",
+        "repaired_sha256": "300ad124d639dac6278ff734c5b6a098e394e02c6098787a04328e6cb310efc0",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-timer-off-by-one",
+        "design_template": "timer",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "af703b98ace8e03dfbf0f5b880db458481715fb1704f9c80b99f776e8bb8d9a3",
+        "repaired_sha256": "300ad124d639dac6278ff734c5b6a098e394e02c6098787a04328e6cb310efc0",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-timer-reset",
+        "design_template": "timer",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "7ab1b172589ef2f7e453c8652341205a09094666f2a682fea804b94e7d936988",
+        "repaired_sha256": "300ad124d639dac6278ff734c5b6a098e394e02c6098787a04328e6cb310efc0",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-apb-address-decode",
+        "design_template": "apb-register-block",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "4475fe4f9cd4b28e71fda14f11b28cafee2f2a186c4a86ff9cb4c584ac8f9802",
+        "repaired_sha256": "d6ae185e78e6aedc8fb346baa167c08be5f81480db7ce763f4f62dc65d8bbb0e",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              83.3
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-apb-byte-strobes",
+        "design_template": "apb-register-block",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "e2cab5c2b33087ac0a08acf3e0a74c6352bd37476f02a697eb29d525aa8111eb",
+        "repaired_sha256": "d6ae185e78e6aedc8fb346baa167c08be5f81480db7ce763f4f62dc65d8bbb0e",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              83.3
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-priority-width",
+        "design_template": "priority-encoder",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "e93e4176bbe927cbefca52f11581d95810ea1be957729e676bc90e1d1d061bb7",
+        "repaired_sha256": "c3b83cba3b14d22a7c0593ee654c597b81a9cb3df0055097f5e6dc564ae33e1a",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              87.5
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-priority-direction",
+        "design_template": "priority-encoder",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "a51b0a58906ae7c69fac8542b3b44424812e7f062c3244c30d627b3e856271e3",
+        "repaired_sha256": "c3b83cba3b14d22a7c0593ee654c597b81a9cb3df0055097f5e6dc564ae33e1a",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "functional": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "functional": [
+              87.5
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-edge-delay",
+        "design_template": "edge-detector",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "fbf8f7b9a13ced4839be2c943a720ddd66131e75638f8224ac6452ca90f7215b",
+        "repaired_sha256": "17d3d34074ffb8baf2aabe2dfc54785413b2c723ab5860700ceadc3b5a540ff3",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-counter-wrap",
+        "design_template": "saturating-counter",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "69bf56ca4edb86b5e5e767deed552032777dc0942beaf9d394b45a188a635112",
+        "repaired_sha256": "c9a6cc9f09ba76c6c3e9bf1c1f2ed9fa0f465be3f937be3f0ecf2775f97437dc",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              0.0
+            ]
+          }
+        }
+      },
+      {
+        "id": "repair-skid-data-loss",
+        "design_template": "skid-buffer",
+        "status": "PASS",
+        "repair_iterations": 1,
+        "max_repair_iterations": 3,
+        "injected_sha256": "212bc10c55c46df335dbc53f0c44e341f3bf4e930773f2904ce2ab7089886f88",
+        "repaired_sha256": "124ea8c02d7bfc2a4636f42c283afb3faae9f6ae231e812dd8022aa245214522",
+        "coverage": {
+          "gates": {
+            "branch": "PASS",
+            "condition": "PASS",
+            "statement": "PASS",
+            "toggle": "PASS"
+          },
+          "scores": {
+            "branch": [
+              100.0
+            ],
+            "condition": [
+              100.0
+            ],
+            "statement": [
+              100.0
+            ],
+            "toggle": [
+              44.4
+            ]
+          }
+        }
+      }
+    ],
+    "negative": [
+      {
+        "id": "negative-missing-clock",
+        "status": "PASS",
+        "expected_status": "AMBIGUOUS",
+        "observed_status": "AMBIGUOUS",
+        "expected_code": "CLOCK_SEMANTICS_MISSING",
+        "observed_codes": [
+          "CLOCK_SEMANTICS_MISSING"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-missing-reset",
+        "status": "PASS",
+        "expected_status": "AMBIGUOUS",
+        "observed_status": "AMBIGUOUS",
+        "expected_code": "RESET_SEMANTICS_MISSING",
+        "observed_codes": [
+          "RESET_SEMANTICS_MISSING"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-missing-acceptance",
+        "status": "PASS",
+        "expected_status": "AMBIGUOUS",
+        "observed_status": "AMBIGUOUS",
+        "expected_code": "ACCEPTANCE_CRITERIA_MISSING",
+        "observed_codes": [
+          "ACCEPTANCE_CRITERIA_MISSING"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-undefined-width",
+        "status": "PASS",
+        "expected_status": "FAIL",
+        "observed_status": "FAIL",
+        "expected_code": "WIDTH_PARAMETER_UNDEFINED",
+        "observed_codes": [
+          "WIDTH_PARAMETER_UNDEFINED"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-module-mismatch",
+        "status": "PASS",
+        "expected_status": "FAIL",
+        "observed_status": "FAIL",
+        "expected_code": "MODULE_MISMATCH",
+        "observed_codes": [
+          "MODULE_MISMATCH"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-scoreboard-signal",
+        "status": "PASS",
+        "expected_status": "FAIL",
+        "observed_status": "FAIL",
+        "expected_code": "VERIFICATION_SIGNAL_UNDEFINED",
+        "observed_codes": [
+          "VERIFICATION_SIGNAL_UNDEFINED"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-missing-testbench-top",
+        "status": "PASS",
+        "expected_status": "AMBIGUOUS",
+        "observed_status": "AMBIGUOUS",
+        "expected_code": "TESTBENCH_TOP_MISSING",
+        "observed_codes": [
+          "TESTBENCH_TOP_MISSING"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-source-escape",
+        "status": "PASS",
+        "expected_status": "FAIL",
+        "observed_status": "FAIL",
+        "expected_code": "SOURCE_PATH_INVALID",
+        "observed_codes": [
+          "SOURCE_PATH_INVALID"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-coverage-conflict",
+        "status": "PASS",
+        "expected_status": "FAIL",
+        "observed_status": "FAIL",
+        "expected_code": "COVERAGE_STRATEGY_CONFLICT",
+        "observed_codes": [
+          "COVERAGE_STRATEGY_CONFLICT"
+        ],
+        "vivado_invoked": false
+      },
+      {
+        "id": "negative-iteration-conflict",
+        "status": "PASS",
+        "expected_status": "FAIL",
+        "observed_status": "FAIL",
+        "expected_code": "ITERATION_LIMIT_CONFLICT",
+        "observed_codes": [
+          "ITERATION_LIMIT_CONFLICT"
+        ],
+        "vivado_invoked": false
+      }
+    ]
+  },
+  "source_reports": {
+    "generation": {
+      "path": "real_design_generation_eval.json",
+      "sha256": "a230554d3f712be893eb827366bb85916f6784a08c39be5be4e8c090e874bf8b",
+      "size_bytes": 29402
+    },
+    "repair_prepare": {
+      "path": "real_design_repair_prepare.json",
+      "sha256": "6da099975224ff982d5136dd423bc5cf531129dbe37cfecc46dc7cff4b37aacd",
+      "size_bytes": 45095
+    },
+    "repair": {
+      "path": "real_design_repair_eval.json",
+      "sha256": "c545c38930fd078339e5660ba7c5c3baa42311f2ab837a86f2c2f84ba4043d36",
+      "size_bytes": 30451
+    },
+    "negative": {
+      "path": "negative_design_eval.json",
+      "sha256": "84d3a73f44bc71412132c44d055eef38ed3b32f041fc6ca3a412c5563687ea57",
+      "size_bytes": 3330
+    }
+  }
+}

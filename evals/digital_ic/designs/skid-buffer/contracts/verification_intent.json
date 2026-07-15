@@ -1,0 +1,19 @@
+{
+  "schema_version": "digital-ic-agent.verification-intent.v1",
+  "module": "skid_buffer",
+  "testbench_top": "tb_skid_buffer",
+  "source_files": ["rtl/skid_buffer.sv", "uvm/tb_skid_buffer.sv"],
+  "include_dirs": [],
+  "uvm_enabled": false,
+  "timescale": "1ns/1ps",
+  "pass_markers": ["SKID_BUFFER_SCOREBOARD_PASS"],
+  "directed_scenarios": [{"id": "backpressure", "description": "Stall downstream while upstream presents a second payload", "expected": "first payload holds and second is accepted when space opens"}],
+  "random_constraints": [],
+  "scoreboard": {"enabled": true, "strategy": "accepted-payload ordering model", "compare_signals": ["s_ready", "m_valid", "m_data"]},
+  "assertions": [{"id": "stall_stability", "description": "Output remains stable while stalled", "signals": ["m_valid", "m_ready", "m_data"]}],
+  "functional_coverage": [],
+  "code_coverage": {"statement": 0, "branch": 0, "condition": 0, "toggle": 0},
+  "coverage_strategy": {"code_coverage": true, "functional_coverage": false, "export_report": true, "functional_threshold": 0},
+  "iteration_limits": {"max_iterations": 3, "max_time_seconds": 300, "no_progress_limit": 1},
+  "exit_criteria": {"zero_uvm_errors": true, "zero_uvm_fatals": true, "scoreboard_pass": true, "all_assertions_pass": true, "coverage_must_pass": true}
+}

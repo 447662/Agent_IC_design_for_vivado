@@ -111,6 +111,11 @@ _ASSERTION_FAIL_PATTERN = re.compile(
 _TOOL_ERROR_PATTERN = re.compile(
     r"(?im)^\s*(?:#\s*)?ERROR:\s*\[(?:VRFC|XSIM|Simtcl|Synth|Common)\b"
 )
+_SIMULATION_ENGINE_LAUNCH_BLOCKED_PATTERN = re.compile(
+    r"(?is)ERROR:\s*\[Simtcl\s+6-50\].*?"
+    r"Simulation engine failed to start:.*?"
+    r"Failed to launch child process\s*\(child exe not found\)"
+)
 _UVM_COUNT_PATTERN = re.compile(
     r"(?im)^\s*(?:#\s*)?UVM_(ERROR|FATAL)\s*:\s*(\d+)\b"
 )
@@ -195,6 +200,13 @@ def _evaluate_evidence(
             )
         if _TOOL_ERROR_PATTERN.search(content):
             _add_reason(reasons, "TOOL_ERROR_FOUND", "A Vivado tool error was found", source)
+        if _SIMULATION_ENGINE_LAUNCH_BLOCKED_PATTERN.search(content):
+            _add_reason(
+                reasons,
+                "SIMULATION_ENGINE_LAUNCH_BLOCKED",
+                "The xsim simulation engine could not launch its generated child executable",
+                source,
+            )
         for match in _UVM_COUNT_PATTERN.finditer(content):
             category = match.group(1)
             count = int(match.group(2))

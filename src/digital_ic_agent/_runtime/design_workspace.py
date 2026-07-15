@@ -160,6 +160,12 @@ def record_workspace_verification(
 
 
 def _diagnosis_recommendation(code: str) -> str:
+    if code == "SIMULATION_ENGINE_LAUNCH_BLOCKED":
+        return (
+            "Check Windows Code Integrity and Smart App Control for blocked xsimk.exe "
+            "events before retrying Vivado; this is a host policy or toolchain failure, "
+            "so do not modify RTL to address it."
+        )
     if code.startswith("UVM_"):
         return "Inspect the UVM report and fix the first emitted error or fatal condition."
     if "COVERAGE" in code:

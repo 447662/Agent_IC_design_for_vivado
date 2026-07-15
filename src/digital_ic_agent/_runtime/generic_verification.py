@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import time
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, cast
 
 from digital_ic_agent._runtime.design_workspace import (
     load_workspace_state,
@@ -26,6 +25,15 @@ from digital_ic_agent._runtime.generic_verification_evidence import (
     sha256 as _sha256,
     timestamp as _timestamp,
     write_source_snapshot_and_diff as _write_source_snapshot_and_diff,
+)
+from digital_ic_agent._runtime.generic_verification_vivado import (
+    ExecutionConfig,
+    VivadoLaunchMode,
+    VivadoToolError,
+    copy_project_artifact as _copy_project_artifact,
+    project_artifact as _project_artifact,
+    render_project_verification_tcl as _render_project_verification_tcl,
+    resolve_tools as _resolve_tools,
 )
 from digital_ic_agent._runtime.intent_contract import (
     IntentFileError,
@@ -64,23 +72,6 @@ class GenericVerificationError(ValueError):
         self.code = code
         self.status = status
         self.data = dict(data or {})
-
-
-class ExecutionConfig(TypedDict):
-    module: str
-    testbench_top: str
-    source_files: list[str]
-    include_dirs: list[str]
-    uvm_enabled: bool
-    timescale: str
-    pass_markers: list[str]
-    code_thresholds: dict[str, float]
-    code_coverage: bool
-    functional_coverage: bool
-    functional_threshold: float
-    max_iterations: int
-    max_time_seconds: int
-    no_progress_limit: int
 
 
 def _as_mapping(value: object, name: str) -> Mapping[str, object]:
@@ -178,41 +169,6 @@ def _collect_sources(
             )
         include_paths.append(path)
     return source_paths, include_paths, records, contents
-
-
-def _tool_path(bin_dir: Path | None, name: str) -> Path:
-    candidates: list[Path] = []
-    if bin_dir is not None:
-        candidates.extend((bin_dir / f"{name}.bat", bin_dir / name))
-    else:
-        located = shutil.which(name) or shutil.which(f"{name}.bat")
-        if located:
-            candidates.append(Path(located))
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate.resolve()
-    raise GenericVerificationError(
-        "VIVADO_TOOL_NOT_FOUND",
-        f"Required Vivado tool was not found: {name}",
-        data={"tool": name, "vivado_bin": None if bin_dir is None else str(bin_dir)},
-    )
-
-
-def _resolve_tools(
-    vivado_bin: Path | None,
-    *,
-    coverage_required: bool,
-) -> dict[str, Path]:
-    bin_dir = None if vivado_bin is None else Path(vivado_bin).resolve()
-    if bin_dir is not None and not bin_dir.is_dir():
-        raise GenericVerificationError(
-            "VIVADO_BIN_NOT_FOUND",
-            f"Vivado bin directory was not found: {bin_dir}",
-        )
-    names = ["xvlog", "xelab", "xsim"]
-    if coverage_required:
-        names.append("xcrg")
-    return {name: _tool_path(bin_dir, name) for name in names}
 
 
 def _run_stage(
@@ -336,6 +292,7 @@ def _finalize(
     log_paths: dict[str, Path],
     coverage: CoverageGateEvaluation,
     verdict: VerificationVerdict,
+    vivado_launch_mode: VivadoLaunchMode,
     stopped_reason: str | None = None,
 ) -> dict[str, Any]:
     root_verdict_paths = write_verification_verdict(workspace, verdict)
@@ -353,6 +310,7 @@ def _finalize(
             "sources": sources,
             "source_diff": None if source_diff is None else _file_summary(source_diff),
             "tool_version": tool_version,
+            "vivado_launch_mode": vivado_launch_mode,
             "commands": commands,
             "logs": {
                 name: _file_summary(path)
@@ -393,6 +351,7 @@ def _finalize(
             else [str(path) for path in iteration_verdict_paths]
         ),
         "coverage": coverage,
+        "vivado_launch_mode": vivado_launch_mode,
         "state": state,
         "verdict": verdict.to_dict(),
     }
@@ -402,9 +361,15 @@ def verify_workspace(
     workspace: Path,
     *,
     vivado_bin: Path | None = None,
+    vivado_launch_mode: VivadoLaunchMode = "direct",
     runner: ToolRunner = subprocess.run,
 ) -> dict[str, Any]:
     workspace = Path(workspace).resolve()
+    if vivado_launch_mode not in {"direct", "project"}:
+        raise GenericVerificationError(
+            "VIVADO_LAUNCH_MODE_INVALID",
+            f"Unsupported Vivado launch mode: {vivado_launch_mode}",
+        )
     state = load_workspace_state(workspace)
     design_path = workspace / "contracts" / "design_intent.json"
     verification_path = workspace / "contracts" / "verification_intent.json"
@@ -458,6 +423,7 @@ def verify_workspace(
             log_paths={},
             coverage=empty_coverage,
             verdict=verdict,
+            vivado_launch_mode=vivado_launch_mode,
             stopped_reason="MAX_ITERATIONS_REACHED",
         )
 
@@ -499,13 +465,18 @@ def verify_workspace(
             log_paths={},
             coverage=empty_coverage,
             verdict=verdict,
+            vivado_launch_mode=vivado_launch_mode,
             stopped_reason="NO_PROGRESS_LIMIT_REACHED",
         )
 
     coverage_required = config["code_coverage"] or config["functional_coverage"]
     try:
-        tools = _resolve_tools(vivado_bin, coverage_required=coverage_required)
-    except GenericVerificationError as exc:
+        tools = _resolve_tools(
+            vivado_bin,
+            coverage_required=coverage_required,
+            vivado_launch_mode=vivado_launch_mode,
+        )
+    except VivadoToolError as exc:
         verdict = failed_verdict(exc.code, str(exc), cast(str | None, exc.data.get("tool")))
         return _finalize(
             workspace,
@@ -523,6 +494,7 @@ def verify_workspace(
             log_paths={},
             coverage=empty_coverage,
             verdict=verdict,
+            vivado_launch_mode=vivado_launch_mode,
         )
 
     started_at = datetime.now(UTC)
@@ -530,112 +502,198 @@ def verify_workspace(
     commands: list[list[str]] = []
     log_paths: dict[str, Path] = {}
     process_results: dict[str, ProcessResult] = {}
-
-    version_command = [str(tools["xvlog"]), "--version"]
-    commands.append(version_command)
-    version_result, version_logs = _run_stage(
-        runner,
-        version_command,
-        cwd=iteration_dir,
-        deadline=deadline,
-        stage="version",
-    )
-    log_paths.update(version_logs)
-    version = _tool_version(version_result)
-
-    compile_command = [str(tools["xvlog"]), "-sv"]
-    if config["uvm_enabled"]:
-        compile_command.extend(("-L", "uvm"))
-    for include_path in include_paths:
-        compile_command.extend(("-i", str(include_path)))
-    compile_command.extend(str(path) for path in source_paths)
-    commands.append(compile_command)
-    compile_result, compile_logs = _run_stage(
-        runner,
-        compile_command,
-        cwd=iteration_dir,
-        deadline=deadline,
-        stage="compile",
-    )
-    process_results["xvlog"] = cast(ProcessResult, compile_result)
-    log_paths.update(compile_logs)
-
-    snapshot = f"{config['module']}_snapshot"
     coverage_name = f"{config['module']}_cov"
-    if compile_result.returncode == 0:
-        elaborate_command = [
-            str(tools["xelab"]),
-            config["testbench_top"],
-            "-debug",
-            "typical",
-            "-timescale",
-            config["timescale"],
-            "-s",
-            snapshot,
-        ]
-        if config["uvm_enabled"]:
-            elaborate_command.extend(("-L", "uvm"))
-        if coverage_required:
-            elaborate_command.extend(
-                ("-cov_db_dir", "coverage", "-cov_db_name", coverage_name)
-            )
-        if config["code_coverage"]:
-            elaborate_command.extend(("-cc_type", "sbct"))
-        commands.append(elaborate_command)
-        elaborate_result, elaborate_logs = _run_stage(
-            runner,
-            elaborate_command,
-            cwd=iteration_dir,
-            deadline=deadline,
-            stage="elaborate",
+    project_required_artifacts: list[Path] = []
+    if vivado_launch_mode == "project":
+        project_name = f"{config['module']}_verification"
+        project_dir = iteration_dir / "vivado_project"
+        project_script = iteration_dir / "run_vivado_project.tcl"
+        _atomic_write_text(
+            project_script,
+            _render_project_verification_tcl(
+                project_dir=project_dir,
+                config=config,
+                source_paths=source_paths,
+                include_paths=include_paths,
+                coverage_required=coverage_required,
+            ),
         )
-        process_results["xelab"] = cast(ProcessResult, elaborate_result)
-        log_paths.update(elaborate_logs)
-    else:
-        elaborate_result = subprocess.CompletedProcess([], 1, "", "compile failed")
-
-    xsim_log = iteration_dir / "xsim.log"
-    wave_db = iteration_dir / "simulation.wdb"
-    run_script = iteration_dir / "run_all.tcl"
-    _atomic_write_text(run_script, "log_wave -r /\nrun all\nexit\n")
-    if elaborate_result.returncode == 0:
-        simulation_command = [
-            str(tools["xsim"]),
-            snapshot,
-            "-wdb",
-            wave_db.name,
-            "-tclbatch",
-            run_script.name,
+        vivado_log = iteration_dir / "logs" / "vivado.log"
+        vivado_journal = iteration_dir / "logs" / "vivado.jou"
+        vivado_log.parent.mkdir(parents=True, exist_ok=True)
+        project_command = [
+            str(tools["vivado"]),
+            "-mode",
+            "batch",
+            "-source",
+            str(project_script),
+            "-journal",
+            str(vivado_journal),
             "-log",
-            xsim_log.name,
+            str(vivado_log),
         ]
-        commands.append(simulation_command)
-        simulation_result, simulation_logs = _run_stage(
+        commands.append(project_command)
+        project_result, project_logs = _run_stage(
             runner,
-            simulation_command,
+            project_command,
             cwd=iteration_dir,
             deadline=deadline,
-            stage="simulate",
+            stage="vivado_project",
         )
-        process_results["xsim"] = cast(ProcessResult, simulation_result)
-        log_paths.update(simulation_logs)
+        process_results["vivado"] = cast(ProcessResult, project_result)
+        log_paths.update(project_logs)
+        if vivado_log.is_file():
+            log_paths["vivado.log"] = vivado_log
+        version = _tool_version(project_result)
+
+        compile_log = _copy_project_artifact(
+            _project_artifact(project_dir, "compile.log"),
+            iteration_dir / "logs" / "compile.log",
+        )
+        elaborate_log = _copy_project_artifact(
+            _project_artifact(project_dir, "elaborate.log"),
+            iteration_dir / "logs" / "elaborate.log",
+        )
+        xsim_log = _copy_project_artifact(
+            _project_artifact(project_dir, "simulate.log"),
+            iteration_dir / "xsim.log",
+        )
+        wave_db = _copy_project_artifact(
+            _project_artifact(project_dir, "*_behav.wdb"),
+            iteration_dir / "simulation.wdb",
+        )
+        log_paths.update(
+            {
+                "compile.log": compile_log,
+                "elaborate.log": elaborate_log,
+                "simulate.log": xsim_log,
+            }
+        )
+        project_file = project_dir / f"{project_name}.xpr"
+        project_required_artifacts.extend(
+            (project_file, compile_log, elaborate_log)
+        )
+        discovered_coverage_info = _project_artifact(project_dir, "xsim.CCInfo")
+        if discovered_coverage_info is None:
+            coverage_db_dir = project_dir / "coverage"
+            coverage_info = (
+                coverage_db_dir
+                / "xsim.codeCov"
+                / coverage_name
+                / "xsim.CCInfo"
+            )
+        else:
+            coverage_info = discovered_coverage_info
+            coverage_db_dir = coverage_info.parents[2]
+        coverage_db_argument = str(coverage_db_dir)
+        simulation_result = project_result
     else:
-        simulation_result = subprocess.CompletedProcess([], 1, "", "elaboration failed")
+        version_command = [str(tools["xvlog"]), "--version"]
+        commands.append(version_command)
+        version_result, version_logs = _run_stage(
+            runner,
+            version_command,
+            cwd=iteration_dir,
+            deadline=deadline,
+            stage="version",
+        )
+        log_paths.update(version_logs)
+        version = _tool_version(version_result)
+
+        compile_command = [str(tools["xvlog"]), "-sv"]
+        if config["uvm_enabled"]:
+            compile_command.extend(("-L", "uvm"))
+        for include_path in include_paths:
+            compile_command.extend(("-i", str(include_path)))
+        compile_command.extend(str(path) for path in source_paths)
+        commands.append(compile_command)
+        compile_result, compile_logs = _run_stage(
+            runner,
+            compile_command,
+            cwd=iteration_dir,
+            deadline=deadline,
+            stage="compile",
+        )
+        process_results["xvlog"] = cast(ProcessResult, compile_result)
+        log_paths.update(compile_logs)
+
+        snapshot = f"{config['module']}_snapshot"
+        if compile_result.returncode == 0:
+            elaborate_command = [
+                str(tools["xelab"]),
+                config["testbench_top"],
+                "-debug",
+                "typical",
+                "-timescale",
+                config["timescale"],
+                "-s",
+                snapshot,
+            ]
+            if config["uvm_enabled"]:
+                elaborate_command.extend(("-L", "uvm"))
+            if coverage_required:
+                elaborate_command.extend(
+                    ("-cov_db_dir", "coverage", "-cov_db_name", coverage_name)
+                )
+            if config["code_coverage"]:
+                elaborate_command.extend(("-cc_type", "sbct"))
+            commands.append(elaborate_command)
+            elaborate_result, elaborate_logs = _run_stage(
+                runner,
+                elaborate_command,
+                cwd=iteration_dir,
+                deadline=deadline,
+                stage="elaborate",
+            )
+            process_results["xelab"] = cast(ProcessResult, elaborate_result)
+            log_paths.update(elaborate_logs)
+        else:
+            elaborate_result = subprocess.CompletedProcess([], 1, "", "compile failed")
+
+        xsim_log = iteration_dir / "xsim.log"
+        wave_db = iteration_dir / "simulation.wdb"
+        run_script = iteration_dir / "run_all.tcl"
+        _atomic_write_text(run_script, "log_wave -r /\nrun all\nexit\n")
+        if elaborate_result.returncode == 0:
+            simulation_command = [
+                str(tools["xsim"]),
+                snapshot,
+                "-wdb",
+                wave_db.name,
+                "-tclbatch",
+                run_script.name,
+                "-log",
+                xsim_log.name,
+            ]
+            commands.append(simulation_command)
+            simulation_result, simulation_logs = _run_stage(
+                runner,
+                simulation_command,
+                cwd=iteration_dir,
+                deadline=deadline,
+                stage="simulate",
+            )
+            process_results["xsim"] = cast(ProcessResult, simulation_result)
+            log_paths.update(simulation_logs)
+        else:
+            simulation_result = subprocess.CompletedProcess([], 1, "", "elaboration failed")
+
+        coverage_info = (
+            iteration_dir
+            / "coverage"
+            / "xsim.codeCov"
+            / coverage_name
+            / "xsim.CCInfo"
+        )
+        coverage_db_argument = "coverage"
 
     xcrg_dir = iteration_dir / "reports" / "coverage"
     xcrg_log = iteration_dir / "logs" / "xcrg.log"
-    coverage_info = (
-        iteration_dir
-        / "coverage"
-        / "xsim.codeCov"
-        / coverage_name
-        / "xsim.CCInfo"
-    )
     if simulation_result.returncode == 0 and coverage_required:
         coverage_command = [
             str(tools["xcrg"]),
             "-cov_db_dir",
-            "coverage",
+            coverage_db_argument,
             "-cov_db_name",
             coverage_name,
             "-report_dir",
@@ -676,7 +734,7 @@ def verify_workspace(
     evidence_paths["xsim.log"] = xsim_log
     if xcrg_log.is_file():
         evidence_paths["xcrg.log"] = xcrg_log
-    required_artifacts = [xsim_log, wave_db]
+    required_artifacts = [xsim_log, wave_db, *project_required_artifacts]
     if coverage_required:
         required_artifacts.append(coverage_info)
         if config["code_coverage"]:
@@ -709,4 +767,5 @@ def verify_workspace(
         log_paths=evidence_paths,
         coverage=coverage,
         verdict=verdict,
+        vivado_launch_mode=vivado_launch_mode,
     )

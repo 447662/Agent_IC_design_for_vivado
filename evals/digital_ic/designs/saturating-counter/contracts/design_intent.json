@@ -1,0 +1,19 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "saturating_counter", "kind": "sequential"},
+  "parameters": [{"name": "WIDTH", "type": "integer", "default": 8, "minimum": 2}],
+  "ports": [
+    {"name": "clk", "direction": "input", "width": 1, "semantics": "counter clock"},
+    {"name": "rst_n", "direction": "input", "width": 1, "semantics": "active-low asynchronous reset"},
+    {"name": "enable", "direction": "input", "width": 1, "semantics": "count enable"},
+    {"name": "up", "direction": "input", "width": 1, "semantics": "one counts up and zero counts down"},
+    {"name": "count", "direction": "output", "width": "WIDTH", "semantics": "saturating counter value"}
+  ],
+  "clocks": [{"name": "core", "signal": "clk", "edge": "rising", "frequency_hz": 100000000}],
+  "resets": [{"name": "reset", "signal": "rst_n", "active_level": "low", "kind": "asynchronous", "clock": "core"}],
+  "protocols": [],
+  "timing": {"latency_cycles": 1, "throughput_per_cycle": 1},
+  "exceptional_behavior": ["Counting up at all ones holds the maximum", "Counting down at zero holds zero"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["The counter never wraps at either boundary"]
+}

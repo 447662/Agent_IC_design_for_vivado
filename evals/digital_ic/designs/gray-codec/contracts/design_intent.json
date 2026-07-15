@@ -1,0 +1,17 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "gray_codec", "kind": "combinational"},
+  "parameters": [{"name": "WIDTH", "type": "integer", "default": 8, "minimum": 2}],
+  "ports": [
+    {"name": "binary_i", "direction": "input", "width": "WIDTH", "semantics": "binary input"},
+    {"name": "gray_o", "direction": "output", "width": "WIDTH", "semantics": "Gray encoded output"},
+    {"name": "binary_o", "direction": "output", "width": "WIDTH", "semantics": "decoded round-trip binary output"}
+  ],
+  "clocks": [],
+  "resets": [],
+  "protocols": [],
+  "timing": {"latency_cycles": 0, "throughput_per_cycle": 1},
+  "exceptional_behavior": [],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["gray_o equals binary_i XOR binary_i shifted right once", "binary_o equals binary_i for every input"]
+}

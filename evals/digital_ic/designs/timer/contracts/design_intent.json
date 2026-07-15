@@ -1,0 +1,20 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "timer", "kind": "sequential"},
+  "parameters": [{"name": "WIDTH", "type": "integer", "default": 16, "minimum": 2}],
+  "ports": [
+    {"name": "clk", "direction": "input", "width": 1, "semantics": "core clock"},
+    {"name": "rst_n", "direction": "input", "width": 1, "semantics": "active-low asynchronous reset"},
+    {"name": "load", "direction": "input", "width": 1, "semantics": "load period and restart"},
+    {"name": "enable", "direction": "input", "width": 1, "semantics": "countdown enable"},
+    {"name": "period", "direction": "input", "width": "WIDTH", "semantics": "programmed enabled-cycle period"},
+    {"name": "expired", "direction": "output", "width": 1, "semantics": "one-cycle expiry pulse"}
+  ],
+  "clocks": [{"name": "core", "signal": "clk", "edge": "rising", "frequency_hz": 100000000}],
+  "resets": [{"name": "core_reset", "signal": "rst_n", "active_level": "low", "kind": "asynchronous", "clock": "core"}],
+  "protocols": [],
+  "timing": {"latency_cycles": 1, "throughput_per_cycle": 1},
+  "exceptional_behavior": ["A zero period is treated as one enabled cycle", "Load has priority over enable"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["Expired is asserted for exactly one cycle after each programmed number of enabled cycles", "Reset clears the timer and expiry pulse"]
+}

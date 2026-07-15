@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,14 @@ from digital_ic_agent._runtime.design_workspace import (  # noqa: E402
 )
 from digital_ic_agent._runtime.generic_verification import (  # noqa: E402
     verify_workspace,
+)
+from digital_ic_agent._runtime.generic_verification_vivado import (  # noqa: E402
+    ExecutionConfig,
+    VivadoToolError,
+    copy_project_artifact,
+    project_artifact,
+    render_project_verification_tcl,
+    resolve_tools,
 )
 
 
@@ -211,10 +220,112 @@ class FakeVivadoRunner:
         )
 
 
-def _tools(tmp_path: Path, *, include_xcrg: bool = True) -> Path:
+class FakeProjectVivadoRunner(FakeVivadoRunner):
+    def __call__(
+        self,
+        command: list[str],
+        *,
+        cwd: Path,
+        capture_output: bool,
+        text: bool,
+        encoding: str,
+        errors: str,
+        timeout: float,
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        assert capture_output is True
+        assert text is True
+        assert encoding == "utf-8"
+        assert errors == "replace"
+        assert timeout > 0
+        assert check is False
+        self.calls.append(command)
+        tool = Path(command[0]).stem.lower()
+        if tool == "vivado":
+            assert command[1:3] == ["-mode", "batch"]
+            script = Path(command[command.index("-source") + 1])
+            rendered = script.read_text(encoding="utf-8")
+            assert rendered.count("launch_simulation") == 1
+            assert re.search(r"(?m)^\s*run\s+all\s*$", rendered) is None
+            assert (
+                "set_property -name {xsim.compile.xvlog.more_options} "
+                '-value "-L uvm" -objects [get_filesets sim_1]'
+            ) in rendered
+            assert (
+                "set_property -name {xsim.elaborate.xelab.more_options} "
+                '-value "-timescale 1ns/1ps -L uvm" '
+                "-objects [get_filesets sim_1]"
+            ) in rendered
+            assert "xsim.elaborate.coverage.type" in rendered
+            assert "xsim.elaborate.coverage.name" in rendered
+            assert "xsim.elaborate.coverage.dir" in rendered
+            assert "xsim.simulate.runtime" in rendered
+            for option in ("-journal", "-log"):
+                output_path = Path(command[command.index(option) + 1])
+                assert output_path.parent.is_dir()
+
+            simulation_dir = (
+                cwd
+                / "vivado_project"
+                / "timer_verification.sim"
+                / "sim_1"
+                / "behav"
+                / "xsim"
+            )
+            simulation_dir.mkdir(parents=True)
+            (cwd / "vivado_project" / "timer_verification.xpr").write_text(
+                "Vivado project\n",
+                encoding="utf-8",
+            )
+            (simulation_dir / "compile.log").write_text(
+                "xvlog completed\n",
+                encoding="utf-8",
+            )
+            (simulation_dir / "elaborate.log").write_text(
+                "xelab completed\n",
+                encoding="utf-8",
+            )
+            (simulation_dir / "simulate.log").write_text(
+                "TIMER_SCOREBOARD_PASS\nUVM_ERROR : 0\nUVM_FATAL : 0\n",
+                encoding="utf-8",
+            )
+            (simulation_dir / "tb_timer_behav.wdb").write_text(
+                "wave database\n",
+                encoding="utf-8",
+            )
+            coverage_info = (
+                simulation_dir
+                / "coverage"
+                / "xsim.codeCov"
+                / "timer_cov"
+                / "xsim.CCInfo"
+            )
+            coverage_info.parent.mkdir(parents=True)
+            coverage_info.write_text("timer coverage database\n", encoding="utf-8")
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "Vivado v2025.2 (64-bit)\nlaunch_simulation completed\n",
+                "",
+            )
+        if tool == "xcrg":
+            report_dir = Path(command[command.index("-report_dir") + 1])
+            self._write_coverage(report_dir)
+            log_path = Path(command[command.index("-log") + 1])
+            log_path.write_text("xcrg completed\n", encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "xcrg completed\n", "")
+        raise AssertionError(f"Unexpected project-mode tool: {tool}")
+
+
+def _tools(
+    tmp_path: Path,
+    *,
+    include_xcrg: bool = True,
+    project_mode: bool = False,
+) -> Path:
     tools = tmp_path / "vivado-bin"
     tools.mkdir()
-    names = ["xvlog.bat", "xelab.bat", "xsim.bat"]
+    names = ["vivado.bat"] if project_mode else ["xvlog.bat", "xelab.bat", "xsim.bat"]
     if include_xcrg:
         names.append("xcrg.bat")
     for name in names:
@@ -258,6 +369,35 @@ def test_generic_workspace_verification_runs_vivado_and_records_iteration(
     assert (iteration_dir / "sources" / "rtl" / "timer.sv").is_file()
     assert (workspace / "reports" / "verification_verdict.json").is_file()
     assert resume_workspace(workspace)["resume_from"] == "VERIFIED"
+
+
+def test_generic_workspace_verification_project_mode_uses_launch_simulation(
+    tmp_path: Path,
+) -> None:
+    workspace = _workspace(tmp_path)
+    runner = FakeProjectVivadoRunner(workspace)
+
+    result = verify_workspace(
+        workspace,
+        vivado_bin=_tools(tmp_path, project_mode=True),
+        vivado_launch_mode="project",
+        runner=runner,
+    )
+
+    assert result["verdict"]["status"] == "PASS"
+    assert [Path(command[0]).stem.lower() for command in runner.calls] == [
+        "vivado",
+        "xcrg",
+    ]
+    iteration_dir = workspace / "iterations" / "0001"
+    evidence = json.loads((iteration_dir / "iteration.json").read_text(encoding="utf-8"))
+    assert evidence["vivado_launch_mode"] == "project"
+    assert evidence["tool_version"] == "Vivado v2025.2 (64-bit)"
+    assert (iteration_dir / "logs" / "compile.log").is_file()
+    assert (iteration_dir / "logs" / "elaborate.log").is_file()
+    assert (iteration_dir / "xsim.log").is_file()
+    assert (iteration_dir / "simulation.wdb").is_file()
+    assert evidence["verdict"]["status"] == "PASS"
 
 
 def test_generic_workspace_verification_stops_on_no_progress(tmp_path: Path) -> None:
@@ -366,3 +506,80 @@ def test_generic_workspace_verification_rejects_missing_coverage_reports(
     reason_codes = {reason["code"] for reason in result["verdict"]["reasons"]}
     assert "COVERAGE_GATE_MISSING" in reason_codes
     assert "ARTIFACT_MISSING" in reason_codes
+
+
+def test_project_vivado_helpers_cover_path_resolution_and_minimal_tcl(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tools = tmp_path / "path-tools"
+    tools.mkdir()
+    for name in ("xvlog.bat", "xelab.bat", "xsim.bat"):
+        (tools / name).write_text("@echo off\n", encoding="utf-8")
+
+    def fake_which(name: str) -> str | None:
+        candidate = tools / name
+        return str(candidate) if candidate.is_file() else None
+
+    monkeypatch.setattr("digital_ic_agent._runtime.generic_verification_vivado.shutil.which", fake_which)
+    resolved = resolve_tools(None, coverage_required=False)
+    assert set(resolved) == {"xvlog", "xelab", "xsim"}
+    assert all(path.is_absolute() for path in resolved.values())
+
+    try:
+        resolve_tools(tmp_path / "missing-bin", coverage_required=False)
+    except VivadoToolError as exc:
+        assert exc.code == "VIVADO_BIN_NOT_FOUND"
+    else:  # pragma: no cover - fail-closed contract
+        raise AssertionError("missing Vivado bin was accepted")
+
+    config: ExecutionConfig = {
+        "module": "minimal",
+        "testbench_top": "tb_minimal",
+        "source_files": ["uvm/tb_minimal.sv"],
+        "include_dirs": [],
+        "uvm_enabled": False,
+        "timescale": "1ns/1ps",
+        "pass_markers": ["MINIMAL_PASS"],
+        "code_thresholds": {},
+        "code_coverage": False,
+        "functional_coverage": False,
+        "functional_threshold": 0.0,
+        "max_iterations": 1,
+        "max_time_seconds": 30,
+        "no_progress_limit": 1,
+    }
+    tcl = render_project_verification_tcl(
+        project_dir=tmp_path / "project",
+        config=config,
+        source_paths=[tmp_path / "tb_minimal.sv"],
+        include_paths=[],
+        coverage_required=False,
+    )
+    assert "add_files -fileset sim_1" in tcl
+    assert "xsim.compile.xvlog.more_options" not in tcl
+    assert "xsim.elaborate.coverage.type" not in tcl
+    assert tcl.count("launch_simulation") == 1
+
+    empty_config = dict(config)
+    empty_config["source_files"] = []
+    empty_tcl = render_project_verification_tcl(
+        project_dir=tmp_path / "empty-project",
+        config=empty_config,  # type: ignore[arg-type]
+        source_paths=[],
+        include_paths=[],
+        coverage_required=False,
+    )
+    assert "add_files -fileset sim_1" not in empty_tcl
+
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    assert project_artifact(artifact_root, "*.wdb") is None
+    first = artifact_root / "a.wdb"
+    second = artifact_root / "z.wdb"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    assert project_artifact(artifact_root, "*.wdb") == second
+    untouched = tmp_path / "untouched.wdb"
+    assert copy_project_artifact(None, untouched) == untouched
+    assert not untouched.exists()

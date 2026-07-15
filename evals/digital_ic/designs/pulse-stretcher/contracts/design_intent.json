@@ -1,0 +1,18 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "pulse_stretcher", "kind": "sequential"},
+  "parameters": [{"name": "LENGTH", "type": "integer", "default": 4, "minimum": 1}],
+  "ports": [
+    {"name": "clk", "direction": "input", "width": 1, "semantics": "core clock"},
+    {"name": "rst_n", "direction": "input", "width": 1, "semantics": "active-low asynchronous reset"},
+    {"name": "trigger", "direction": "input", "width": 1, "semantics": "one-cycle trigger"},
+    {"name": "pulse", "direction": "output", "width": 1, "semantics": "stretched high-level output"}
+  ],
+  "clocks": [{"name": "core", "signal": "clk", "edge": "rising", "frequency_hz": 100000000}],
+  "resets": [{"name": "reset", "signal": "rst_n", "active_level": "low", "kind": "asynchronous", "clock": "core"}],
+  "protocols": [],
+  "timing": {"latency_cycles": 1, "throughput_per_cycle": 0.25},
+  "exceptional_behavior": ["A trigger while active restarts the full stretch interval"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["A trigger produces exactly LENGTH high cycles on pulse"]
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "parity_unit", "kind": "combinational"},
+  "parameters": [{"name": "WIDTH", "type": "integer", "default": 16, "minimum": 2}],
+  "ports": [
+    {"name": "data_i", "direction": "input", "width": "WIDTH", "semantics": "payload bits"},
+    {"name": "parity_i", "direction": "input", "width": 1, "semantics": "received even parity bit"},
+    {"name": "parity_o", "direction": "output", "width": 1, "semantics": "generated even parity bit"},
+    {"name": "error_o", "direction": "output", "width": 1, "semantics": "parity mismatch flag"}
+  ],
+  "clocks": [],
+  "resets": [],
+  "protocols": [],
+  "timing": {"latency_cycles": 0, "throughput_per_cycle": 1},
+  "exceptional_behavior": [],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["parity_o is the XOR reduction of data_i", "error_o is high when parity_i differs from parity_o"]
+}

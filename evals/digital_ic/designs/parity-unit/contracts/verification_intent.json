@@ -1,0 +1,19 @@
+{
+  "schema_version": "digital-ic-agent.verification-intent.v1",
+  "module": "parity_unit",
+  "testbench_top": "tb_parity_unit",
+  "source_files": ["rtl/parity_unit.sv", "uvm/tb_parity_unit.sv"],
+  "include_dirs": [],
+  "uvm_enabled": false,
+  "timescale": "1ns/1ps",
+  "pass_markers": ["PARITY_UNIT_SCOREBOARD_PASS"],
+  "directed_scenarios": [{"id": "parity", "description": "Exercise generated, matching, and mismatching parity", "expected": "outputs match XOR model"}],
+  "random_constraints": [],
+  "scoreboard": {"enabled": true, "strategy": "XOR parity model", "compare_signals": ["parity_o", "error_o"]},
+  "assertions": [{"id": "parity_equation", "description": "Outputs follow the parity equations", "signals": ["data_i", "parity_i", "parity_o", "error_o"]}],
+  "functional_coverage": [],
+  "code_coverage": {"statement": 0, "branch": 0, "condition": 0, "toggle": 0},
+  "coverage_strategy": {"code_coverage": true, "functional_coverage": false, "export_report": true, "functional_threshold": 0},
+  "iteration_limits": {"max_iterations": 3, "max_time_seconds": 300, "no_progress_limit": 1},
+  "exit_criteria": {"zero_uvm_errors": true, "zero_uvm_fatals": true, "scoreboard_pass": true, "all_assertions_pass": true, "coverage_must_pass": true}
+}

@@ -1,0 +1,64 @@
+{
+  "schema_version": "digital-ic-agent.engineering-acceptance.v1",
+  "status": "PASS",
+  "generated_at": "2026-07-15T10:22:20Z",
+  "quality": {
+    "pytest": {
+      "passed": 676,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "line_coverage_percent": 90.5,
+    "branch_coverage_percent": 80.7,
+    "combined_coverage_percent": 88.17,
+    "risk_coverage": "PASS",
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "mypy_source_files": 100,
+    "agent_surface_drift": 0
+  },
+  "distribution": {
+    "wheel": {
+      "name": "digital_ic_agent-1.0.0-py3-none-any.whl",
+      "sha256": "4970fee54864440a4baebe2a05e458f6c3e759af2dd27d129c7b5d3fc6f604e3",
+      "smoke": "PASS"
+    },
+    "sdist": {
+      "name": "digital_ic_agent-1.0.0.tar.gz",
+      "sha256": "113eb392f872e39b752422ce66d044f398427514b6f1d1980584c576b19ca062",
+      "smoke": "PASS"
+    }
+  },
+  "vivado": {
+    "version": "2025.2",
+    "edge_detector_project_mode": "PASS",
+    "apb_uvm_project_mode": "PASS",
+    "invalid_syntax_rejected": [
+      "async-fifo",
+      "sync-fifo",
+      "round-robin-arbiter"
+    ],
+    "system_security_controls_changed": false
+  },
+  "evals": {
+    "generation": "10/10 PASS",
+    "defects_detected": "10/10 PASS",
+    "repair": "10/10 PASS",
+    "negative": "10/10 PASS",
+    "negative_vivado_invoked": false
+  },
+  "references": {
+    "inbox_file_count": 0,
+    "openrtlset_executed": false,
+    "openhwgroup_queried": false,
+    "third_party_code_copied": false
+  },
+  "llm_api_invoked": false,
+  "evidence": {
+    "quality_root": ".tmp/final-quality-p7-20260715-007",
+    "eval_summary": "docs/testing/evidence/p7_real_eval_summary.json",
+    "project_mode_tdd": "docs/testing/p7_project_mode.tdd.md",
+    "acceptance_report": "docs/testing/final_engineering_acceptance.md"
+  }
+}

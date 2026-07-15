@@ -1,0 +1,26 @@
+{
+  "schema_version": "digital-ic-agent.verification-intent.v1",
+  "module": "priority_encoder",
+  "testbench_top": "tb_priority_encoder",
+  "source_files": ["rtl/priority_encoder.sv", "uvm/priority_encoder_if.sv", "uvm/priority_encoder_sva.sv", "uvm/priority_encoder_pkg.sv", "uvm/tb_priority_encoder.sv"],
+  "include_dirs": ["uvm"],
+  "uvm_enabled": true,
+  "timescale": "1ns/1ps",
+  "pass_markers": ["PRIORITY_ENCODER_SCOREBOARD_PASS"],
+  "directed_scenarios": [
+    {"id": "idle", "description": "No requests asserted", "expected": "valid is zero and index is zero"},
+    {"id": "onehot", "description": "Assert every one-hot request", "expected": "index matches the asserted bit"},
+    {"id": "multiple", "description": "Assert multiple requests", "expected": "highest numbered request wins"}
+  ],
+  "random_constraints": [{"id": "request_patterns", "description": "Randomize all request combinations", "signals": ["req"]}],
+  "scoreboard": {"enabled": true, "strategy": "combinational priority reference model", "compare_signals": ["index", "valid"]},
+  "assertions": [
+    {"id": "valid_reduce", "description": "Valid equals reduction OR of request", "signals": ["req", "valid"]},
+    {"id": "index_asserted", "description": "Encoded index points at an asserted request", "signals": ["req", "index", "valid"]}
+  ],
+  "functional_coverage": [{"id": "priority_patterns", "description": "Cover idle, one-hot, multiple requests, valid, and every index", "signals": ["req", "index", "valid"]}],
+  "code_coverage": {"statement": 90, "branch": 85, "condition": 80, "toggle": 0},
+  "coverage_strategy": {"code_coverage": true, "functional_coverage": true, "export_report": true, "functional_threshold": 85},
+  "iteration_limits": {"max_iterations": 3, "max_time_seconds": 600, "no_progress_limit": 1},
+  "exit_criteria": {"zero_uvm_errors": true, "zero_uvm_fatals": true, "scoreboard_pass": true, "all_assertions_pass": true, "coverage_must_pass": true}
+}

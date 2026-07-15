@@ -121,6 +121,12 @@ def build_machine_parser() -> argparse.ArgumentParser:
     verify_target.add_argument("--project-dir", type=Path)
     verify_target.add_argument("--workspace", type=Path)
     verify.add_argument("--vivado-bin", type=Path, default=None)
+    verify.add_argument(
+        "--vivado-launch-mode",
+        choices=("direct", "project"),
+        default="direct",
+        help="Run standalone xvlog/xelab/xsim or Vivado project launch_simulation",
+    )
     verify.add_argument("--expected-flow", default=None)
     return parser
 
@@ -430,6 +436,7 @@ def run_machine_cli(argv: Sequence[str] | None = None) -> int:
                 data = verify_workspace(
                     args.workspace,
                     vivado_bin=args.vivado_bin,
+                    vivado_launch_mode=args.vivado_launch_mode,
                 )
             except (GenericVerificationError, WorkspaceError) as exc:
                 status: CliStatus = (
