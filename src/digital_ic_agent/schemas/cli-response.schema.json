@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/447662/Agent_IC_design_for_vivado/schemas/cli-response.schema.json",
+  "title": "Digital IC Agent CLI Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "command",
+    "status",
+    "ok",
+    "error_code",
+    "message",
+    "data"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "digital-ic-agent.cli.v1"
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": ["PASS", "FAIL", "AMBIGUOUS"]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "error_code": {
+      "type": ["string", "null"]
+    },
+    "message": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

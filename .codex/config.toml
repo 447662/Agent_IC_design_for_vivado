@@ -1,0 +1,5 @@
+# BEGIN GENERATED: .trae/config.json
+[mcp_servers.synthpilot]
+args = ["synthpilot==0.1.0"]
+command = "uvx"
+# END GENERATED: .trae/config.json

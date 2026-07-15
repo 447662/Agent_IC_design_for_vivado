@@ -1,0 +1,692 @@
+{
+  "schema_version": 1,
+  "suite_count": 4,
+  "case_count": 10,
+  "domains": {
+    "tool_selection": {
+      "case_count": 3,
+      "description": "Tool choice expectations stay outside implementation code.",
+      "passed": 3,
+      "failed": 0
+    },
+    "failure_handling": {
+      "case_count": 3,
+      "description": "Failure examples are retained as explicit eval cases.",
+      "passed": 3,
+      "failed": 0
+    },
+    "artifact_authenticity": {
+      "case_count": 2,
+      "description": "Success requires fresh artifacts with manifest lineage.",
+      "passed": 2,
+      "failed": 0
+    },
+    "multi_target_consistency": {
+      "case_count": 2,
+      "description": "Targets expose consistent flow and metadata contracts.",
+      "passed": 2,
+      "failed": 0
+    }
+  },
+  "duplicate_case_ids": [],
+  "retained_failure_cases": 3,
+  "targets": [
+    "async-fifo",
+    "round-robin-arbiter",
+    "sync-fifo"
+  ],
+  "executed_case_count": 10,
+  "passed_case_count": 10,
+  "failed_case_count": 0,
+  "cases": [
+    {
+      "id": "design_doc_uses_document_generator",
+      "domain": "tool_selection",
+      "status": "PASS",
+      "evidence_kind": "runtime",
+      "checks": [
+        {
+          "name": "operation_succeeded",
+          "status": "PASS",
+          "expected": true,
+          "observed": true
+        },
+        {
+          "name": "expected_tools",
+          "status": "PASS",
+          "expected": [
+            "render_target_design_spec"
+          ],
+          "observed": [
+            "render_target_design_spec",
+            "record_artifact_run"
+          ]
+        },
+        {
+          "name": "forbidden_tools",
+          "status": "PASS",
+          "expected": [],
+          "observed": []
+        }
+      ],
+      "observed": {
+        "tools": [
+          "render_target_design_spec",
+          "record_artifact_run"
+        ],
+        "operation": "generate-spec"
+      }
+    },
+    {
+      "id": "rtl_generation_uses_project_writer",
+      "domain": "tool_selection",
+      "status": "PASS",
+      "evidence_kind": "runtime",
+      "checks": [
+        {
+          "name": "operation_succeeded",
+          "status": "PASS",
+          "expected": true,
+          "observed": true
+        },
+        {
+          "name": "expected_tools",
+          "status": "PASS",
+          "expected": [
+            "generate_rtl_project",
+            "record_artifact_run"
+          ],
+          "observed": [
+            "generate_rtl_project",
+            "record_artifact_run"
+          ]
+        },
+        {
+          "name": "forbidden_tools",
+          "status": "PASS",
+          "expected": [],
+          "observed": []
+        }
+      ],
+      "observed": {
+        "tools": [
+          "generate_rtl_project",
+          "record_artifact_run"
+        ],
+        "operation": "generate-rtl"
+      }
+    },
+    {
+      "id": "wave_debug_uses_wave_backend",
+      "domain": "tool_selection",
+      "status": "PASS",
+      "evidence_kind": "runtime",
+      "checks": [
+        {
+          "name": "operation_succeeded",
+          "status": "PASS",
+          "expected": true,
+          "observed": true
+        },
+        {
+          "name": "expected_tools",
+          "status": "PASS",
+          "expected": [
+            "analyze_waveform"
+          ],
+          "observed": [
+            "analyze_waveform"
+          ]
+        },
+        {
+          "name": "forbidden_tools",
+          "status": "PASS",
+          "expected": [],
+          "observed": []
+        }
+      ],
+      "observed": {
+        "tools": [
+          "analyze_waveform"
+        ],
+        "operation": "analyze-waveform"
+      }
+    },
+    {
+      "id": "missing_vivado_is_capability_failure",
+      "domain": "failure_handling",
+      "status": "PASS",
+      "evidence_kind": "runtime-error-contract",
+      "checks": [
+        {
+          "name": "expected_error_category",
+          "status": "PASS",
+          "expected": "capability",
+          "observed": "capability"
+        },
+        {
+          "name": "expected_exit_code",
+          "status": "PASS",
+          "expected": 3,
+          "observed": 3
+        }
+      ],
+      "observed": {
+        "error_category": "capability",
+        "exit_code": 3,
+        "operation": "missing-capability"
+      }
+    },
+    {
+      "id": "broken_target_config_is_configuration_failure",
+      "domain": "failure_handling",
+      "status": "PASS",
+      "evidence_kind": "runtime-error-contract",
+      "checks": [
+        {
+          "name": "expected_error_category",
+          "status": "PASS",
+          "expected": "configuration",
+          "observed": "configuration"
+        },
+        {
+          "name": "expected_exit_code",
+          "status": "PASS",
+          "expected": 2,
+          "observed": 2
+        }
+      ],
+      "observed": {
+        "error_category": "configuration",
+        "exit_code": 2,
+        "operation": "broken-config"
+      }
+    },
+    {
+      "id": "stale_artifact_is_validation_failure",
+      "domain": "failure_handling",
+      "status": "PASS",
+      "evidence_kind": "runtime-error-contract",
+      "checks": [
+        {
+          "name": "expected_error_category",
+          "status": "PASS",
+          "expected": "artifact_validation",
+          "observed": "artifact_validation"
+        },
+        {
+          "name": "expected_exit_code",
+          "status": "PASS",
+          "expected": 5,
+          "observed": 5
+        }
+      ],
+      "observed": {
+        "error_category": "artifact_validation",
+        "exit_code": 5,
+        "operation": "stale-artifact"
+      }
+    },
+    {
+      "id": "generated_rtl_has_run_lineage",
+      "domain": "artifact_authenticity",
+      "status": "PASS",
+      "evidence_kind": "runtime",
+      "checks": [
+        {
+          "name": "required_artifacts",
+          "status": "PASS",
+          "expected": [
+            "rtl",
+            "testbench",
+            "vivado_sim"
+          ],
+          "observed": [
+            "rtl",
+            "testbench",
+            "vivado_sim"
+          ]
+        },
+        {
+          "name": "required_manifest_fields",
+          "status": "PASS",
+          "expected": [
+            "artifacts",
+            "recorded_at",
+            "run_id",
+            "tools"
+          ],
+          "observed": [
+            "artifacts",
+            "command",
+            "command_digest",
+            "error",
+            "error_category",
+            "error_exit_code",
+            "error_stage",
+            "flow",
+            "input_digest",
+            "input_files",
+            "options",
+            "recorded_at",
+            "run_id",
+            "status",
+            "tools"
+          ]
+        }
+      ],
+      "observed": {
+        "artifacts": [
+          "rtl",
+          "testbench",
+          "vivado_sim"
+        ],
+        "manifest_fields": [
+          "artifacts",
+          "command",
+          "command_digest",
+          "error",
+          "error_category",
+          "error_exit_code",
+          "error_stage",
+          "flow",
+          "input_digest",
+          "input_files",
+          "options",
+          "recorded_at",
+          "run_id",
+          "status",
+          "tools"
+        ],
+        "run_id_present": true
+      }
+    },
+    {
+      "id": "simulated_project_has_waveform_lineage",
+      "domain": "artifact_authenticity",
+      "status": "PASS",
+      "evidence_kind": "synthetic-runtime-contract",
+      "checks": [
+        {
+          "name": "required_artifacts",
+          "status": "PASS",
+          "expected": [
+            "sim_report",
+            "vivado_project",
+            "wave_wdb"
+          ],
+          "observed": [
+            "sim_report",
+            "vivado_project",
+            "wave_wdb"
+          ]
+        },
+        {
+          "name": "required_manifest_fields",
+          "status": "PASS",
+          "expected": [
+            "artifacts",
+            "input_files",
+            "run_id",
+            "status"
+          ],
+          "observed": [
+            "artifacts",
+            "command",
+            "command_digest",
+            "error",
+            "error_category",
+            "error_exit_code",
+            "error_stage",
+            "flow",
+            "input_digest",
+            "input_files",
+            "options",
+            "recorded_at",
+            "run_id",
+            "status",
+            "tools"
+          ]
+        }
+      ],
+      "observed": {
+        "artifacts": [
+          "sim_report",
+          "vivado_project",
+          "wave_wdb"
+        ],
+        "manifest_fields": [
+          "artifacts",
+          "command",
+          "command_digest",
+          "error",
+          "error_category",
+          "error_exit_code",
+          "error_stage",
+          "flow",
+          "input_digest",
+          "input_files",
+          "options",
+          "recorded_at",
+          "run_id",
+          "status",
+          "tools"
+        ],
+        "run_id_present": true
+      }
+    },
+    {
+      "id": "core_targets_share_generation_flow",
+      "domain": "multi_target_consistency",
+      "status": "PASS",
+      "evidence_kind": "runtime-config-contract",
+      "checks": [
+        {
+          "name": "required_flows",
+          "status": "PASS",
+          "expected": [
+            "analyze-rtl-vcd",
+            "generate-rtl",
+            "sim-rtl"
+          ],
+          "observed": {
+            "async-fifo": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-uvm-wave",
+              "open-wave",
+              "regress-rtl",
+              "sim-rtl",
+              "uvm-coverage",
+              "uvm-random-regress",
+              "uvm-smoke"
+            ],
+            "sync-fifo": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-wave",
+              "sim-rtl"
+            ],
+            "round-robin-arbiter": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-wave",
+              "sim-rtl"
+            ]
+          }
+        },
+        {
+          "name": "required_metadata",
+          "status": "PASS",
+          "expected": [
+            "artifact_manifest",
+            "checks",
+            "interfaces",
+            "parameters"
+          ],
+          "observed": {
+            "async-fifo": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ],
+            "sync-fifo": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ],
+            "round-robin-arbiter": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ]
+          }
+        }
+      ],
+      "observed": {
+        "targets": {
+          "async-fifo": {
+            "design_family": "fifo",
+            "flows": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-uvm-wave",
+              "open-wave",
+              "regress-rtl",
+              "sim-rtl",
+              "uvm-coverage",
+              "uvm-random-regress",
+              "uvm-smoke"
+            ],
+            "metadata": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ]
+          },
+          "sync-fifo": {
+            "design_family": "fifo",
+            "flows": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-wave",
+              "sim-rtl"
+            ],
+            "metadata": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ]
+          },
+          "round-robin-arbiter": {
+            "design_family": "arbiter",
+            "flows": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-wave",
+              "sim-rtl"
+            ],
+            "metadata": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "fifo_targets_share_fifo_family_contract",
+      "domain": "multi_target_consistency",
+      "status": "PASS",
+      "evidence_kind": "runtime-config-contract",
+      "checks": [
+        {
+          "name": "required_metadata",
+          "status": "PASS",
+          "expected": [
+            "coverage_metrics",
+            "scenario_catalog"
+          ],
+          "observed": {
+            "async-fifo": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ],
+            "sync-fifo": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ]
+          }
+        },
+        {
+          "name": "expected_design_family",
+          "status": "PASS",
+          "expected": "fifo",
+          "observed": {
+            "async-fifo": "fifo",
+            "sync-fifo": "fifo"
+          }
+        }
+      ],
+      "observed": {
+        "targets": {
+          "async-fifo": {
+            "design_family": "fifo",
+            "flows": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-uvm-wave",
+              "open-wave",
+              "regress-rtl",
+              "sim-rtl",
+              "uvm-coverage",
+              "uvm-random-regress",
+              "uvm-smoke"
+            ],
+            "metadata": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ]
+          },
+          "sync-fifo": {
+            "design_family": "fifo",
+            "flows": [
+              "analyze-rtl-vcd",
+              "check-rtl",
+              "generate-rtl",
+              "open-wave",
+              "sim-rtl"
+            ],
+            "metadata": [
+              "aliases",
+              "artifact_manifest",
+              "checks",
+              "coverage_metrics",
+              "description",
+              "design_family",
+              "display_name",
+              "flows",
+              "handler",
+              "interfaces",
+              "name",
+              "notes",
+              "parameters",
+              "scenario_catalog"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "status": "PASS"
+}

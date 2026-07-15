@@ -1,0 +1,28 @@
+{
+  "capability": {
+    "failure_impact": "degraded-only",
+    "name": "synthpilot",
+    "requirement": "optional"
+  },
+  "blocker": {
+    "code": "synthpilot-license-device-limit",
+    "fingerprint": "synthpilot-license-device-limit-v1",
+    "retry_policy": "external-state-change-only",
+    "resume_when": "license slot is freed or activation is reset"
+  },
+  "captured_at": "2026-07-13T10:27:10Z",
+  "command": [
+    "uvx",
+    "--python",
+    "F:\\My_code\\Agent_design_for_vivado\\.venv\\Scripts\\python.exe",
+    "synthpilot"
+  ],
+  "error": {
+    "message": "MCP process exited: ==================================================\n  SynthPilot - License Verification Failed\n==================================================\n\n  Device limit reached (1). Run `synthpilot deactivate` on an old device to free a slot, or contact support.\n\n  Get License: https://www.synthpilot.dev\n\n==================================================",
+    "type": "MCPProcessError"
+  },
+  "safe_tool_selection": null,
+  "normalized_status": "WARN",
+  "status": "FAIL",
+  "steps": []
+}

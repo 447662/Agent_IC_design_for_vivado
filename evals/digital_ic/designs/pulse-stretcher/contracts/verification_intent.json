@@ -1,0 +1,19 @@
+{
+  "schema_version": "digital-ic-agent.verification-intent.v1",
+  "module": "pulse_stretcher",
+  "testbench_top": "tb_pulse_stretcher",
+  "source_files": ["rtl/pulse_stretcher.sv", "uvm/tb_pulse_stretcher.sv"],
+  "include_dirs": [],
+  "uvm_enabled": false,
+  "timescale": "1ns/1ps",
+  "pass_markers": ["PULSE_STRETCHER_SCOREBOARD_PASS"],
+  "directed_scenarios": [{"id": "stretch", "description": "Trigger once and retrigger while active", "expected": "four high cycles after the latest trigger"}],
+  "random_constraints": [],
+  "scoreboard": {"enabled": true, "strategy": "remaining-cycle model", "compare_signals": ["pulse"]},
+  "assertions": [{"id": "reset_low", "description": "Reset clears the stretched pulse", "signals": ["rst_n", "pulse"]}],
+  "functional_coverage": [],
+  "code_coverage": {"statement": 0, "branch": 0, "condition": 0, "toggle": 0},
+  "coverage_strategy": {"code_coverage": true, "functional_coverage": false, "export_report": true, "functional_threshold": 0},
+  "iteration_limits": {"max_iterations": 3, "max_time_seconds": 300, "no_progress_limit": 1},
+  "exit_criteria": {"zero_uvm_errors": true, "zero_uvm_fatals": true, "scoreboard_pass": true, "all_assertions_pass": true, "coverage_must_pass": true}
+}

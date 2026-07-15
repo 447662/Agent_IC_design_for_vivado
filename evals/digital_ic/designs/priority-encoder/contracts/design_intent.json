@@ -1,0 +1,20 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "priority_encoder", "kind": "combinational"},
+  "parameters": [
+    {"name": "REQUESTS", "type": "integer", "default": 8, "minimum": 2},
+    {"name": "INDEX_WIDTH", "type": "integer", "default": 3, "minimum": 1}
+  ],
+  "ports": [
+    {"name": "req", "direction": "input", "width": "REQUESTS", "semantics": "request vector with highest bit having highest priority"},
+    {"name": "index", "direction": "output", "width": "INDEX_WIDTH", "semantics": "encoded highest asserted request index"},
+    {"name": "valid", "direction": "output", "width": 1, "semantics": "one or more requests are asserted"}
+  ],
+  "clocks": [],
+  "resets": [],
+  "protocols": [],
+  "timing": {"latency_cycles": 0, "throughput_per_cycle": 1},
+  "exceptional_behavior": ["Index is zero when no request is asserted"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["Valid equals the reduction OR of req", "Index selects the highest numbered asserted request"]
+}

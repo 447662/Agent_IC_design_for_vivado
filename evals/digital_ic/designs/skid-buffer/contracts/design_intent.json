@@ -1,0 +1,22 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "skid_buffer", "kind": "sequential"},
+  "parameters": [{"name": "WIDTH", "type": "integer", "default": 8, "minimum": 2}],
+  "ports": [
+    {"name": "clk", "direction": "input", "width": 1, "semantics": "stream clock"},
+    {"name": "rst_n", "direction": "input", "width": 1, "semantics": "active-low asynchronous reset"},
+    {"name": "s_valid", "direction": "input", "width": 1, "semantics": "upstream data valid"},
+    {"name": "s_ready", "direction": "output", "width": 1, "semantics": "buffer can accept upstream data"},
+    {"name": "s_data", "direction": "input", "width": "WIDTH", "semantics": "upstream payload"},
+    {"name": "m_valid", "direction": "output", "width": 1, "semantics": "downstream data valid"},
+    {"name": "m_ready", "direction": "input", "width": 1, "semantics": "downstream ready"},
+    {"name": "m_data", "direction": "output", "width": "WIDTH", "semantics": "downstream payload"}
+  ],
+  "clocks": [{"name": "stream", "signal": "clk", "edge": "rising", "frequency_hz": 100000000}],
+  "resets": [{"name": "reset", "signal": "rst_n", "active_level": "low", "kind": "asynchronous", "clock": "stream"}],
+  "protocols": [{"name": "input_stream", "type": "ready-valid", "role": "sink", "signals": ["s_valid", "s_ready", "s_data"]}, {"name": "output_stream", "type": "ready-valid", "role": "source", "signals": ["m_valid", "m_ready", "m_data"]}],
+  "timing": {"latency_cycles": 1, "throughput_per_cycle": 1},
+  "exceptional_behavior": ["Payload and valid remain stable while downstream is stalled"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["No accepted payload is lost or reordered under backpressure", "The buffer sustains one transfer per cycle when downstream is ready"]
+}

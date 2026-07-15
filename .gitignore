@@ -9,6 +9,7 @@ __pycache__/
 .coverage.*
 coverage.xml
 htmlcov/
+dist/
 .tmp-*/
 .tmp/
 .tmp-pytest/
@@ -16,3 +17,8 @@ htmlcov/
 outputs/
 dfx_runtime.txt
 *.zip
+*.pdf
+/references/inbox/
+/references/cache/
+/references/index/
+/references/catalog/

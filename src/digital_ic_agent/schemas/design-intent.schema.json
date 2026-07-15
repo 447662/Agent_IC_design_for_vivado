@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/447662/Agent_IC_design_for_vivado/schemas/design-intent.schema.json",
+  "title": "DesignIntent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "module", "parameters", "ports", "clocks", "resets", "protocols", "timing", "exceptional_behavior", "implementation_constraints", "acceptance_criteria"],
+  "properties": {
+    "schema_version": {"const": "digital-ic-agent.design-intent.v1"},
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+        "kind": {"enum": ["sequential", "combinational"]}
+      }
+    },
+    "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
+    "ports": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/port"}},
+    "clocks": {"type": "array", "items": {"$ref": "#/$defs/clock"}},
+    "resets": {"type": "array", "items": {"$ref": "#/$defs/reset"}},
+    "protocols": {"type": "array", "items": {"$ref": "#/$defs/protocol"}},
+    "timing": {"type": "object"},
+    "exceptional_behavior": {"type": "array", "items": {"type": "string"}},
+    "implementation_constraints": {"type": "object"},
+    "acceptance_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+  },
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "default"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"enum": ["integer", "boolean", "string"]},
+        "default": {},
+        "minimum": {"type": "number"},
+        "maximum": {"type": "number"}
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "direction", "width", "semantics"],
+      "properties": {
+        "name": {"type": "string"},
+        "direction": {"enum": ["input", "output", "inout"]},
+        "width": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "string"}]},
+        "semantics": {"type": "string", "minLength": 1}
+      }
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "signal", "edge", "frequency_hz"],
+      "properties": {
+        "name": {"type": "string"},
+        "signal": {"type": "string"},
+        "edge": {"enum": ["rising", "falling"]},
+        "frequency_hz": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "reset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "signal", "active_level", "kind", "clock"],
+      "properties": {
+        "name": {"type": "string"},
+        "signal": {"type": "string"},
+        "active_level": {"enum": ["high", "low"]},
+        "kind": {"enum": ["synchronous", "asynchronous"]},
+        "clock": {"type": "string"}
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "role", "signals"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"type": "string"},
+        "role": {"type": "string"},
+        "signals": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

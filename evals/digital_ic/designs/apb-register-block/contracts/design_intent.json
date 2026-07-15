@@ -1,0 +1,27 @@
+{
+  "schema_version": "digital-ic-agent.design-intent.v1",
+  "module": {"name": "apb_register_block", "kind": "sequential"},
+  "parameters": [],
+  "ports": [
+    {"name": "PCLK", "direction": "input", "width": 1, "semantics": "APB clock"},
+    {"name": "PRESETn", "direction": "input", "width": 1, "semantics": "active-low asynchronous APB reset"},
+    {"name": "PSEL", "direction": "input", "width": 1, "semantics": "APB peripheral select"},
+    {"name": "PENABLE", "direction": "input", "width": 1, "semantics": "APB access phase"},
+    {"name": "PWRITE", "direction": "input", "width": 1, "semantics": "APB write direction"},
+    {"name": "PADDR", "direction": "input", "width": 8, "semantics": "byte address"},
+    {"name": "PWDATA", "direction": "input", "width": 32, "semantics": "write data"},
+    {"name": "PSTRB", "direction": "input", "width": 4, "semantics": "byte write strobes"},
+    {"name": "PRDATA", "direction": "output", "width": 32, "semantics": "read data"},
+    {"name": "PREADY", "direction": "output", "width": 1, "semantics": "zero-wait-state ready"},
+    {"name": "PSLVERR", "direction": "output", "width": 1, "semantics": "unmapped-address error"},
+    {"name": "status_i", "direction": "input", "width": 32, "semantics": "read-only status register value"},
+    {"name": "control_o", "direction": "output", "width": 32, "semantics": "writable control register value"}
+  ],
+  "clocks": [{"name": "apb", "signal": "PCLK", "edge": "rising", "frequency_hz": 100000000}],
+  "resets": [{"name": "apb_reset", "signal": "PRESETn", "active_level": "low", "kind": "asynchronous", "clock": "apb"}],
+  "protocols": [{"name": "apb3", "type": "APB3", "role": "slave", "signals": ["PSEL", "PENABLE", "PWRITE", "PADDR", "PWDATA", "PSTRB", "PRDATA", "PREADY", "PSLVERR"]}],
+  "timing": {"latency_cycles": 1, "throughput_per_cycle": 0.5},
+  "exceptional_behavior": ["Unmapped accesses assert PSLVERR", "Writes to the read-only status register assert PSLVERR"],
+  "implementation_constraints": {"synthesizable": true, "latches_allowed": false},
+  "acceptance_criteria": ["Address 0x00 implements a byte-strobe writable control register", "Address 0x04 returns status_i", "All other accesses return PSLVERR"]
+}

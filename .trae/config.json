@@ -2,7 +2,7 @@
   "mcpServers": {
     "synthpilot": {
       "command": "uvx",
-      "args": ["synthpilot"]
+      "args": ["synthpilot==0.1.0"]
     }
   }
 }

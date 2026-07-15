@@ -1,0 +1,27 @@
+{
+  "schema_version": "digital-ic-agent.verification-intent.v1",
+  "module": "apb_register_block",
+  "testbench_top": "tb_apb_register_block",
+  "source_files": ["rtl/apb_register_block.sv", "uvm/apb_reg_if.sv", "uvm/apb_reg_sva.sv", "uvm/apb_reg_pkg.sv", "uvm/tb_apb_register_block.sv"],
+  "include_dirs": ["uvm"],
+  "uvm_enabled": true,
+  "timescale": "1ns/1ps",
+  "pass_markers": ["APB_REG_SCOREBOARD_PASS"],
+  "directed_scenarios": [
+    {"id": "full_write_read", "description": "Write and read the control register", "expected": "readback matches"},
+    {"id": "byte_strobes", "description": "Update selected control bytes", "expected": "unselected bytes are preserved"},
+    {"id": "status_read", "description": "Read the status register", "expected": "PRDATA equals status_i"},
+    {"id": "unmapped", "description": "Access an unmapped address", "expected": "PSLVERR is asserted"}
+  ],
+  "random_constraints": [{"id": "apb_mix", "description": "Mix legal and illegal addresses, directions, data, and strobes", "signals": ["PWRITE", "PADDR", "PWDATA", "PSTRB"]}],
+  "scoreboard": {"enabled": true, "strategy": "APB register reference model", "compare_signals": ["PRDATA", "PSLVERR", "control_o"]},
+  "assertions": [
+    {"id": "ready", "description": "Every access is zero wait state", "signals": ["PSEL", "PENABLE", "PREADY"]},
+    {"id": "unmapped_error", "description": "Unmapped accesses report an error", "signals": ["PSEL", "PENABLE", "PADDR", "PSLVERR"]}
+  ],
+  "functional_coverage": [{"id": "apb_operations", "description": "Cover read/write, legal/unmapped addresses, strobes, and errors", "signals": ["PWRITE", "PADDR", "PSTRB", "PSLVERR"]}],
+  "code_coverage": {"statement": 85, "branch": 75, "condition": 70, "toggle": 25},
+  "coverage_strategy": {"code_coverage": true, "functional_coverage": true, "export_report": true, "functional_threshold": 75},
+  "iteration_limits": {"max_iterations": 3, "max_time_seconds": 600, "no_progress_limit": 1},
+  "exit_criteria": {"zero_uvm_errors": true, "zero_uvm_fatals": true, "scoreboard_pass": true, "all_assertions_pass": true, "coverage_must_pass": true}
+}

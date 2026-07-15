@@ -1,0 +1,26 @@
+{
+  "schema_version": "digital-ic-agent.verification-intent.v1",
+  "module": "timer",
+  "testbench_top": "tb_timer",
+  "source_files": ["rtl/timer.sv", "uvm/timer_if.sv", "uvm/timer_sva.sv", "uvm/timer_pkg.sv", "uvm/tb_timer.sv"],
+  "include_dirs": ["uvm"],
+  "uvm_enabled": true,
+  "timescale": "1ns/1ps",
+  "pass_markers": ["TIMER_SCOREBOARD_PASS"],
+  "directed_scenarios": [
+    {"id": "period_three", "description": "Load period three and count enabled cycles", "expected": "repeated one-cycle expiry pulses"},
+    {"id": "pause", "description": "Pause enable during countdown", "expected": "remaining count is preserved"},
+    {"id": "zero_period", "description": "Load period zero", "expected": "expiry on each enabled cycle"}
+  ],
+  "random_constraints": [{"id": "control_mix", "description": "Mix load and enable while keeping period in range", "signals": ["load", "enable", "period"]}],
+  "scoreboard": {"enabled": true, "strategy": "cycle-accurate countdown model", "compare_signals": ["expired"]},
+  "assertions": [
+    {"id": "reset_clear", "description": "Reset clears expiry", "signals": ["rst_n", "expired"]},
+    {"id": "single_cycle", "description": "Expiry never remains high for two cycles", "signals": ["expired"]}
+  ],
+  "functional_coverage": [{"id": "timer_controls", "description": "Cover load, enable, period classes, and expiry", "signals": ["load", "enable", "period", "expired"]}],
+  "code_coverage": {"statement": 80, "branch": 70, "condition": 70, "toggle": 0},
+  "coverage_strategy": {"code_coverage": true, "functional_coverage": true, "export_report": true, "functional_threshold": 70},
+  "iteration_limits": {"max_iterations": 3, "max_time_seconds": 600, "no_progress_limit": 1},
+  "exit_criteria": {"zero_uvm_errors": true, "zero_uvm_fatals": true, "scoreboard_pass": true, "all_assertions_pass": true, "coverage_must_pass": true}
+}

@@ -1,0 +1,138 @@
+{
+  "name": "async-fifo",
+  "display_name": "Asynchronous FIFO",
+  "design_family": "fifo",
+  "handler": "async-fifo",
+  "aliases": [
+    "async_fifo",
+    "asyncfifo"
+  ],
+  "flows": [
+    "generate-rtl",
+    "sim-rtl",
+    "regress-rtl",
+    "uvm-smoke",
+    "uvm-coverage",
+    "uvm-random-regress",
+    "analyze-rtl-vcd",
+    "check-rtl",
+    "open-wave",
+    "open-uvm-wave"
+  ],
+  "description": "Dual-clock FIFO with Gray pointers, Vivado/xsim simulation, UVM smoke, coverage, and WDB GUI flows.",
+  "parameters": [
+    {
+      "name": "DATA_WIDTH",
+      "default": "8",
+      "description": "FIFO 数据位宽，可按数据通路需求调整"
+    },
+    {
+      "name": "ADDR_WIDTH",
+      "default": "4",
+      "description": "FIFO 地址位宽，深度为 2**ADDR_WIDTH"
+    }
+  ],
+  "interfaces": [
+    {"name": "wr_clk", "direction": "input", "width": "1", "description": "写时钟域"},
+    {"name": "wr_rst_n", "direction": "input", "width": "1", "description": "写时钟域低有效复位"},
+    {"name": "wr_en", "direction": "input", "width": "1", "description": "写请求，高有效"},
+    {"name": "wr_data", "direction": "input", "width": "DATA_WIDTH", "description": "写数据"},
+    {"name": "full", "direction": "output", "width": "1", "description": "FIFO 满标志"},
+    {"name": "rd_clk", "direction": "input", "width": "1", "description": "读时钟域"},
+    {"name": "rd_rst_n", "direction": "input", "width": "1", "description": "读时钟域低有效复位"},
+    {"name": "rd_en", "direction": "input", "width": "1", "description": "读请求，高有效"},
+    {"name": "rd_data", "direction": "output", "width": "DATA_WIDTH", "description": "读数据"},
+    {"name": "empty", "direction": "output", "width": "1", "description": "FIFO 空标志"}
+  ],
+  "checks": [
+    "Gray pointer synchronization is two-flop protected",
+    "full blocks writes without corrupting stored data",
+    "empty blocks reads and preserves ordered output",
+    "reset recovery clears pointers and status flags"
+  ],
+  "scenario_catalog": [
+    {"id": "basic_ordered", "type": "functional", "purpose": "跨时钟有序写入与读取", "status": "PASS"},
+    {
+      "id": "full_boundary",
+      "type": "boundary",
+      "purpose": "写满边界与 full 标志",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["full", "write_full"],
+        "metrics": ["cover_point", "cross"],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "empty_boundary",
+      "type": "boundary",
+      "purpose": "读空边界与 empty 标志",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["empty", "read_empty"],
+        "metrics": ["cover_point", "cross"],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "reset_recovery",
+      "type": "recovery",
+      "purpose": "复位后重新收发",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["reset", "rst"],
+        "source_patterns": ["uvm/*sva*.sv"],
+        "metrics": ["statement", "branch", "condition", "toggle"],
+        "priority": "MEDIUM"
+      }
+    },
+    {
+      "id": "clock_ratio_sweep",
+      "type": "timing",
+      "purpose": "写快读慢、读快写慢、近似同频和相位错开",
+      "status": "PASS",
+      "coverage_match": {
+        "tokens": ["clock", "wr_clk", "rd_clk"],
+        "source_patterns": ["rtl/async_fifo.v"],
+        "metrics": ["toggle"],
+        "priority": "MEDIUM"
+      }
+    },
+    {
+      "id": "mixed_stress",
+      "type": "stress",
+      "purpose": "读写混合压力与随机 burst",
+      "status": "PASS",
+      "coverage_match": {
+        "metrics": ["statement", "branch", "condition", "toggle", "functional_group"],
+        "fallback": true,
+        "priority": "LOW"
+      }
+    }
+  ],
+  "coverage_metrics": [
+    {"id": "statement", "label": "Statement coverage", "source": "Vivado xcrg", "status": "PASS"},
+    {"id": "branch", "label": "Branch coverage", "source": "Vivado xcrg", "status": "PASS"},
+    {"id": "condition", "label": "Condition coverage", "source": "Vivado xcrg", "status": "PASS"},
+    {"id": "toggle", "label": "Toggle coverage", "source": "Vivado xcrg", "status": "PASS"},
+    {"id": "functional", "label": "Functional coverage", "source": "UVM covergroup", "status": "PASS"}
+  ],
+  "artifact_manifest": [
+    {"id": "design_spec", "path": "reports/design_spec.md", "status": "PASS"},
+    {"id": "verification_plan", "path": "reports/verification_plan.md", "status": "PASS"},
+    {"id": "rtl", "path": "rtl/async_fifo.v", "status": "PASS"},
+    {"id": "testbench", "path": "tb/tb_async_fifo.v", "status": "PASS"},
+    {"id": "vivado_sim", "path": "sim/run_vivado_async_fifo.tcl", "status": "PASS"},
+    {"id": "sim_report", "path": "reports/sim_report.md", "status": "PASS"},
+    {"id": "vivado_project", "path": "vivado_project/async_fifo_project.xpr", "status": "PASS"},
+    {"id": "wave_vcd", "path": "sim/async_fifo_trace.vcd", "status": "PASS"},
+    {"id": "wave_wdb", "path": "sim/async_fifo_smoke.wdb", "status": "PASS"},
+    {"id": "uvm_smoke_report", "path": "reports/uvm_smoke_report.md", "status": "PASS"},
+    {"id": "uvm_smoke_wdb", "path": "sim/async_fifo_uvm_smoke.wdb", "status": "PASS"},
+    {"id": "coverage_summary", "path": "reports/uvm_coverage_summary.md", "status": "PASS"},
+    {"id": "uvm_coverage_wdb", "path": "sim/async_fifo_uvm_coverage.wdb", "status": "PASS"}
+  ],
+  "notes": [
+    "P5 通用文档生成默认保留 Vivado/xsim 和 WDB GUI 波形闭环。"
+  ]
+}

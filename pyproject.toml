@@ -1,3 +1,59 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "digital-ic-agent"
+dynamic = ["version"]
+description = "Evidence-driven digital IC frontend agent for RTL, UVM, Vivado, and waveform workflows."
+readme = "README.md"
+authors = [
+    { name = "Digital IC Designer Team" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
+requires-python = ">=3.11,<3.14"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/447662/Agent_IC_design_for_vivado"
+Repository = "https://github.com/447662/Agent_IC_design_for_vivado"
+Issues = "https://github.com/447662/Agent_IC_design_for_vivado/issues"
+
+[project.scripts]
+digital-ic-agent = "digital_ic_agent.agent:main"
+
+[dependency-groups]
+dev = [
+    "hatchling==1.27.0",
+    "mypy==1.17.1",
+    "pytest==8.4.2",
+    "pytest-cov==7.0.0",
+    "ruff==0.12.0",
+]
+
+[tool.hatch.version]
+path = "src/digital_ic_agent/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/digital_ic_agent"]
+force-include = { ".trae/skills" = "digital_ic_agent/skills" }
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/digital_ic_agent",
+    ".trae/agent",
+    ".trae/skills",
+    "pyproject.toml",
+    "README.md",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -16,44 +72,21 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "B904", "B905", "UP017", "SIM105", "SIM300", "RUF005"]
 
 [tool.ruff.lint.per-file-ignores]
-".trae/agent/agent.py" = ["E402", "F401"]
+"src/digital_ic_agent/_runtime/agent.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.11"
 files = [
-    ".trae/agent/agent_runtime.py",
-    ".trae/agent/agent_cli.py",
-    ".trae/agent/agent_composition.py",
-    ".trae/agent/agent_entrypoint.py",
-    ".trae/agent/agent_config.py",
-    ".trae/agent/agent_reports.py",
-    ".trae/agent/agent_waveform.py",
-    ".trae/agent/intent_router.py",
-    ".trae/agent/artifact_manifest.py",
-    ".trae/agent/history_rotation.py",
-    ".trae/agent/coverage_closure.py",
-    ".trae/agent/coverage_gates.py",
-    ".trae/agent/coverage_history.py",
-    ".trae/agent/coverage_recommendations.py",
-    ".trae/agent/environment_report.py",
-    ".trae/agent/failure_archive.py",
-    ".trae/agent/project_overview.py",
-    ".trae/agent/wave_visibility.py",
-    ".trae/agent/waveform_samples.py",
-    ".trae/agent/xcrg_coverage.py",
-    ".trae/agent/adapters/report.py",
-    ".trae/agent/adapters/vivado.py",
-    ".trae/agent/adapters/waveform.py",
-    ".trae/agent/target_registry.py",
-    ".trae/agent/target_scaffolder.py",
-    ".trae/agent/target_checks.py",
-    ".trae/agent/target_flows.py",
+    "src/digital_ic_agent",
 ]
 check_untyped_defs = true
+disallow_untyped_defs = true
 no_implicit_optional = true
+strict_equality = true
+warn_return_any = true
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
@@ -61,10 +94,10 @@ exclude = "(outputs|VCD_ANALYZER-main|RWaveAnalyzer-main|docs/tools_archive)"
 
 [tool.coverage.run]
 branch = true
-source = [".trae/agent"]
+source = ["src/digital_ic_agent"]
 
 [tool.coverage.report]
-fail_under = 68
+fail_under = 85
 show_missing = true
 skip_covered = true
 precision = 1

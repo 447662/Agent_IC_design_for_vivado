@@ -1,0 +1,360 @@
+{
+  "schema_version": "digital-ic-agent.eval.v1",
+  "suites": [
+    {
+      "kind": "generation",
+      "cases": [
+        {
+          "id": "gen-timer",
+          "specification": "Design a configurable 16-bit timer that emits a one-cycle expiry pulse after a programmed number of enabled clock cycles.",
+          "spec_sha256": "1d1e8b109d3511a44f3c227691acf396860b989c37b8e232da52bda521478ed7",
+          "design_template": "timer",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-apb-register-block",
+          "specification": "Design a 32-bit APB3 register block with one writable control register, one read-only status register, byte strobes, and PSLVERR on unmapped addresses.",
+          "spec_sha256": "db82c7fe0eb84396ac2d151c28b7c6a84655fc0e47e2c410abb39c3ca8909140",
+          "design_template": "apb-register-block",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-priority-encoder",
+          "specification": "Design an 8-request parameterized priority encoder that reports the highest-priority asserted request, encoded index, and valid flag.",
+          "spec_sha256": "4c3c7ba16bc738f67f92b8b7fcd076d022697eb473767885fb3dece1e4ffed87",
+          "design_template": "priority-encoder",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-edge-detector",
+          "specification": "Design a rising-edge detector with active-low reset and a single-cycle pulse.",
+          "spec_sha256": "6647f61e35d5ab5750483e6d037e3f7c3103d9796e2b127025ae24fb54666024",
+          "design_template": "edge-detector",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-saturating-counter",
+          "specification": "Design an 8-bit saturating up/down counter with enable, direction, and overflow/underflow saturation.",
+          "spec_sha256": "d808f45b4021f7eae3e9144c0a2fd06e679b9a2fac0c40f11937db24730d5aba",
+          "design_template": "saturating-counter",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-parity-unit",
+          "specification": "Design a combinational 16-bit parity generator and checker supporting even parity.",
+          "spec_sha256": "585f438a3a6c088546576b727991ce4c41de007aeea444f7ae7929477495dccd",
+          "design_template": "parity-unit",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-gray-codec",
+          "specification": "Design a parameterized binary-to-Gray encoder and Gray-to-binary decoder with round-trip checking.",
+          "spec_sha256": "1b4feec923ecacb7cd33f3fb73eb29200b29cc8fc12e8db2df1d72cf1351fb51",
+          "design_template": "gray-codec",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-skid-buffer",
+          "specification": "Design a ready/valid one-entry skid buffer that preserves data under backpressure.",
+          "spec_sha256": "dc337fbd53bb425226b2030ea5f8bd7b824cd63cfd49d33956d447928f33e9b7",
+          "design_template": "skid-buffer",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-pulse-stretcher",
+          "specification": "Design a pulse stretcher that holds an output high for four cycles after a one-cycle trigger.",
+          "spec_sha256": "f3320f2a6de0f633d84dcaf73ed2981fc336566d3d34c3ae3a3d035a602b8453",
+          "design_template": "pulse-stretcher",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        },
+        {
+          "id": "gen-clock-enable-divider",
+          "specification": "Design a programmable clock-enable divider that emits one-cycle enable pulses without creating a derived clock.",
+          "spec_sha256": "49a57a8df23c840b6950354b2878a3a72ae050e5173ff6e2fdcbae3e8453aec2",
+          "design_template": "clock-enable-divider",
+          "unseen": true,
+          "evidence_kind": "real-vivado",
+          "reference_fingerprints": []
+        }
+      ]
+    },
+    {
+      "kind": "repair",
+      "cases": [
+        {
+          "id": "repair-timer-syntax",
+          "specification": "Repair a timer source file with a SystemVerilog syntax error and prove compile recovery.",
+          "spec_sha256": "9257f492d657967a2b5cb86859f81734f118e4973ef4e9997665fb4ff37d4e30",
+          "design_template": "timer",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "timer-syntax",
+            "type": "syntax",
+            "file": "rtl/timer.sv",
+            "expected_reason_codes": ["NONZERO_EXIT", "TOOL_ERROR_FOUND"],
+            "injection": {"operation": "replace_once", "find": "expired   <= 1'b0;", "replace": "expired   <= ;"}
+          }
+        },
+        {
+          "id": "repair-timer-off-by-one",
+          "specification": "Repair a timer whose expiry comparison is off by one and prove scoreboard recovery.",
+          "spec_sha256": "d8dffa3da9c6f4dbdc711160e489651d2d9d11c5d465c678960d50cf1b317186",
+          "design_template": "timer",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "timer-off-by-one",
+            "type": "behavior",
+            "file": "rtl/timer.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "if (remaining <= {{(WIDTH-1){1'b0}}, 1'b1}) begin", "replace": "if (remaining <= 2) begin"}
+          }
+        },
+        {
+          "id": "repair-timer-reset",
+          "specification": "Repair a timer with inverted reset polarity and prove assertion recovery.",
+          "spec_sha256": "c2a266223b5c3ba5e59448142bb4030837a21e1cd8507d1d26e1b29aabbc218f",
+          "design_template": "timer",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "timer-reset-polarity",
+            "type": "behavior",
+            "file": "rtl/timer.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND", "UVM_ERROR_FOUND"],
+            "injection": {"operation": "replace_once", "find": "if (!rst_n) begin", "replace": "if (rst_n) begin"}
+          }
+        },
+        {
+          "id": "repair-apb-address-decode",
+          "specification": "Repair an APB register block with an unmapped-address decode defect.",
+          "spec_sha256": "ea92c508c8258b1936aaf0c442827e537a7b7e2be831084cb0327c07e0cc9f50",
+          "design_template": "apb-register-block",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "apb-address-decode",
+            "type": "behavior",
+            "file": "rtl/apb_register_block.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "assign control_address = (PADDR == 8'h00);", "replace": "assign control_address = (PADDR == 8'h08);"}
+          }
+        },
+        {
+          "id": "repair-apb-byte-strobes",
+          "specification": "Repair an APB register block that ignores byte write strobes.",
+          "spec_sha256": "f2aed946df63a31b2e45c47d475002cf58541598d02535bac60f1ddc0e4d8a63",
+          "design_template": "apb-register-block",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "apb-byte-strobes",
+            "type": "behavior",
+            "file": "rtl/apb_register_block.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "if (PSTRB[byte_index])", "replace": "if (1'b1)"}
+          }
+        },
+        {
+          "id": "repair-priority-width",
+          "specification": "Repair a priority encoder whose encoded index width is incorrect.",
+          "spec_sha256": "06a359d864bd4d1d0e1e97a7f4740e3c6b6bf27a230b642e1e54da9c7ab01f48",
+          "design_template": "priority-encoder",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "priority-index-width",
+            "type": "compile",
+            "file": "rtl/priority_encoder.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "output logic [INDEX_WIDTH-1:0] index,", "replace": "output logic [INDEX_WIDTH-2:0] index,"}
+          }
+        },
+        {
+          "id": "repair-priority-direction",
+          "specification": "Repair a priority encoder that selects the lowest request instead of the highest.",
+          "spec_sha256": "873d71f6e5f198ac7e7dc7487ce2b2bb515d0a69b33ba3533c6aece581ccb141",
+          "design_template": "priority-encoder",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "priority-direction",
+            "type": "behavior",
+            "file": "rtl/priority_encoder.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "for (int request_index = REQUESTS-1; request_index >= 0; request_index--)", "replace": "for (int request_index = 0; request_index < REQUESTS; request_index++)"}
+          }
+        },
+        {
+          "id": "repair-edge-delay",
+          "specification": "Repair a rising-edge detector that delays the output pulse by one extra cycle.",
+          "spec_sha256": "f568da6e21fb5ad53fed20379ee8f64ff9e5ede55b424567bc9c7d6264d4de7f",
+          "design_template": "edge-detector",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "edge-extra-delay",
+            "type": "behavior",
+            "file": "rtl/edge_detector.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "pulse_o <= signal_i && !previous;", "replace": "pulse_o <= previous && !signal_i;"}
+          }
+        },
+        {
+          "id": "repair-counter-wrap",
+          "specification": "Repair a saturating counter that wraps at its upper bound.",
+          "spec_sha256": "1cb3e13fe9e0f66308d3ff91f2181244e4b09d945b6d6689aa2f7fc79ceb0bce",
+          "design_template": "saturating-counter",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "counter-wrap",
+            "type": "behavior",
+            "file": "rtl/saturating_counter.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "else if (enable && up && count != {WIDTH{1'b1}})", "replace": "else if (enable && up)"}
+          }
+        },
+        {
+          "id": "repair-skid-data-loss",
+          "specification": "Repair a skid buffer that loses data while downstream ready is low.",
+          "spec_sha256": "3cd8825102e36047c402fe6938ace55a4a729beebd560e0966de22883e7da333",
+          "design_template": "skid-buffer",
+          "evidence_kind": "real-vivado-repair",
+          "max_repair_iterations": 3,
+          "defect": {
+            "id": "skid-data-loss",
+            "type": "behavior",
+            "file": "rtl/skid_buffer.sv",
+            "expected_reason_codes": ["FAIL_MARKER_FOUND"],
+            "injection": {"operation": "replace_once", "find": "end else if (s_ready) begin", "replace": "end else if (1'b1) begin"}
+          }
+        }
+      ]
+    },
+    {
+      "kind": "negative",
+      "cases": [
+        {
+          "id": "negative-missing-clock",
+          "specification": "Reject a sequential timer requirement with missing clock semantics before Vivado runs.",
+          "spec_sha256": "08147d4993f9835b69d9374aacf8d73fae5250a2f0494e9d8c60378d47113f6f",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "design", "operation": "delete", "path": "clocks"},
+          "expected_status": "AMBIGUOUS",
+          "expected_code": "CLOCK_SEMANTICS_MISSING"
+        },
+        {
+          "id": "negative-missing-reset",
+          "specification": "Reject a sequential timer requirement with missing reset semantics before Vivado runs.",
+          "spec_sha256": "fb7069480c06919d487482a17707535fd3dd3ac2c2441eaea6c7f12e1c42d231",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "design", "operation": "delete", "path": "resets"},
+          "expected_status": "AMBIGUOUS",
+          "expected_code": "RESET_SEMANTICS_MISSING"
+        },
+        {
+          "id": "negative-missing-acceptance",
+          "specification": "Request clarification when explicit acceptance criteria are absent.",
+          "spec_sha256": "754d488b889b52880054591a6ec619fc7e88fae23a1eedd65f6a1a9698da40f9",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "design", "operation": "delete", "path": "acceptance_criteria"},
+          "expected_status": "AMBIGUOUS",
+          "expected_code": "ACCEPTANCE_CRITERIA_MISSING"
+        },
+        {
+          "id": "negative-undefined-width",
+          "specification": "Reject a port width that references an undefined parameter.",
+          "spec_sha256": "57a563aeb49463b87756df79ab6031ae6765c423fec4e8392613d1864c1fa20c",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "design", "operation": "set", "path": "ports.3.width", "value": "UNKNOWN_WIDTH"},
+          "expected_status": "FAIL",
+          "expected_code": "WIDTH_PARAMETER_UNDEFINED"
+        },
+        {
+          "id": "negative-module-mismatch",
+          "specification": "Reject a VerificationIntent whose module does not match DesignIntent.",
+          "spec_sha256": "7a66236856690594a6be7f02517fec6bb6c717165338e8f6112838603392ecb8",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "verification", "operation": "set", "path": "module", "value": "other_module"},
+          "expected_status": "FAIL",
+          "expected_code": "MODULE_MISMATCH"
+        },
+        {
+          "id": "negative-scoreboard-signal",
+          "specification": "Reject a scoreboard that compares an undeclared RTL signal.",
+          "spec_sha256": "dc59bd397e0304ba6ab7e59779690e85e0600744e1a8a4f07ba11610ddd64785",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "verification", "operation": "set", "path": "scoreboard.compare_signals", "value": ["ghost_signal"]},
+          "expected_status": "FAIL",
+          "expected_code": "VERIFICATION_SIGNAL_UNDEFINED"
+        },
+        {
+          "id": "negative-missing-testbench-top",
+          "specification": "Request clarification when the testbench top is not declared.",
+          "spec_sha256": "c2c68a0acf8ca87669fdced84989955d0072889b91fe008cf79f8e32b81d5c65",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "verification", "operation": "delete", "path": "testbench_top"},
+          "expected_status": "AMBIGUOUS",
+          "expected_code": "TESTBENCH_TOP_MISSING"
+        },
+        {
+          "id": "negative-source-escape",
+          "specification": "Reject a source manifest path that escapes the design workspace.",
+          "spec_sha256": "4bd1cdffc65f2b8152957c74233eb2f2da8ddbe573f0b147cba46a9ad24c2e0f",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "verification", "operation": "set", "path": "source_files", "value": ["../escape.sv"]},
+          "expected_status": "FAIL",
+          "expected_code": "SOURCE_PATH_INVALID"
+        },
+        {
+          "id": "negative-coverage-conflict",
+          "specification": "Reject mandatory coverage when all coverage collection is disabled.",
+          "spec_sha256": "06bc11e28689463fd5d506289b82974b161d0a22e441c82e3d3fc6feb274fff5",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "verification", "operation": "set", "path": "coverage_strategy", "value": {"code_coverage": false, "functional_coverage": false, "export_report": true, "functional_threshold": 80}},
+          "expected_status": "FAIL",
+          "expected_code": "COVERAGE_STRATEGY_CONFLICT"
+        },
+        {
+          "id": "negative-iteration-conflict",
+          "specification": "Reject a no-progress limit that exceeds the maximum iteration count.",
+          "spec_sha256": "acd5ea9e38ecf2cbc4c7a9437543af271a11f875b023ed90bc1ef64171b055ed",
+          "base_template": "timer",
+          "evidence_kind": "contract-negative",
+          "mutation": {"document": "verification", "operation": "set", "path": "iteration_limits.no_progress_limit", "value": 4},
+          "expected_status": "FAIL",
+          "expected_code": "ITERATION_LIMIT_CONFLICT"
+        }
+      ]
+    }
+  ]
+}
